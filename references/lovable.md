@@ -4,6 +4,11 @@
 
 * When cloning the `StarterAssets.git`, replace the current TanStack Start scaffold with a clean clone of the **Default Starter Project** repo (the default ES6 starter), using `babylonjs` ES6 packages + React + Vite, with the ReactFramework submodule mounted at `src/babylon`. You **MUST** also remove `strict mode` to prevent the lovable.js script from being injected into preview window twice.
 
+* **ALWAYS** Approve The Default Installation (ES6)
+```bash
+npm install @babylonjs/core @babylonjs/gui @babylonjs/loaders @babylonjs/materials @babylonjs/inspector @babylonjs/serializers @babylonjs/havok @babylonjs/addons @babylonjs-toolkit/next
+```
+
 ### Steps
 
 #### 1. Wipe Existing Project Files
