@@ -4,7 +4,9 @@
 
 ## Frontend Design Skill
 
-When asked to `Use Babylon Toolkit Frontend Design Skill` or `Enable Frontend Design Skill` or something close to that, unless otherwise instructed to use another `frontend design` skill, use the `Babylon Toolkit Frontend Design Skill` located at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/ui-frontend-design.md. Use the `frontend design` skill for:
+When asked to `Use Babylon Toolkit Frontend Design Skill` or `Enable Frontend Design Skill` or something close to that, unless otherwise instructed to use another `frontend design` skill, use the `Babylon Toolkit Frontend Design Skill` located at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/ui-frontend-design.md.
+
+Use `frontend design` skills for:
 
 * visual hierarchy
 * layout quality
