@@ -50,6 +50,8 @@ If the frontend design skill suggests a style that conflicts with `/DESIGN.md`, 
 
 The Babylon Scene Viewer is composed of **three distinct UI layers** that together form the complete in-game user interface system. Each layer has a distinct lifecycle, purpose, and z-index level. Always understand which layer is responsible for what before building any in-game UI.
 
+* **ALWAYS** Prefer full width and height containers when rendering the scene. Use full page containers whenever appropriate.
+
 ### Z-Index Stack (top to bottom)
 
 ```
