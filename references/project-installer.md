@@ -99,6 +99,7 @@ The Vite bundle services behave differently in devmode than production. To prese
       "babylonjs-toolkit",
     ] : [],
   },
+  assetsInclude: ["**/*.wasm"],  
 ```
 
 * Default Installation (ES6)
@@ -349,6 +350,7 @@ export default defineConfig(({ mode }) => ({
       "use-sync-external-store/shim"
     ] : [],
   },
+  assetsInclude: ["**/*.wasm"],  
   server: {
     headers: {
       "Cross-Origin-Embedder-Policy": "credentialless",
