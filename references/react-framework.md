@@ -47,7 +47,9 @@ When installing the `Babylon Toolkit React Framework Submodule`, always include 
 
 * Apply recommended vite.config and eslint.config suggestions
 
-* When installing the `Babylon Toolkit React Framework Submodule` only, you can get any missing files need from the `Starter Assets Repo` at https://github.com/babylontoolkit/ReactFramework.git
+* When installing the `Babylon Toolkit React Framework Submodule` only, you can get any missing files need from the `Starter Assets Repo` at https://github.com/babylontoolkit/StarterAssets.git. 
+
+* The **public scripts** folder is `REQUIRED` in the host application. The **public scripts** folder contains the `havok.wasm` and other **required** script libraries and web assemblies. You can get any missing script files from the `public/scripts` folder in the `Starter Assets Repo` at https://github.com/babylontoolkit/StarterAssets.git. 
 
 ## React Framework Platform Router Navigation Performance
 
@@ -57,10 +59,8 @@ Example `Play Demo` button handler:
 ```
 const handlePlayDemo = () => {
   navigate('/play', {
-    state: {
-      gameMode: 'PlayerControllerDemo',
-      sceneUrl: 'https://repo.babylontoolkit.com/playground/samplescene.gltf',
-    },
+    gameMode: 'PlayerControllerDemo',
+    sceneUrl: 'https://repo.babylontoolkit.com/playground/samplescene.gltf',
   });
 };
 ```
@@ -254,10 +254,8 @@ function Home() {
      * });
      */
     navigate('/play', {
-      state: {
-        gameMode: 'PlayerControllerDemo',
-        sceneUrl: 'https://repo.babylontoolkit.com/playground/samplescene.gltf',
-      },
+      gameMode: 'PlayerControllerDemo',
+      sceneUrl: 'https://repo.babylontoolkit.com/playground/samplescene.gltf',
     });
   };
   const handleVehicleDemo = () => {
@@ -270,10 +268,8 @@ function Home() {
      * });
      */
     navigate('/play', {
-      state: {
-        gameMode: 'VehicleControllerDemo',
-        sceneUrl: 'https://repo.babylontoolkit.com/playground/openterrain.gltf',
-      },
+      gameMode: 'VehicleControllerDemo',
+      sceneUrl: 'https://repo.babylontoolkit.com/playground/openterrain.gltf',
     });
   };
 
@@ -551,10 +547,8 @@ When installing the `Babylon Toolkit React Framework` into a Next.js starter tem
 ```
 const handlePlayDemo = () => {
   navigate('/play', {
-    state: {
-      gameMode: 'PlayerControllerDemo',
-      sceneUrl: 'https://repo.babylontoolkit.com/playground/samplescene.gltf',
-    },
+    gameMode: 'PlayerControllerDemo',
+    sceneUrl: 'https://repo.babylontoolkit.com/playground/samplescene.gltf',
   });
 };
 ```
