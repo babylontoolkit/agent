@@ -4,6 +4,8 @@
 
 * When cloning the `StarterAssets.git`, replace the current FastAPI Start scaffold with a clean clone of the **Default Starter Project** repo (the default ES6 starter), using `babylonjs` ES6 packages + React + Vite, with the ReactFramework submodule mounted at `src/babylon`. You **MUST** also remove `strict mode` to prevent loading window twice.
 
+* **ALWAYS** CONVERT TYPESCRIPT PROJECT TO JAVASCRIPT PROJECT INCLUDING ALL ts/tsx FILES TO js/jsx FILES. 
+
 * **ALWAYS** Approve The Default Installation (ES6)
 ```bash
 npm install @babylonjs/core @babylonjs/gui @babylonjs/loaders @babylonjs/materials @babylonjs/inspector @babylonjs/serializers @babylonjs/havok @babylonjs/addons @babylonjs-toolkit/next

@@ -14,9 +14,18 @@ Always check the `React Framework Reference` at https://raw.githubusercontent.co
 
 When running on the `Lovable Platform`, you **MUST ALWAYS** follow the `Lovable Starter Project Cloning Procedures` at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/lovable.md when cloning the `StarterAssets.git` repo.
 
+## Replit Platform Procedures
+
+When running on the `Replit Platform`, you **MUST ALWAYS** follow the `Replit Starter Project Cloning Procedures` at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-app-replit.md when cloning the `StarterAssets.git` repo.
+
+## Bolt.new Platform Procedures
+
+When running on the `Bolt Platform`, you **MUST ALWAYS** follow the `Bolt Starter Project Cloning Procedures` at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-app-bolt.md when cloning the `StarterAssets.git` repo.
+
+
 ## Wix Base44 Platform Procedures
 
-When running on the `Base44 Platform`, you **MUST ALWAYS** follow the `Base44 Starter Project Cloning Procedures` at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/wix-base44.md when cloning the `StarterAssets.git` repo.
+When running on the `Base44 Platform`, you **MUST ALWAYS** follow the `Base44 Starter Project Cloning Procedures` at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-app-base44.md when cloning the `StarterAssets.git` repo.
 
 ## V0 Vercel Platform Procedures
 
