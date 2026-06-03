@@ -106,7 +106,7 @@ export { babylonLogo, spinnerImage };
 
 **File:** `src/babylon/custom/splash.tsx` + `src/babylon/custom/splash.css`
 
-**What it is:** The `SplashScreen` is the full-screen animated loading screen shown *inside* the `BabylonSceneViewer` while the engine initializes, the GLTF scene loads from CDN/S3, the physics engine starts, and the `GameModeController.createScene()` method runs. It subscribes to `GameManager.EventBus.OnMessage("OnLoadProgress", ...)` and shows live progress messages.
+**What it is:** The `SplashScreen` is the full-screen animated loading screen shown *inside* the `BabylonSceneViewer` while the engine initializes, the GLTF scene loads from CDN/S3, the physics engine starts, and the `SceneController.createScene()` method runs. It subscribes to `GameManager.EventBus.OnMessage("OnLoadProgress", ...)` and shows live progress messages.
 
 **When it appears:**
 - Immediately after the Babylon engine is created (replaces the preloader)
@@ -169,7 +169,7 @@ function SplashScreen({ visible }: { visible: boolean }) {
 export default SplashScreen;
 ```
 
-**Splash Screen Delay (in GameModeController):**
+**Splash Screen Delay (in SceneController):**
 ```typescript
 constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties: any = {}) {
   super(transform, scene, properties);
@@ -197,7 +197,7 @@ constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties: 
 **What it manages:**
 
 #### HUDs (Heads-Up Displays)
-Always-visible during gameplay. Lives in the overlay at `pointer-events: none` so input passes through to the canvas. Updated via `GameManager.EventBus` messages from the `GameModeController`.
+Always-visible during gameplay. Lives in the overlay at `pointer-events: none` so input passes through to the canvas. Updated via `GameManager.EventBus` messages from the `SceneController`.
 
 ```tsx
 // HUD bar at the top of screen
@@ -420,7 +420,7 @@ All BabylonJS GUI begins with an `AdvancedDynamicTexture`. It is the root surfac
 Creates a full-viewport GUI layer rendered by the GPU above the scene. Rescales automatically to match canvas resolution. Only **one fullscreen ADT per scene** is allowed.
 
 ```typescript
-// In GameModeController.createScene():
+// In SceneController.createScene():
 const adt = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI('GameHUD', true, this.scene);
 // Second param: true = foreground (default), false = background
 

@@ -14,7 +14,7 @@
 
 1. [Framework Architecture Overview](#1-framework-architecture-overview)
 2. [Component Hierarchy](#2-component-hierarchy)
-3. [GameModeController — The Heart of Every Scene](#3-gamemodecontroller--the-heart-of-every-scene)
+3. [SceneController — The Heart of Every Scene](#3-SceneController--the-heart-of-every-scene)
 4. [BabylonSceneViewer — Embedded Div vs Full Page](#4-babylonsceneviewer--embedded-div-vs-full-page)
 5. [Navigation System — Scene-to-Scene Routing](#5-navigation-system--scene-to-scene-routing)
 6. [GameManager — Global Services](#6-gamemanager--global-services)
@@ -52,7 +52,7 @@ Host React App (Vite / Next.js / Remix)
 
 | Concept | Description |
 |---------|-------------|
-| **GameModeController** | The single entry point for ALL scene logic. Every viewer instance gets exactly one game mode. |
+| **SceneController** | The single entry point for ALL scene logic. Every viewer instance gets exactly one game mode. |
 | **`createScene()`** | The async function called by the framework when it's time to set up game content. Works like the BabylonJS Playground. |
 | **Interactive Scene Content** | Pre-built GLTF scenes, car models, player armatures, and prefabs hosted on S3/CDN. The game mode activates and controls them. |
 | **Script Bundle** | A JavaScript file (e.g. `default.playground.js`) loaded at runtime that registers pre-built components like `ThirdPersonPlayerController` onto the `PROJECT` namespace. |
@@ -63,7 +63,7 @@ Host React App (Vite / Next.js / Remix)
 ```typescript
 // Always available after GameManager.InitializeRuntime() is called
 BABYLON   // Full BabylonJS API
-TOOLKIT   // Babylon Toolkit API — SceneManager, GameModeController, etc.
+TOOLKIT   // Babylon Toolkit API — SceneManager, SceneController, etc.
 PROJECT   // Script bundle exports — ThirdPersonPlayerController, VehicleController, etc.
 ```
 
@@ -106,18 +106,18 @@ The `custom` folder allows easy customization of the `preloader`, `splash` and t
 
 ---
 
-## 3. GameModeController — The Heart of Every Scene
+## 3. SceneController — The Heart of Every Scene
 
 ### What Is It?
 
-`TOOLKIT.GameModeController` is a `TOOLKIT.ScriptComponent` subclass that acts as the **master controller for a scene**. The framework instantiates exactly one per viewer, attaches it to a `TransformNode` named `"GameMode"`, and calls its lifecycle methods automatically.
+`TOOLKIT.SceneController` is a `TOOLKIT.ScriptComponent` subclass that acts as the **master controller for a scene**. The framework instantiates exactly one per viewer, attaches it to a `TransformNode` named `"GameMode"`, and calls its lifecycle methods automatically.
 
 **Think of it as: the BabylonJS Playground `createScene` function — but as a class with a full game lifecycle.**
 
 ### Lifecycle Methods
 
 ```typescript
-export class MyGameMode extends TOOLKIT.GameModeController {
+export class MyGameMode extends TOOLKIT.SceneController {
     constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties: any = {}, alias: string = "MyGameMode") {
         super(transform, scene, properties, alias);
         // Optional: override splash hide delay in milliseconds
@@ -189,7 +189,7 @@ TOOLKIT.SceneManager.RegisterClass("MyGameMode", MyGameMode);
 Framework flow:
 1. Engine + Scene created (WebGPU → WebGL fallback)
 2. GameManager.InitializeRuntime() — loads TOOLKIT, physics, script bundle
-3. GameModeController instantiated + attached (BEFORE scene load)
+3. SceneController instantiated + attached (BEFORE scene load)
 4. If sceneUrl provided: BABYLON.ImportMeshAsync() loads the GLTF
 5. ► gameMode.createScene(auxiliaryData) called  ◄  ← YOUR CODE HERE
 6. Splash screen hidden (after hideSplashScreenDelayMs)
@@ -197,7 +197,7 @@ Framework flow:
 
 ### Accessing Scene and Helpers
 
-Inside any `GameModeController` method:
+Inside any `SceneController` method:
 
 ```typescript
 this.scene          // BABYLON.Scene
@@ -351,7 +351,7 @@ function HomeScreen() {
 
 ### Navigating from Game Code (in-scene, mid-gameplay)
 
-Inside any `GameModeController` or `ScriptComponent`, use `GameManager.NavigateTo`:
+Inside any `SceneController` or `ScriptComponent`, use `GameManager.NavigateTo`:
 
 ```typescript
 import GameManager from "../globals";
@@ -464,7 +464,7 @@ private onLevelComplete(): void {
 The `EventBus` bridges game code and React UI components:
 
 ```typescript
-// From game code (GameModeController):
+// From game code (SceneController):
 GameManager.EventBus.PostMessage("hud:updateScore", { score: 1500, multiplier: 2 });
 GameManager.EventBus.PostMessage("hud:showMessage", { text: "SPEED BOOST!", duration: 2 });
 
@@ -523,7 +523,7 @@ function CustomOverlay() {
     const [isPaused, setIsPaused] = useState(false);
     const [showPauseMenu, setShowPauseMenu] = useState(false);
 
-    // Listen for game events from the GameModeController
+    // Listen for game events from the SceneController
     useEffect(() => {
         const onScore = (data: { score: number }) => setScore(data.score);
         const onSpeed = (data: { speed: number }) => setSpeed(data.speed);
@@ -601,7 +601,7 @@ Best for: scores, speedometers, health bars, minimaps, popup menus, chat, invent
 - Zero GPU cost for the canvas render loop
 
 ```typescript
-// In GameModeController — post HUD data each frame or on change:
+// In SceneController — post HUD data each frame or on change:
 protected update(): void {
     const speed = this.vehicleController?.currentSpeed ?? 0;
     if (Math.abs(speed - this._lastSpeed) > 0.5) {
@@ -830,7 +830,7 @@ The fallback if no `gameMode` prop is provided. Use as a starting template for a
 
 ```typescript
 // classes/DefaultGameMode.ts
-export class DefaultGameMode extends TOOLKIT.GameModeController {
+export class DefaultGameMode extends TOOLKIT.SceneController {
     constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties: any = {}) {
         super(transform, scene, properties);
     }
@@ -847,7 +847,7 @@ TOOLKIT.SceneManager.RegisterClass("DefaultGameMode", DefaultGameMode);
 Instantly navigable free camera — ideal for prototyping and scene inspection.
 
 ```typescript
-export class FreeCameraMode extends TOOLKIT.GameModeController {
+export class FreeCameraMode extends TOOLKIT.SceneController {
     private camera: BABYLON.FreeCamera | null = null;
 
     protected async createScene(data?: any): Promise<void> {
@@ -869,7 +869,7 @@ TOOLKIT.SceneManager.RegisterClass("FreeCameraMode", FreeCameraMode);
 Loads a rigged player armature and wires up `PROJECT.ThirdPersonPlayerController`.
 
 ```typescript
-export class PlayerControllerDemo extends TOOLKIT.GameModeController {
+export class PlayerControllerDemo extends TOOLKIT.SceneController {
     protected async createScene(data?: any): Promise<void> {
         GameManager.PostProgressStatus("Loading Player Armature ...");
         const assetsManager = new BABYLON.AssetsManager(this.scene);
@@ -924,13 +924,13 @@ Game Root (React)
 
 ### Step 1: Define All Game Modes
 
-Create one `GameModeController` subclass per scene/level. Register each one.
+Create one `SceneController` subclass per scene/level. Register each one.
 
 ```typescript
 // src/babylon/classes/Level1GameMode.ts
 import GameManager from "../globals";
 
-export class Level1GameMode extends TOOLKIT.GameModeController {
+export class Level1GameMode extends TOOLKIT.SceneController {
     private playerController: any = null;
     private raceTimer: number = 0;
     private lapCount: number = 0;
@@ -1342,7 +1342,7 @@ export default function PlayRoute() {
 | `scriptUrl` | `string` | Script bundle URL. Loaded once globally and cached. |
 | `auxiliaryData` | `any` | Arbitrary data passed to `createScene(data)`. |
 
-### GameModeController Lifecycle Order
+### SceneController Lifecycle Order
 
 ```
 awake → start → ready
@@ -1393,7 +1393,7 @@ awake → start → ready
 
 ```
 ✅ Create  src/babylon/classes/MyGameMode.ts
-✅ Extend  TOOLKIT.GameModeController
+✅ Extend  TOOLKIT.SceneController
 ✅ Call    TOOLKIT.SceneManager.RegisterClass("MyGameMode", MyGameMode)
 ✅ Import  in globals.ts → await import("./classes/MyGameMode")
 ✅ Navigate with  gameMode: "MyGameMode"  in state
@@ -1406,7 +1406,7 @@ awake → start → ready
 ```typescript
 import GameManager from "../globals";
 
-export class MyGameMode extends TOOLKIT.GameModeController {
+export class MyGameMode extends TOOLKIT.SceneController {
 
     constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties: any = {}) {
         super(transform, scene, properties);

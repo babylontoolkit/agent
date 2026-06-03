@@ -1142,9 +1142,9 @@ declare namespace TOOLKIT {
     }
     /**
      * Babylon game mode controller class (Unreal Engine Style Game Modes)
-     * @class GameModeController - All rights reserved (c) 2024 Mackey Kinard
+     * @class SceneController - All rights reserved (c) 2024 Mackey Kinard
      */
-    abstract class GameModeController extends TOOLKIT.ScriptComponent {
+    abstract class SceneController extends TOOLKIT.ScriptComponent {
         autoHideSplashScreen: boolean;
         postCreateSceneDelayMs: number;
         hideSplashScreenDelayMs: number;
