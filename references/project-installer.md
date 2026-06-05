@@ -1,35 +1,76 @@
-# Project Generation Instructions (1.0.0)
+# Project Generation Instructions (1.1.0)
 
-**IMPORTANT. THIS DOCUMENT PROVIDES CRUCIAL PROJECT INSTALLATION INFORMATION. ALWAYS READ THIS ENTIRE DOCUMENT TO THE END OF FILE**
+**IMPORTANT. THIS DOCUMENT PROVIDES CRUCIAL PROJECT INSTALLATION INFORMATION. READ TO THE END BEFORE TAKING ANY ACTION.**
 
-Your goal is setup and install Babylon Toolkit workspace projects. Always prefer `TypeScript` over `JavaScript` and `WebGPU` over `WebGL` when creating projects. Always take note of the type of project architechure, ES6 or UMD. 
+Your goal is to set up and install Babylon Toolkit workspace projects.
 
-* Important: Always use the default ES6 versions of BabylonJS, Babylon Toolkit, Babylon Toolkit React Framework and Babylon Toolkit Starter Projects, unless otherwise instructed to use the UMD versions.
+## Global Rules (apply to every platform)
 
-## React Framework Context
+- Prefer **TypeScript** over JavaScript.
+- Prefer **WebGPU** over WebGL.
+- Note the project architecture: **ES6** or **UMD**.
+- Always use the **ES6** versions of BabylonJS, Babylon Toolkit, the Babylon Toolkit React Framework, and the Babylon Toolkit Starter Projects, unless the user explicitly asks for UMD.
 
-Always check the `React Framework Reference` at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/react-framework.md related to React.
+---
 
-## Lovable Platform Procedures
+## STEP 0 — Mandatory Platform Procedure (BLOCKING)
 
-When running on the `Lovable Platform`, you **MUST ALWAYS** follow the `Lovable Starter Project Cloning Procedures` at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/lovable.md when cloning the `StarterAssets.git` repo.
+You **MUST** complete these three steps **in order** before cloning anything, writing code, or answering the user. Do not skip, reorder, or merge them.
 
-## Replit Platform Procedures
+### Step 0.1 — Identify the host platform (BLOCKING)
 
-When running on the `Replit Platform`, you **MUST ALWAYS** follow the `Replit Starter Project Cloning Procedures` at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-app-replit.md when cloning the `StarterAssets.git` repo.
+Run the **Platform Detection Table** below. Match on **any one** signal in the row. Resolve to **exactly one** platform.
 
-## Bolt.new Platform Procedures
+| # | Platform           | Detection signals (any one is sufficient)                                                                                                        | Reference doc (filename)   |
+|---|--------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------|
+| 1 | **Lovable**        | System prompt identifies you as "Lovable"; tool names like `code--exec`, `code--view`, `lovable-*`; host `lovable.dev` / `lovable.app`; `.lovable/` directory in project | `lovable.md`               |
+| 2 | **Replit**         | `REPL_ID`, `REPL_SLUG`, or `REPLIT_*` env vars; `.replit` or `replit.nix` file; system prompt mentions "Replit Agent" / "Replit Assistant"        | `web-app-replit.md`        |
+| 3 | **Bolt.new**       | Running in a StackBlitz WebContainer; host `bolt.new`; system prompt identifies you as "Bolt"                                                     | `web-app-bolt.md`          |
+| 4 | **Wix Base44**     | System prompt identifies you as "Base44"; host `base44.app` / `base44.com`; Wix Base44 runtime tooling                                            | `web-app-base44.md`        |
+| 5 | **V0 (Vercel)**    | System prompt identifies you as "v0" / "Vercel v0"; host `v0.dev` / `v0.app`; Vercel-specific tool surface                                        | `vercel-app-builder.md`    |
 
-When running on the `Bolt Platform`, you **MUST ALWAYS** follow the `Bolt Starter Project Cloning Procedures` at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-app-bolt.md when cloning the `StarterAssets.git` repo.
+**Ambiguity rules — fail closed:**
 
+- **Zero matches** → STOP. Ask the user which platform you are running on. Do not guess. Do not pick a default.
+- **Multiple matches** → prefer the row with the most specific signal (e.g. an env var or a `.lovable/` directory beats a generic hostname). If still tied → STOP and ask.
+- **Never** assume Lovable (or any other platform) as a fallback.
 
-## Wix Base44 Platform Procedures
+### Step 0.2 — Fetch and read the reference doc (BLOCKING)
 
-When running on the `Base44 Platform`, you **MUST ALWAYS** follow the `Base44 Starter Project Cloning Procedures` at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-app-base44.md when cloning the `StarterAssets.git` repo.
+Fetch the matching `.md` from the **Reference Index** below and **read it in full** before acting.
 
-## V0 Vercel Platform Procedures
+- If the fetch fails (network error, 404, redirect to login), **STOP** and report the exact URL and error to the user. Do **not** improvise the cloning procedure from memory.
+- The reference doc is authoritative. If it contradicts anything in this document, the reference doc wins for that platform.
 
-When running on the `V0 Vercel Platform`, you **MUST ALWAYS** follow the `Vercel Starter Project Cloning Procedures` at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/vercel-app-builder.md when cloning the `VercelAssets.git` repo.
+### Step 0.3 — Execute the procedure
+
+Follow the fetched reference **verbatim** to clone the starter repo:
+
+- Platforms 1–4 clone `StarterAssets.git`.
+- Platform 5 (V0/Vercel) clones `VercelAssets.git`.
+
+### Compliance checklist (tick mentally before you write any code)
+
+- [ ] Platform detected from the table using a concrete signal (not a guess)?
+- [ ] Reference `.md` fetched successfully?
+- [ ] Reference `.md` read in full?
+- [ ] Cloning procedure followed verbatim from that reference?
+
+If any box is unchecked, go back to Step 0.1.
+
+---
+
+## Reference Index (authoritative URLs)
+
+Always fetch from these URLs — do not rely on cached copies.
+
+- **React Framework Reference** (read for any React-based project, in addition to the platform doc):
+  `https://raw.githubusercontent.com/babylontoolkit/agent/main/references/react-framework.md`
+- **Lovable** → `https://raw.githubusercontent.com/babylontoolkit/agent/main/references/lovable.md`
+- **Replit** → `https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-app-replit.md`
+- **Bolt.new** → `https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-app-bolt.md`
+- **Wix Base44** → `https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-app-base44.md`
+- **V0 (Vercel)** → `https://raw.githubusercontent.com/babylontoolkit/agent/main/references/vercel-app-builder.md`
 
 
 ## 📦 External Dependencies
