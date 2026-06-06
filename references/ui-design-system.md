@@ -177,6 +177,8 @@ constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties: 
 }
 ```
 
+* Important: The `preloader` and `splash screen` **SHOULD** look very similar if not the same. The only differene is the preloader should be less animated than the splash screen because it is the `React Suspense` or downloading state.
+
 ---
 
 ### Layer 3 — CustomOverlay (Master In-Game UI Layer)
