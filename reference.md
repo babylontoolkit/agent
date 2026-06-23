@@ -12,6 +12,10 @@ ES6 is preferred over UMD.
 
 The `Project Installation Instructions` contain important npm package info, github submodule info and clonable starter asset repository locations. Please read entire project installation instructions.
 
+## Image And Video Tools
+
+Read the `Image And Video Generation` section for the installation and configuration of the `Babylon Toolkit` image and video tools.
+
 ## React Framework Setup
 
 Use the `React Framework Documentation` for anything realated to REACT and/or web app design.
@@ -35,6 +39,7 @@ Remember to **always, always, always** check the following instructions, documen
 * User Interface Design Instructions at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/ui-design-system.md
 * React Framework Documentation at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/react-framework.md
 * Interactive Scene Components at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scene-components.md
+* Image And Video Generation at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-kie-servers.md
 * AI Training Example Reference at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/training-reference.md
 
 ---
