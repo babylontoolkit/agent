@@ -24,9 +24,9 @@
 
 ## Node Package Dependencies 
 
-Make sure the `kie-image-mcp` node package is installed:
+Make sure the `kie-image-mcp` node package is installed in your project:
 ```
-npm install -g @babylonjs-toolkit/mcp@latest
+npm install @babylonjs-toolkit/mcp@latest
 ```
 
 # kie-image-mcp
@@ -54,26 +54,6 @@ kie-image-mcp image     # or: video | google   (no arg = image)
 ## Get an API key
 Set your kie.ai key as `KIE_KEY` (or `KIE_AI_API_KEY`), or put `KIE_KEY=...` in a `.env`
 file in your working directory. See `.env.example`. All three servers share the one key.
-
-## Install (global)
-The npm package is published as **`@babylonjs-toolkit/mcp`**; it installs a command named
-**`kie-image-mcp`** (that command name is what you reference everywhere else). Install once
-so the command is on your PATH:
-```
-npm install -g @babylonjs-toolkit/mcp   # from npm once published
-# or, from a local clone (the prepare script builds it for you):
-cd kie-image-mcp && npm install -g .
-```
-Verify and update:
-```
-which kie-image-mcp                        # confirm the command is on PATH
-npm install -g @babylonjs-toolkit/mcp@latest   # update to a newer version
-```
-
-> **nvm users:** the global bin is tied to the active Node version (e.g.
-> `~/.nvm/versions/node/vXX/bin/kie-image-mcp`). If you switch Node versions, reinstall
-> for that version. If your MCP client is a GUI app that doesn't inherit your shell PATH,
-> use the absolute bin path (from `which kie-image-mcp`) in the config.
 
 ## Configure (any MCP client)
 
