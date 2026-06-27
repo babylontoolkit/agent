@@ -28,6 +28,8 @@ Make sure the `kie-image-mcp` node package is installed in your project:
 ```
 npm install @babylonjs-toolkit/mcp@latest
 ```
+* If using the local project version of the MCP Servers, update the `.mcp.json` to use the node_modules path for commands. Like `node_modules/@babylonjs-toolkit/kie-image-mcp`
+
 
 # kie-image-mcp
 
