@@ -7,6 +7,33 @@
 {
   "mcpServers": {
     "kie-image": {
+      "command": "node_modules/.bin/kie-image-mcp",
+      "args": ["image"]
+    },
+    "kie-video": {
+      "command": "node_modules/.bin/kie-image-mcp",
+      "args": ["video"]
+    },
+    "kie-google": {
+      "command": "node_modules/.bin/kie-image-mcp",
+      "args": ["google"]
+    }
+  }
+}
+```
+
+## Node Package Dependencies 
+
+Make sure the `kie-image-mcp` node package is installed in your project:
+```
+npm install @babylonjs-toolkit/mcp@latest
+```
+
+* If using the globally installed version of the MCP Servers, update the `.mcp.json` to use the global commands. For example:
+```
+{
+  "mcpServers": {
+    "kie-image": {
       "command": "kie-image-mcp",
       "args": ["image"]
     },
@@ -21,15 +48,6 @@
   }
 }
 ```
-
-## Node Package Dependencies 
-
-Make sure the `kie-image-mcp` node package is installed in your project:
-```
-npm install @babylonjs-toolkit/mcp@latest
-```
-* If using the local project version of the MCP Servers, update the `.mcp.json` to use the node_modules path for commands. Like `node_modules/@babylonjs-toolkit/kie-image-mcp`
-
 
 # kie-image-mcp
 
