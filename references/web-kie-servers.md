@@ -24,9 +24,9 @@
 
 ## Node Package Dependencies 
 
-Make sure the `kie-image-mcp` node package is installed in your project:
+Make sure the `kie-image-mcp` node package is installed in your project `devDependencies` as:
 ```
-npm install @babylonjs-toolkit/mcp@latest
+npm install @babylonjs-toolkit/mcp@latest --save-dev
 ```
 
 * If using the globally installed version of the MCP Servers, update the `.mcp.json` to use the global commands. For example:
