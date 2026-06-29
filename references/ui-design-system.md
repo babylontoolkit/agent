@@ -14,6 +14,10 @@ Use `frontend design` skills for:
 * interaction polish
 * production-grade UI details
 
+### Host Platform Design Skill
+
+Make sure to use any specialty host platform design skills. Like any moredern and create 3D interavtive web content design skills.
+
 ## Project Design System
 
 If this project contains `/DESIGN.md`, treat it as the canonical design system.
