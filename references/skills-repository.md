@@ -2,13 +2,7 @@
 
 **IMPORTANT. THIS DOCUMENT PROVIDES CRUCIAL BABYLON TOOLKIT SKILLS INSTRUCTIONS. ALWAYS READ THIS ENTIRE DOCUMENT TO THE END OF FILE**
 
-Universal [Agent Skills](https://agentskills.io) for the Babylon Toolkit SPEC → PLAN →
-EXECUTE workflow. Each `SKILL.md` follows the open standard, so the **same file works
-unchanged** in Claude Code, Codex CLI, and GitHub Copilot.
-
 ## Repo
-
-repositories
 
 You can download and install the skills from the repo at: https://github.com/babylontoolkit/skills.git
 
@@ -16,19 +10,24 @@ You can download and install the skills from the repo at: https://github.com/bab
 
 | Skill | Command | What it does |
 |-------|---------|--------------|
-| [`convert`](convert/SKILL.md) | `/convert` | Convert Unity C# scripts to Babylon Toolkit TypeScript. |
-| [`spec`](spec/SKILL.md) | `/spec` | Turn a short idea into a feature spec file on a new git branch. |
-| [`plan`](plan/SKILL.md) | `/plan` | Produce a detailed, task-checklist technical plan from a spec. |
-| [`execute`](execute/SKILL.md) | `/execute` | Implement one task (or all remaining tasks) from a plan/spec. |
-
-## How it works
+| [`spec`](skills/spec/SKILL.md) | `/spec` | Turn a short idea into a feature spec file on a new git branch. |
+| [`plan`](skills/plan/SKILL.md) | `/plan` | Produce a detailed, task-checklist technical plan from a spec. |
+| [`execute`](skills/execute/SKILL.md) | `/execute` | Implement one task (or all remaining tasks) from a plan/spec. |
+| [`convert`](skills/convert/SKILL.md) | `/convert` | Convert Unity C# scripts to Babylon Toolkit TypeScript. |
 
 Every tool derives the slash-command from the **folder name** (`spec/` → `/spec`) and reads
 the frontmatter `name` + `description` to decide when the skill applies. The `allowed-tools`
 line is honored by Claude Code (auto-approves those tools) and safely ignored by Codex and
 Copilot.
 
-Where each tool looks for local (all-projects) skills:
+## Installation
+
+When the user request to `install the agent skills` or `install the babylon toolkit skills` or something like that,
+either download and install the skills from the github repo located at https://github.com/babylontoolkit/skills.git into
+the appropriate global or local project location, or install the `Native Claude Code Plugin` globally. If the user did **NOT** specify
+what type install to do, please prompt the user select the type of installation to perform.
+
+### Local Skills Installation
 
 | Tool | Skills directory |
 |------|------------------|
@@ -36,7 +35,7 @@ Where each tool looks for local (all-projects) skills:
 | Codex CLI | `.codex/skills/` |
 | GitHub Copilot | `.copilot/skills/`, `.claude/skills/`, or `.agents/skills/` |
 
-Where each tool looks for global (all-projects) skills:
+### Global Skills Installation
 
 | Tool | Skills directory |
 |------|------------------|
@@ -44,10 +43,10 @@ Where each tool looks for global (all-projects) skills:
 | Codex CLI | `~/.codex/skills/` |
 | GitHub Copilot | `~/.copilot/skills/`, `~/.claude/skills/`, or `~/.agents/skills/` |
 
-> **Note:** the file must be named exactly `SKILL.md` — Codex silently skips `SKILL.MD`.
+### Native Claude Code Installation
 
-## Install
-
-_Installation instructions coming soon._ For now, copy a skill folder (e.g. `spec/`) into
-the relevant directory above and start a new session. A cross-platform installer will be
-added once this repo has a permanent home.
+To install from marketplace:
+```
+/plugin marketplace add babylontoolkit/skills
+/plugin install agent-skills@babylon-toolkit
+```
