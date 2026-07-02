@@ -4,7 +4,7 @@
 
 ## Repo
 
-You can download and install the skills from the repo at: https://github.com/babylontoolkit/skills.git
+You can download and install the skills from the repo at: https://github.com/babylontoolkit/skills.git. Please use the `raw github url` when downloading content.
 
 ## Skills
 
@@ -33,7 +33,6 @@ what type install to do, please prompt the user select the type of installation 
 |------|------------------|
 | Claude Code | `.claude/skills/` *(also read by Copilot)* |
 | Codex CLI | `.codex/skills/` |
-| GitHub Copilot | `.copilot/skills/`, `.claude/skills/`, or `.agents/skills/` |
 
 ### Global Skills Installation
 
@@ -41,7 +40,8 @@ what type install to do, please prompt the user select the type of installation 
 |------|------------------|
 | Claude Code | `~/.claude/skills/` *(also read by Copilot)* |
 | Codex CLI | `~/.codex/skills/` |
-| GitHub Copilot | `~/.copilot/skills/`, `~/.claude/skills/`, or `~/.agents/skills/` |
+
+> **Note:** Install skills into **BOTH** Claude Code and Codex locations for maximum coverage.
 
 ### Native Claude Code Installation
 
@@ -49,4 +49,9 @@ To install from marketplace:
 ```
 /plugin marketplace add babylontoolkit/skills
 /plugin install agent-skills@babylon-toolkit
+```
+
+To update marketplace plugin: 
+```
+/plugin marketplace update babylon-toolkit.
 ```
