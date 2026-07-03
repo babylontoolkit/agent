@@ -22,19 +22,21 @@ Copilot.
 
 ## Installation
 
-When the user request to `install the agent skills` or `install the babylon toolkit skills` or something like that,
+When the user request is to `install the agent skills` or `install the babylon toolkit skills` or something like that,
 either download and install the skills from the github repo located at https://github.com/babylontoolkit/skills.git into
 the appropriate global or local project location, or install the `Native Claude Code Plugin` globally. If the user did **NOT** specify
-what type install to do, please prompt the user select the type of installation to perform.
+what type of `Agent Skills Installation` to do, please prompt the user select the type of installation to perform.
 
-### Local Skills Installation
+## Universal Installations
+
+Where each tool looks for local project skills (Default Installation):
 
 | Tool | Skills directory |
 |------|------------------|
 | Claude Code | `.claude/skills/` *(also read by Copilot)* |
 | Codex CLI | `.codex/skills/` |
 
-### Global Skills Installation
+Where each tool looks for all global project skills:
 
 | Tool | Skills directory |
 |------|------------------|
@@ -43,7 +45,9 @@ what type install to do, please prompt the user select the type of installation 
 
 > **Note:** Install skills into **BOTH** Claude Code and Codex locations for maximum coverage.
 
-### Native Claude Code Installation
+## Native Claude Code Installation
+
+- Always prefer the `Default Universal Installation` unless instructed to install the `Native Claude Code Agent Skills`
 
 To install from marketplace:
 ```
