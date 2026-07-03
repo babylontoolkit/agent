@@ -13,6 +13,7 @@ You can download and install the skills from the repo at: https://github.com/bab
 | [`spec`](skills/spec/SKILL.md) | `/spec` | Turn a short idea into a feature spec file on a new git branch. |
 | [`plan`](skills/plan/SKILL.md) | `/plan` | Produce a detailed, task-checklist technical plan from a spec. |
 | [`execute`](skills/execute/SKILL.md) | `/execute` | Implement one task (or all remaining tasks) from a plan/spec. |
+| [`design`](skills/design/SKILL.md) | `/design` | Implement high quality frontend designs. |
 | [`convert`](skills/convert/SKILL.md) | `/convert` | Convert Unity C# scripts to Babylon Toolkit TypeScript. |
 
 Every tool derives the slash-command from the **folder name** (`spec/` → `/spec`) and reads

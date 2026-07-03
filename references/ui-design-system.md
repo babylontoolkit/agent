@@ -2,19 +2,18 @@
 
 **IMPORTANT. THIS DOCUMENT PROVIDES CRUCIAL USER INTERFACE INSTRUCTIONS. ALWAYS READ THIS ENTIRE DOCUMENT TO THE END OF FILE BEFORE CREATING, EDITING, OR REVIEWING UI CODE**
 
-## Frontend Design Skill
+## Frontend Design Skills
 
-When asked to `Use Babylon Toolkit Frontend Design Skill` or `Enable Frontend Design Skill` or something close to that, unless otherwise instructed to use another `frontend design` skill, use the `Babylon Toolkit Frontend Design Skill` located at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/ui-frontend-design.md.
-
-Use `frontend design` skills for:
+When enabled, use the `Babylon Toolkit Design Skill` for all user interface design, including things like:
 
 * visual hierarchy
 * layout quality
 * responsiveness
 * interaction polish
 * production-grade UI details
+* high quality in-game user interfaces
 
-### Host Platform Design Skill
+### Host Platform Design Skills
 
 Make sure to use any specialty host platform design skills. Like any moredern and create 3D interavtive web content design skills.
 
