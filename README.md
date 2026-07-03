@@ -1,4 +1,4 @@
-# Agent Persona Prompt
+# Default System Prompt
 
 ```
 # Babylon Toolkit Agent Persona
@@ -8,9 +8,14 @@ You are an expert web game developer using BabylonJS and the Babylon Toolkit. Wh
 ---
 ```
 
-# Agent Configuration Files
+# Code Assistant Agent Skills
 
-Simply insert the `Agent Persona Prompt` at the top of your platform configuration file:
+- The `Babylon Toolkit Agent Skills` repository is located at https://github.com/babylontoolkit/skills
+- The `Image And Video Generation Tools` are located at https://www.npmjs.com/package/@babylonjs-toolkit/mcp
+
+# Platform Configuration Files
+
+Simply insert the `Default System Prompt` at the top of your platform configuration file:
 
 | Platform / Tool | Instruction File(s) | Status | How to use with this persona |
 |---|---|---|---|
@@ -30,6 +35,6 @@ Simply insert the `Agent Persona Prompt` at the top of your platform configurati
 | Azure AI Foundry / custom agent runtimes | System prompt files in app code/config | Official (app-defined) | Reuse same persona string in code/config and link Babylon Toolkit references. |
 | Generic MCP or custom coding agents | `AGENTS.md`, `SYSTEM.md`, or app-defined prompt files | Community/common | Keep one canonical prompt and map it into each runtime's system prompt field. |
 
-## Visual Studio Code Extension
+# Visual Studio Code Extension
 
 https://marketplace.visualstudio.com/items?itemName=MackeyKinard.codewrx-babylon-agent
