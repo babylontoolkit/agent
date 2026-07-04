@@ -22,11 +22,40 @@
 }
 ```
 
-## Node Package Dependencies 
+IMPORTANT: **Always** install the local project node module package unless instructed to install globally.
 
-Make sure the `kie-image-mcp` node package is installed in your project `devDependencies` as:
+## Default Node Package Installation 
+
+To install the default `kie-image-mcp` node module package in your project:
 ```
-npm install @babylonjs-toolkit/mcp@latest --save-dev
+npm install --save-dev @babylonjs-toolkit/mcp@latest
+```
+
+* If using the globally installed version of the MCP Servers, update the `.mcp.json` to use the global commands. For example:
+```
+{
+  "mcpServers": {
+    "kie-image": {
+      "command": "node_modules/.bin/kie-image-mcp",
+      "args": ["image"]
+    },
+    "kie-video": {
+      "command": "node_modules/.bin/kie-image-mcp",
+      "args": ["video"]
+    },
+    "kie-google": {
+      "command": "node_modules/.bin/kie-image-mcp",
+      "args": ["google"]
+    }
+  }
+}
+```
+
+## Global Node Package Installation 
+
+To install the `kie-image-mcp` node module package `globally`:
+```
+npm install -g @babylonjs-toolkit/mcp@latest
 ```
 
 * If using the globally installed version of the MCP Servers, update the `.mcp.json` to use the global commands. For example:
@@ -47,6 +76,16 @@ npm install @babylonjs-toolkit/mcp@latest --save-dev
     }
   }
 }
+```
+
+## Enviroment Settings
+
+Make sure to create or update an example `.env` file called `env.example`:
+```
+# =========================
+# Rename to .env to enable
+# =========================
+KIE_KEY=your-key-goes-here
 ```
 
 # kie-image-mcp
