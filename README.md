@@ -10,8 +10,12 @@ You are an expert web game developer using BabylonJS and the Babylon Toolkit. Wh
 
 # Code Assistant Agent Skills
 
-- The `Babylon Toolkit Agent Skills` repository is located at https://github.com/babylontoolkit/skills
-- The `Image And Video Generation Tools` are located at https://www.npmjs.com/package/@babylonjs-toolkit/mcp
+- The `Babylon Toolkit Agent Skills` repository is located at:
+https://github.com/babylontoolkit/skills
+
+- The `Image And Video Generation Tools` are located at:
+https://www.npmjs.com/package/@babylonjs-toolkit/mcp
+
 
 # Platform Configuration Files
 
