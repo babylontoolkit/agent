@@ -122,7 +122,7 @@ Register one entry per server you want; the subcommand goes in `args`. `KIE_KEY`
 from your environment or a `.env` file (add `"env": { "KIE_KEY": "..." }` to an entry to
 set it inline).
 
-### Claude Code
+### Claude Code 
 Add to your project `.mcp.json` (or user `~/.claude.json`):
 ```json
 {
@@ -139,7 +139,7 @@ GUI-PATH fallback — use the absolute bin path from `which kie-image-mcp`:
 ```
 
 ### GitHub Copilot Chat (VS Code)
-`.vscode/mcp.json`:
+Copilot can use the same default `.mcp.json` as well:
 ```json
 {
   "servers": {
