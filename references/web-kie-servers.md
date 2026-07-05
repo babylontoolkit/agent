@@ -50,6 +50,7 @@ npm install --save-dev @babylonjs-toolkit/mcp@latest
   }
 }
 ```
+**Note:** Do not create a duplicate `.vscode/mcp.json` file.
 
 ## Global Node Package Installation 
 
@@ -77,6 +78,7 @@ npm install -g @babylonjs-toolkit/mcp@latest
   }
 }
 ```
+**Note:** Do not create a duplicate `.vscode/mcp.json` file.
 
 ## Enviroment Settings
 
