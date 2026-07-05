@@ -144,12 +144,15 @@ Where each tool looks for local project skills (Default Installation):
 | Claude Code | `.claude/skills/` *(also read by Copilot)* |
 | Codex CLI | `.codex/skills/` |
 
-Where each tool looks for all global project skills:
+Where each tool looks for all global project skills (`~` = your home directory):
 
-| Tool | Skills directory |
-|------|------------------|
-| Claude Code | `~/.claude/skills/` *(also read by Copilot)* |
-| Codex CLI | `~/.codex/skills/` |
+| Tool | macOS / Linux | Windows |
+|------|---------------|---------|
+| Claude Code | `~/.claude/skills/` *(also read by Copilot)* | `%USERPROFILE%\.claude\skills\` |
+| Codex CLI | `~/.codex/skills/` | `%USERPROFILE%\.codex\skills\` |
+
+> On macOS this expands to `/Users/<user>/.claude/skills/`, on Linux to `/home/<user>/.claude/skills/`,
+> and on Windows to `C:\Users\<user>\.claude\skills\`.
 
 > **Note:** Install skills into **BOTH** Claude Code and Codex locations for maximum coverage.
 > Copy **whole folders** into each — the `bt-atlas/scripts/` assets must be present in every location.
@@ -169,3 +172,8 @@ To update marketplace plugin:
 ```
 /plugin marketplace update babylon-toolkit.
 ```
+
+---
+
+** Always** follow installation instructions exactly as written. Do not skip, substitute, or 'optimize away' any step based on assumptions about my environment.
+If a step seems unnecessary, do it anyway and flag it — don't silently drop it.
