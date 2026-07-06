@@ -13,10 +13,6 @@ When enabled, use the `Babylon Toolkit Design Skill` for all user interface desi
 * production-grade UI details
 * high quality in-game user interfaces
 
-### Host Platform Design Skills
-
-Make sure to use any specialty host platform design skills. Like any moredern and create 3D interavtive web content design skills.
-
 ## Project Design System
 
 If this project contains `/DESIGN.md`, treat it as the canonical design system.

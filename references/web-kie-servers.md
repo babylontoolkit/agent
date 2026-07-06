@@ -1,9 +1,16 @@
 # Babylon Toolkit Image And Video MCP Servers
 
+> **DEFAULT INSTALL RULE — READ FIRST:** Install the MCP package **locally in the
+> project** (`npm install --save-dev @babylonjs-toolkit/mcp@latest`) and reference
+> `node_modules/.bin/kie-image-mcp` in `.mcp.json`. **NEVER install globally unless
+> the user explicitly instructs it.** Any example elsewhere in this document (or in
+> the npm package README) that shows the bare `kie-image-mcp` command is the
+> global-install variant — do not use it by default.
+
 **IMPORTANT. THIS DOCUMENT PROVIDES CRUCIAL MCP SERVER INSTRUCTIONS. ALWAYS READ THIS ENTIRE DOCUMENT TO THE END OF FILE**
 
-* When asked to create or install `Babylon Toolkit MCP Servers` or `KIE MCP Servers` or `Image MCP Servers` or something like that, create or append to `.mcp.json` the following `KIE MCP Servers`: 
-```
+* When asked to create or install `Babylon Toolkit MCP Servers` or `KIE MCP Servers` or `Image MCP Servers` or something like that, create or append to `.mcp.json` the following `KIE MCP Servers`:
+```json
 {
   "mcpServers": {
     "kie-image": {
@@ -24,43 +31,26 @@
 
 IMPORTANT: **Always** install the local project node module package unless instructed to install globally.
 
-## Default Node Package Installation 
+## Default Node Package Installation (Local)
 
 To install the default `kie-image-mcp` node module package in your project:
 ```
 npm install --save-dev @babylonjs-toolkit/mcp@latest
 ```
 
-* If using the globally installed version of the MCP Servers, update the `.mcp.json` to use the global commands. For example:
-```
-{
-  "mcpServers": {
-    "kie-image": {
-      "command": "node_modules/.bin/kie-image-mcp",
-      "args": ["image"]
-    },
-    "kie-video": {
-      "command": "node_modules/.bin/kie-image-mcp",
-      "args": ["video"]
-    },
-    "kie-google": {
-      "command": "node_modules/.bin/kie-image-mcp",
-      "args": ["google"]
-    }
-  }
-}
-```
+This is the **default** installation. It pairs with the `node_modules/.bin/kie-image-mcp` commands in the `.mcp.json` shown above — no changes needed.
+
 **Note:** Do not create a duplicate `.vscode/mcp.json` file.
 
-## Global Node Package Installation 
+## Global Node Package Installation (Only When Explicitly Instructed)
 
 To install the `kie-image-mcp` node module package `globally`:
 ```
 npm install -g @babylonjs-toolkit/mcp@latest
 ```
 
-* If using the globally installed version of the MCP Servers, update the `.mcp.json` to use the global commands. For example:
-```
+* If (and only if) using the globally installed version of the MCP Servers, update the `.mcp.json` to use the global commands. For example:
+```json
 {
   "mcpServers": {
     "kie-image": {
@@ -80,9 +70,9 @@ npm install -g @babylonjs-toolkit/mcp@latest
 ```
 **Note:** Do not create a duplicate `.vscode/mcp.json` file.
 
-## Enviroment Settings
+## Environment Settings
 
-Make sure to create or update an example `.env` file called `env.example`:
+Make sure to create or update an example `.env` file called `.env.example`:
 ```
 # =========================
 # Rename to .env to enable
@@ -122,36 +112,28 @@ Register one entry per server you want; the subcommand goes in `args`. `KIE_KEY`
 from your environment or a `.env` file (add `"env": { "KIE_KEY": "..." }` to an entry to
 set it inline).
 
-### Claude Code 
-Add to your project `.mcp.json` (or user `~/.claude.json`):
+> **Reminder:** the configs below use the default **local** install
+> (`node_modules/.bin/kie-image-mcp`). Only substitute the bare `kie-image-mcp`
+> command if the package was explicitly installed globally.
+
+### MCP Configuration File
+Add to your project `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "kie-image":  { "command": "kie-image-mcp", "args": ["image"] },
-    "kie-video":  { "command": "kie-image-mcp", "args": ["video"] },
-    "kie-google": { "command": "kie-image-mcp", "args": ["google"] }
+    "kie-image":  { "command": "node_modules/.bin/kie-image-mcp", "args": ["image"] },
+    "kie-video":  { "command": "node_modules/.bin/kie-image-mcp", "args": ["video"] },
+    "kie-google": { "command": "node_modules/.bin/kie-image-mcp", "args": ["google"] }
   }
 }
 ```
-GUI-PATH fallback — use the absolute bin path from `which kie-image-mcp`:
+GUI-PATH fallback (global installs only) — use the absolute bin path from `which kie-image-mcp`:
 ```json
 { "mcpServers": { "kie-image": { "command": "/Users/you/.nvm/versions/node/v24.11.0/bin/kie-image-mcp", "args": ["image"] } } }
 ```
 
-### GitHub Copilot Chat (VS Code)
-Copilot can use the same default `.mcp.json` as well:
-```json
-{
-  "servers": {
-    "kie-image":  { "command": "kie-image-mcp", "args": ["image"] },
-    "kie-video":  { "command": "kie-image-mcp", "args": ["video"] },
-    "kie-google": { "command": "kie-image-mcp", "args": ["google"] }
-  }
-}
-```
-
-### Cursor / Windsurf / Zed / generic
-Same shape under the client's `mcpServers` key, using the `kie-image-mcp` command.
+### Copilot / Cursor / Windsurf / Zed / Generic
+Same shape under the client's `mcpServers` key, using the `node_modules/.bin/kie-image-mcp` command (or the bare `kie-image-mcp` command for global installs).
 
 ## Available image models
 
@@ -213,8 +195,8 @@ Tool: `generate_image(prompt, out_path, reference_paths?, model?, aspect_ratio?,
 |-------|---------|-------|
 | `prompt` | required | Text description of the image to generate. |
 | `out_path` | required | Where to save the image. |
-| `reference_paths` | – | Local image files to use as references / edit from (up to 14). |
-| `model` | `nano-banana-2` | See model list below. |
+| `reference_paths` | — | Local image files to use as references / edit from (up to 14). |
+| `model` | `nano-banana-2` | See the image model list above. |
 | `aspect_ratio` | `16:9` | e.g. `16:9` \| `1:1` \| `4:3` \| `9:16`. |
 | `resolution` | `2K` | `1K` \| `2K` \| `4K`. |
 | `output_format` | `jpg` | `jpg` \| `png`. |
@@ -272,12 +254,12 @@ Tool: `generate_video(prompt, out_path, model?, image_paths?, aspect_ratio?, dur
 |-------|---------|-------|
 | `prompt` | required | Text description of the video / motion. |
 | `out_path` | required | Where to save the `.mp4`. |
-| `model` | `kling-3.0/video` | See model list below. |
-| `image_paths` | – | Local images for image-to-video. |
+| `model` | `kling-3.0/video` | See the video model list above. |
+| `image_paths` | — | Local images for image-to-video. |
 | `aspect_ratio` | `16:9` | `16:9` \| `9:16` \| `1:1`. |
 | `duration` | `5` | Seconds. Valid range varies by model. |
 | `sound` | `false` | Generate audio (Kling / Bytedance). |
-| `resolution` | – | `480p` \| `720p` \| `1080p` (Bytedance / Grok). |
+| `resolution` | — | `480p` \| `720p` \| `1080p` (Bytedance / Grok). |
 | `mode` | `pro` | `std` \| `pro` \| `4K` — Kling 3.0 only. |
 
 ## Available google video models
@@ -304,11 +286,11 @@ Tool: `generate_google_video(prompt, out_path, image_paths?, model?, aspect_rati
 |-------|---------|-------|
 | `prompt` | required | Text description of the video / motion. |
 | `out_path` | required | Where to save the `.mp4`. |
-| `model` | `veo3_fast` | See model list below. |
-| `image_paths` | – | Local images for image-to-video: 1 = animate around it, 2 = first + last frame, up to 3 = reference (veo3_lite only). |
+| `model` | `veo3_fast` | See the google video model list above. |
+| `image_paths` | — | Local images for image-to-video: 1 = animate around it, 2 = first + last frame, up to 3 = reference (veo3_lite only). |
 | `aspect_ratio` | `16:9` | `16:9` \| `9:16` \| `Auto`. |
 | `resolution` | `720p` | `720p` \| `1080p` \| `4k` (4k costs extra credits). |
 | `duration` | `8` | `4` \| `6` \| `8` seconds. |
 | `generation_type` | auto | `TEXT_2_VIDEO` \| `FIRST_AND_LAST_FRAMES_2_VIDEO` \| `REFERENCE_2_VIDEO`. |
-| `watermark` | – | Text to burn into the video. |
+| `watermark` | — | Text to burn into the video. |
 | `enable_translation` | `true` | Translate prompt to English before generating. |
