@@ -53,7 +53,7 @@ Per Babylon Toolkit rules, no nested git metadata should remain inside the proje
 
 #### 4. Verify `.gitignore`
 
-Ensure `.gitignore` contains `node_modules`. The cloned `.gitignore` already includes it — verify before proceeding.
+Ensure `.gitignore` contains `.env` and `node_modules`. The cloned `.gitignore` already includes it — verify before proceeding.
 
 #### 5. Install Dependencies
 

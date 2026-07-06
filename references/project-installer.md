@@ -211,7 +211,7 @@ import * as PROJECT from "@babylonjs-toolkit/next/project";
 git remote remove origin
 ```
 
-* AWLAYS MAKE SURE `node_modules` is `ignored`. Do not allow `node_modules` to be saved to repo when creating, cloning or setting up a project. Always add `node_modules` to .gitignore. If .gitignore does not exist, then create one and add `node_modules` to it.
+* AWLAYS MAKE SURE `node_modules` is `ignored`. Do not allow `node_modules` to be saved to repo when creating, cloning or setting up a project. Always add `.env` and `node_modules` to .gitignore. If .gitignore does not exist, then create one and add `.env` and `node_modules` to it.
 
 ### Babylon Toolkit React Framework Submodule (ES6)
 
