@@ -28,8 +28,7 @@ Run the **Platform Detection Table** below. Match on **any one** signal in the r
 | 3 | **Bolt.new**       | Running in a StackBlitz WebContainer; host `bolt.new`; system prompt identifies you as "Bolt"                                                     | `web-app-bolt.md`          |
 | 4 | **Wix Base44**     | System prompt identifies you as "Base44"; host `base44.app` / `base44.com`; Wix Base44 runtime tooling                                            | `web-app-base44.md`        |
 | 5 | **V0 (Vercel)**    | System prompt identifies you as "v0" / "Vercel v0"; host `v0.dev` / `v0.app`; Vercel-specific tool surface                                        | `vercel-app-builder.md`    |
-| 6 | **Seeles.ai**      | System prompt identifies you as "Seeles" or "Seeles AI"; host `seeles.ai`; Seeles-specific tool surface                                            | `web-app-seeles.md`        |
-| 7 | **Generic**        | Any other AI app-building platform not matched by rows 1–6 above                                                                                    | `web-app-generic.md`       |
+| 6 | **Generic**        | Any other AI app-building platform not matched by rows 1–6 above                                                                                  | `web-app-generic.md`       |
 
 **Ambiguity rules — fail closed:**
 
@@ -73,7 +72,6 @@ Always fetch from these URLs — do not rely on cached copies.
 - **Bolt.new** → `https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-app-bolt.md`
 - **Wix Base44** → `https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-app-base44.md`
 - **V0 (Vercel)** → `https://raw.githubusercontent.com/babylontoolkit/agent/main/references/vercel-app-builder.md`
-- **Seeles.ai** → `https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-app-seeles.md`
 - **Generic** → `https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-app-generic.md`
 
 
