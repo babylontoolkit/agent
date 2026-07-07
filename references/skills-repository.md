@@ -25,7 +25,7 @@ You can download and install the skills from the repo at: https://github.com/bab
 ## Skills
 
 A skill is a **folder**, not a single file. Every skill folder contains at minimum a `SKILL.md`,
-and some skills ship **additional required asset files** (scripts, requirements, data) alongside it.
+and some skills ship **additional required asset files** (scripts, references, templates, data) alongside it.
 
 | Skill | Command | What it does | Folder contents |
 |-------|---------|--------------|-----------------|
@@ -34,7 +34,7 @@ and some skills ship **additional required asset files** (scripts, requirements,
 | [`bt-execute`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task (or all remaining tasks) from a plan/spec. | `SKILL.md` |
 | [`bt-convert`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-convert/SKILL.md) | `/bt-convert` | Convert source code to Babylon Toolkit TypeScript. | `SKILL.md` |
 | [`bt-copycat`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-copycat/SKILL.md) | `/bt-copycat` | Re-create the specified website adapted to specified genre. | `SKILL.md` |
-| [`bt-design`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/SKILL.md) | `/bt-design` | Implement high quality frontend and in-game designs. | `SKILL.md` |
+| [`bt-design`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/SKILL.md) | `/bt-design` | Implement high quality frontend and in-game designs. | `SKILL.md` **+ `references/` and `templates/` (required for 3D scroll-hero)** |
 | [`bt-atlas`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-atlas/SKILL.md) | `/bt-atlas` | Generate texture atlas skin variations. | `SKILL.md` **+ `scripts/` (required Python)** |
 
 Every tool derives the slash-command from the **folder name** (`bt-spec/` → `/bt-spec`) and reads
@@ -48,8 +48,9 @@ Copilot.
 Some skills fail at runtime if their supporting assets are missing.
 
 - ❌ **DO NOT** do `cp .../SKILL.md ...` or glob only `*/SKILL.md`. This silently drops assets
-  and leaves `bt-atlas` broken.
-- ✅ **DO** copy the whole skill directory (`SKILL.md` **and** every subfolder such as `scripts/`).
+  and leaves `bt-atlas` and `bt-design` broken.
+- ✅ **DO** copy the whole skill directory (`SKILL.md` **and** every subfolder such as `scripts/`,
+  `references/`, `templates/`).
 
 ### Exact repository layout (this is the source of truth — do not guess)
 
@@ -66,7 +67,15 @@ skills/
 ├── bt-copycat/
 │   └── SKILL.md
 ├── bt-design/
-│   └── SKILL.md
+│   ├── SKILL.md
+│   ├── references/
+│   │   ├── 3d-hero-docs.md
+│   │   └── 3d-hero-scroll.md
+│   └── templates/
+│       └── 3d-hero-scroll/
+│           ├── hero-scroll.css
+│           ├── hero-scroll.html
+│           └── hero-scroll.js
 └── bt-atlas/
     ├── SKILL.md
     └── scripts/
@@ -89,7 +98,16 @@ skills/
 > `bt-atlas` runs Python. Its scripts depend on the packages in `scripts/requirements.txt`.
 > Do not attempt to satisfy them by hand — the skill installs them itself when first run.
 
-All other skills (`bt-spec`, `bt-plan`, `bt-execute`, `bt-convert`, `bt-copycat`, `bt-design`, `bt-atlas`) are `SKILL.md`-only.
+`bt-design` **will not have its 3D scroll-hero template available** unless all of these are also present:
+
+- `bt-design/SKILL.md`
+- `bt-design/references/3d-hero-docs.md`
+- `bt-design/references/3d-hero-scroll.md`
+- `bt-design/templates/3d-hero-scroll/hero-scroll.css`
+- `bt-design/templates/3d-hero-scroll/hero-scroll.html`
+- `bt-design/templates/3d-hero-scroll/hero-scroll.js`
+
+All other skills (`bt-spec`, `bt-plan`, `bt-execute`, `bt-convert`, `bt-copycat`) are `SKILL.md`-only.
 
 ## Installation
 
@@ -107,7 +125,7 @@ the appropriate global or local project location, or install the `Native Claude 
 - If you **cannot prompt** (non-interactive or autonomous run), **default to the Recommended global install method below (clone-and-copy into the per-user home directory)** and tell the user which method was used.
 
 **However you install, you MUST end with the [Post-Install Verification](#post-install-verification) step below.**
-An install that reports success but is missing `bt-atlas/scripts/` is a FAILED install — go back and copy the missing files.
+An install that reports success but is missing `bt-atlas/scripts/` or `bt-design/references/` / `bt-design/templates/` is a FAILED install — go back and copy the missing files.
 
 ### Recommended install method: clone the whole repo, copy whole folders (GLOBAL by default)
 
@@ -116,7 +134,8 @@ Cloning guarantees every asset comes along. Copy folders recursively (`-R` / `-r
 **macOS / Linux (bash/zsh) — global install into the user's home directory:**
 
 ```bash
-# 1. Clone the full repo (brings ALL skill assets, including bt-atlas/scripts/).
+# 1. Clone the full repo (brings ALL skill assets, including bt-atlas/scripts/
+#    and bt-design/references/ + bt-design/templates/).
 #    Remove any stale clone first — git clone fails if the folder already exists.
 rm -rf /tmp/bt-skills
 git clone --depth 1 https://github.com/babylontoolkit/skills.git /tmp/bt-skills
@@ -131,7 +150,8 @@ cp -R /tmp/bt-skills/skills/. ~/.agents/skills/    # Cross-agent standard: Codex
 **Windows (PowerShell) — global install into the user's profile directory:**
 
 ```powershell
-# 1. Clone the full repo (brings ALL skill assets, including bt-atlas/scripts/).
+# 1. Clone the full repo (brings ALL skill assets, including bt-atlas/scripts/
+#    and bt-design/references/ + bt-design/templates/).
 #    Remove any stale clone first — git clone fails if the folder already exists.
 Remove-Item -Recurse -Force "$env:TEMP\bt-skills" -ErrorAction SilentlyContinue
 git clone --depth 1 https://github.com/babylontoolkit/skills.git "$env:TEMP\bt-skills"
@@ -172,6 +192,7 @@ Copy-Item -Recurse -Force "$env:TEMP\bt-skills\skills\*" ".agents\skills\"   # C
 
 You are responsible for fetching **every file in the manifest above**, preserving the folder
 structure. For `bt-atlas` that means the `SKILL.md` **and** all four files under `scripts/`.
+For `bt-design` that means the `SKILL.md` **and** all files under `references/` and `templates/`.
 Raw URL pattern:
 
 ```
@@ -188,6 +209,17 @@ https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-atlas/scr
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-atlas/scripts/requirements.txt
 ```
 
+Examples for `bt-design` (note the `references/` and `templates/` files — do not skip them):
+
+```
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/SKILL.md
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/references/3d-hero-docs.md
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/references/3d-hero-scroll.md
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/templates/3d-hero-scroll/hero-scroll.css
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/templates/3d-hero-scroll/hero-scroll.html
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/templates/3d-hero-scroll/hero-scroll.js
+```
+
 ## Post-Install Verification
 
 After copying, verify **every skill in every location you installed to**. Edit the `for dir in`
@@ -200,11 +232,14 @@ list to the actual target locations (GLOBAL paths shown by default; use the proj
 MISSING=""
 # Edit this list to EVERY location you installed to (GLOBAL paths shown; works in bash and zsh):
 for dir in ~/.claude/skills ~/.agents/skills; do
-  for skill in bt-spec bt-plan bt-execute bt-convert bt-design bt-atlas; do
+  for skill in bt-spec bt-plan bt-execute bt-convert bt-copycat bt-design bt-atlas; do
     [ -f "$dir/$skill/SKILL.md" ] || MISSING="$MISSING $dir/$skill/SKILL.md"
   done
   for f in composite_skin.py preview.py uv_island_mask.py requirements.txt; do
     [ -f "$dir/bt-atlas/scripts/$f" ] || MISSING="$MISSING $dir/bt-atlas/scripts/$f"
+  done
+  for f in references/3d-hero-docs.md references/3d-hero-scroll.md templates/3d-hero-scroll/hero-scroll.css templates/3d-hero-scroll/hero-scroll.html templates/3d-hero-scroll/hero-scroll.js; do
+    [ -f "$dir/bt-design/$f" ] || MISSING="$MISSING $dir/bt-design/$f"
   done
 done
 
@@ -223,11 +258,14 @@ $missing = @()
 # Edit this list to EVERY location you installed to (GLOBAL paths shown):
 $dirs = @("$env:USERPROFILE\.claude\skills", "$env:USERPROFILE\.agents\skills")
 foreach ($dir in $dirs) {
-  foreach ($skill in "bt-spec","bt-plan","bt-execute","bt-convert","bt-design","bt-atlas") {
+  foreach ($skill in "bt-spec","bt-plan","bt-execute","bt-convert","bt-copycat","bt-design","bt-atlas") {
     if (-not (Test-Path "$dir\$skill\SKILL.md")) { $missing += "$dir\$skill\SKILL.md" }
   }
   foreach ($f in "composite_skin.py","preview.py","uv_island_mask.py","requirements.txt") {
     if (-not (Test-Path "$dir\bt-atlas\scripts\$f")) { $missing += "$dir\bt-atlas\scripts\$f" }
+  }
+  foreach ($f in "references\3d-hero-docs.md","references\3d-hero-scroll.md","templates\3d-hero-scroll\hero-scroll.css","templates\3d-hero-scroll\hero-scroll.html","templates\3d-hero-scroll\hero-scroll.js") {
+    if (-not (Test-Path "$dir\bt-design\$f")) { $missing += "$dir\bt-design\$f" }
   }
 }
 
@@ -275,12 +313,13 @@ Where each tool looks for PROJECT-LOCAL skills (only when the user explicitly re
 > for everything else (Codex, Copilot, Gemini CLI, Antigravity). By default use the
 > GLOBAL (per-user home) locations; use the project-local locations only when the user
 > explicitly asks for a project install. Copy **whole folders** into each — the
-> `bt-atlas/scripts/` assets must be present in every location.
+> `bt-atlas/scripts/` and `bt-design/references/` + `bt-design/templates/` assets must
+> be present in every location.
 
 ## Native Claude Code Installation
 
 - Always prefer the `Default Universal Installation` unless instructed to install the `Native Claude Code Agent Skills`
-- The marketplace plugin install bundles all skill assets (including `bt-atlas/scripts/`) automatically.
+- The marketplace plugin install bundles all skill assets (including `bt-atlas/scripts/` and `bt-design/references/` + `bt-design/templates/`) automatically.
 
 To install from marketplace:
 ```
