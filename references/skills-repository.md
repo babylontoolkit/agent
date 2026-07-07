@@ -28,7 +28,8 @@ and some skills ship **additional required asset files** (scripts, requirements,
 | [`bt-spec`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file on a new git branch. | `SKILL.md` |
 | [`bt-plan`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec. | `SKILL.md` |
 | [`bt-execute`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task (or all remaining tasks) from a plan/spec. | `SKILL.md` |
-| [`bt-convert`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-convert/SKILL.md) | `/bt-convert` | Convert Unity C# scripts to Babylon Toolkit TypeScript. | `SKILL.md` |
+| [`bt-convert`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-convert/SKILL.md) | `/bt-convert` | Convert source code to Babylon Toolkit TypeScript. | `SKILL.md` |
+| [`bt-copycat`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-copycat/SKILL.md) | `/bt-copycat` | Re-create the specified website adapted to specified genre. | `SKILL.md` |
 | [`bt-design`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/SKILL.md) | `/bt-design` | Implement high quality frontend and in-game designs. | `SKILL.md` |
 | [`bt-atlas`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-atlas/SKILL.md) | `/bt-atlas` | Generate texture atlas skin variations. | `SKILL.md` **+ `scripts/` (required Python)** |
 
@@ -58,6 +59,8 @@ skills/
 │   └── SKILL.md
 ├── bt-convert/
 │   └── SKILL.md
+├── bt-copycat/
+│   └── SKILL.md
 ├── bt-design/
 │   └── SKILL.md
 └── bt-atlas/
@@ -82,7 +85,7 @@ skills/
 > `bt-atlas` runs Python. Its scripts depend on the packages in `scripts/requirements.txt`.
 > Do not attempt to satisfy them by hand — the skill installs them itself when first run.
 
-All other skills (`bt-spec`, `bt-plan`, `bt-execute`, `bt-convert`, `bt-design`) are `SKILL.md`-only.
+All other skills (`bt-spec`, `bt-plan`, `bt-execute`, `bt-convert`, `bt-copycat`, `bt-design`, `bt-atlas`) are `SKILL.md`-only.
 
 ## Installation
 
