@@ -36,7 +36,7 @@ wrangler.jsonc
 Clone into a temp directory, then copy contents into the project root:
 
 ```bash
-git clone --recurse-submodules https://github.com/babylontoolkit/StarterAssets.git /tmp/starter
+git clone https://github.com/babylontoolkit/StarterAssets.git /tmp/starter
 ```
 
 Copy everything **except** `/tmp/starter/.git` into the project root. Note that this will also copy a top-level `.gitmodules` file — this is harmless on Lovable (git is managed internally), but you may delete it if you want a perfectly clean tree.
