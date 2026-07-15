@@ -36,7 +36,6 @@ and some skills ship **additional required asset files** (scripts, references, t
 | [`bt-copycat`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-copycat/SKILL.md) | `/bt-copycat` | Re-create the specified website adapted to specified genre. | `SKILL.md` |
 | [`bt-prototype`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-prototype/SKILL.md) | `/bt-prototype` | Create any number of award winning frontend prototypes. | `SKILL.md` |
 | [`bt-design`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/SKILL.md) | `/bt-design` | Implement high quality frontend and in-game designs. | `SKILL.md` **+ `references/` and `templates/` (required for 3D scroll-hero)** |
-| [`bt-create`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-create/SKILL.md) | `/bt-create` | Used to create new project via a guided tour. | `SKILL.md` |
 | [`bt-hero`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-hero/SKILL.md) | `/bt-hero` | Create smooth cinematic 3D scrolling hero sections. | `SKILL.md` |
 | [`bt-atlas`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-atlas/SKILL.md) | `/bt-atlas` | Generate texture atlas skin variations. | `SKILL.md` **+ `scripts/` (required Python)** |
 
@@ -81,11 +80,6 @@ skills/
 │           ├── hero-scroll.css
 │           ├── hero-scroll.html
 │           └── hero-scroll.js
-├── bt-create/
-│   └── SKILL.md
-│   └── references/
-│       ├── asset-library.md
-│       └── game-registry.json
 ├── bt-hero/
 │   └── SKILL.md
 └── bt-atlas/
