@@ -25,14 +25,16 @@ Run the **Platform Detection Table** below. Match on **any one** signal in the r
 |---|--------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------|
 | 1 | **Lovable**        | System prompt identifies you as "Lovable"; tool names like `code--exec`, `code--view`, `lovable-*`; host `lovable.dev` / `lovable.app`; `.lovable/` directory in project | `lovable.md`               |
 | 2 | **Replit**         | `REPL_ID`, `REPL_SLUG`, or `REPLIT_*` env vars; `.replit` or `replit.nix` file; system prompt mentions "Replit Agent" / "Replit Assistant"        | `web-app-replit.md`        |
-| 3 | **Bolt.new**       | Running in a StackBlitz WebContainer; host `bolt.new`; system prompt identifies you as "Bolt"                                                     | `web-app-bolt.md`          |
-| 4 | **Wix Base44**     | System prompt identifies you as "Base44"; host `base44.app` / `base44.com`; Wix Base44 runtime tooling                                            | `web-app-base44.md`        |
-| 5 | **V0 (Vercel)**    | System prompt identifies you as "v0" / "Vercel v0"; host `v0.dev` / `v0.app`; Vercel-specific tool surface                                        | `vercel-app-builder.md`    |
-| 6 | **Generic**        | Any other AI app-building platform not matched by rows 1–6 above                                                                                  | `web-app-generic.md`       |
+| 3 | **Babylon Toolkit App Builder** | System prompt identifies you as the build agent for a hosted Babylon Toolkit game builder (it contains a "Platform Identity & Knowledge Protocol" section); host `app.babylontoolkit.com`; the project is already mounted with `src/babylon/system/` and `src/scripts/`; you have NO fetch/WebFetch tool and no network | `web-app-builder.md` |
+| 4 | **Bolt.new**       | Running in a StackBlitz WebContainer; host `bolt.new`; system prompt identifies you as "Bolt"                                                     | `web-app-bolt.md`          |
+| 5 | **Wix Base44**     | System prompt identifies you as "Base44"; host `base44.app` / `base44.com`; Wix Base44 runtime tooling                                            | `web-app-base44.md`        |
+| 6 | **V0 (Vercel)**    | System prompt identifies you as "v0" / "Vercel v0"; host `v0.dev` / `v0.app`; Vercel-specific tool surface                                        | `vercel-app-builder.md`    |
+| 7 | **Generic**        | Any other AI app-building platform not matched by rows 1–6 above                                                                                  | `web-app-generic.md`       |
 
 **Ambiguity rules — fail closed:**
 
 - **Zero matches** → fall back to **Generic** (row 7) and use `web-app-generic.md`.
+- **Rows 3 and 4 both run in a WebContainer.** Row 3 wins whenever the system prompt identifies a Babylon Toolkit game builder or no network/fetch tool is available; only resolve to Bolt.new on a `bolt.new` host or a system prompt that identifies you as "Bolt".
 - **Multiple matches** → prefer the row with the most specific signal (e.g. an env var or a `.lovable/` directory beats a generic hostname). If still tied → STOP and ask.
 - **Never** assume Lovable (or any other named platform) as a fallback.
 
@@ -47,8 +49,9 @@ Fetch the matching `.md` from the **Reference Index** below and **read it in ful
 
 Follow the fetched reference **verbatim** to clone the starter repo:
 
-- Platforms 1–4, 6–7 clone `StarterAssets.git`.
-- Platform 5 (V0/Vercel) clones `VercelAssets.git`.
+- Platform 3 (Babylon Toolkit App Builder) clones **nothing** — that platform mounts the starter template before you run, and `git` is not available there. See `web-app-builder.md`.
+- Platforms 1–2, 4–5, 7 clone `StarterAssets.git`.
+- Platform 6 (V0/Vercel) clones `VercelAssets.git`.
 
 ### Compliance checklist (tick mentally before you write any code)
 
