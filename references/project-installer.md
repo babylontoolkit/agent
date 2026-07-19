@@ -218,7 +218,7 @@ The Babylon Toolkit React Framework can be installed to a project as a github su
 
 To add submodule:
 ```
-git submodule add https://github.com/babylontoolkit/ReactFramework.git src/babylon
+git submodule add https://github.com/babylontoolkit/ReactFramework.git src
 git commit -m "Add babylon toolkit react framework submodule"
 ```
 

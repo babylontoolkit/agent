@@ -23,7 +23,7 @@ npm install @babylonjs/core @babylonjs/gui @babylonjs/loaders @babylonjs/materia
 
 To add submodule:
 ```
-git submodule add https://github.com/babylontoolkit/ReactFramework.git src/babylon
+git submodule add https://github.com/babylontoolkit/ReactFramework.git src
 git commit -m "Add babylon toolkit react framework submodule"
 ```
 
@@ -84,7 +84,7 @@ const fs = require("fs");
 const path = require("path");
 
 const SUBMODULE_URL = "https://github.com/babylontoolkit/ReactFramework.git";
-const SUBMODULE_PATH = "src/babylon";
+const SUBMODULE_PATH = "src";
 
 function ask(question) {
   const rl = readline.createInterface({

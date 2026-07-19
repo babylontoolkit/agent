@@ -4,7 +4,7 @@
 
 > **Version:** 1.0.0  
 > **Namespace:** `BABYLON` (BabylonJS UMD) · `TOOLKIT` (Babylon Toolkit UMD) · `PROJECT` (Starter Content UMD)  
-> **Submodule:** `https://github.com/babylontoolkit/ReactFramework.git` → `src/babylon`  
+> **Submodule:** `https://github.com/babylontoolkit/ReactFramework.git` → `src`  
 > **Component Reference:** `https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/README.md`  
 > **Purpose:** Complete architectural guide for AI agents building AAA web game experiences from design to publishing.
 
@@ -1096,7 +1096,7 @@ npm install babylonjs babylonjs-gui babylonjs-addons babylonjs-loaders babylonjs
 ### Submodule Installation
 
 ```bash
-git submodule add https://github.com/babylontoolkit/ReactFramework.git src/babylon
+git submodule add https://github.com/babylontoolkit/ReactFramework.git src
 git commit -m "Add Babylon Toolkit React Framework submodule"
 ```
 
