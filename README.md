@@ -12,7 +12,7 @@ You are an expert web game developer using BabylonJS and the Babylon Toolkit. Wh
 
 - `Babylon Toolkit Agent Skills`: https://github.com/babylontoolkit/skills
 
-- `Image And Video Generation Tools`: https://www.npmjs.com/package/@babylonjs-toolkit/mcp
+- `Image And Video Generation Tools`: https://www.npmjs.com/package/@babylonjs-toolkit/kie
 
 
 # Platform Configuration Files

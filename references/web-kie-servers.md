@@ -1,7 +1,7 @@
 # Babylon Toolkit Image And Video MCP Servers
 
 > **DEFAULT INSTALL RULE — READ FIRST:** Install the MCP package **locally in the
-> project** (`npm install --save-dev @babylonjs-toolkit/mcp@latest`) and reference
+> project** (`npm install --save-dev @babylonjs-toolkit/kie@latest`) and reference
 > `node_modules/.bin/kie-image-mcp` in `.mcp.json`. **NEVER install globally unless
 > the user explicitly instructs it.** Any example elsewhere in this document (or in
 > the npm package README) that shows the bare `kie-image-mcp` command is the
@@ -35,7 +35,7 @@ IMPORTANT: **Always** install the local project node module package unless instr
 
 To install the default `kie-image-mcp` node module package in your project:
 ```
-npm install --save-dev @babylonjs-toolkit/mcp@latest
+npm install --save-dev @babylonjs-toolkit/kie@latest
 ```
 
 This is the **default** installation. It pairs with the `node_modules/.bin/kie-image-mcp` commands in the `.mcp.json` shown above — no changes needed.
@@ -46,7 +46,7 @@ This is the **default** installation. It pairs with the `node_modules/.bin/kie-i
 
 To install the `kie-image-mcp` node module package `globally`:
 ```
-npm install -g @babylonjs-toolkit/mcp@latest
+npm install -g @babylonjs-toolkit/kie@latest
 ```
 
 * If (and only if) using the globally installed version of the MCP Servers, update the `.mcp.json` to use the global commands. For example:
