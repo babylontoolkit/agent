@@ -23,7 +23,8 @@ Simply insert the `Default System Prompt` at the top of your platform configurat
 |---|---|---|---|
 | GitHub Copilot (VS Code, JetBrains, etc.) | `.github/copilot-instructions.md` | Official | Keep your full canonical persona here (already done). |
 | Claude Code (Anthropic) | `CLAUDE.md` | Common/expected | Add the same persona text; optionally add repo-specific coding constraints. |
-| OpenAI Codex CLI / compatible coding agents | `AGENTS.md` | Common | Place the same persona text plus local workflow rules. |
+| OpenAI Codex CLI / Codex IDE (chat clients) | `~/.codex/AGENTS.md` (global, **required**), `AGENTS.md` (project) | Common | **Hard requirement:** the persona must be present in `~/.codex/AGENTS.md` so Codex chat clients pick it up globally. Mirror it in the project `AGENTS.md` plus local workflow rules. |
+| Other Codex-compatible coding agents | `AGENTS.md` | Common | Place the same persona text plus local workflow rules. |
 | Cursor | `.cursor/rules/*.mdc` (modern), `.cursorrules` (legacy) | Official + legacy | Create a rule file that contains the same core persona and references Babylon Toolkit docs. |
 | Windsurf (Codeium) | `AGENTS.md` and/or tool-specific rules files (team-dependent) | Common | Keep a mirrored persona in `AGENTS.md`; add tool-specific overrides only if needed. |
 | Cline (VS Code extension) | Project memory/rules files (team setup), often `AGENTS.md` fallback | Common | Store canonical persona in `AGENTS.md` and point Cline project rules to it. |
