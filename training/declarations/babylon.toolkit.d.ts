@@ -7,7 +7,7 @@ declare namespace TOOLKIT {
     * @class SceneManager - All rights reserved (c) 2024 Mackey Kinard
     */
     class SceneManager {
-        /** Gets the toolkit framework version string (9.9.33 - R1) */
+        /** Gets the toolkit framework version string (9.16.0 - R1) */
         static get Version(): string;
         /** Gets the toolkit framework copyright notice */
         static get Copyright(): string;
@@ -35,8 +35,6 @@ declare namespace TOOLKIT {
         static AutoUpdateProgress: boolean;
         /** Set the capsule collider shape type */
         static PhysicsCapsuleShape: number;
-        /** Set the support srgb buffers flag */
-        static SupportSRGBBuffers: boolean;
         /** The animation start mode. Defaults to NONE. */
         static AnimationStartMode: number;
         /** When loading glTF animations, which are defined in seconds, target them to this FPS. Defaults to 60 for new behavior. Set to 1 for old behavior */
@@ -536,6 +534,8 @@ declare namespace TOOLKIT {
         static MAX_AGENT_RADIUS: number;
         /** Register handler that is triggered when the navigation mesh is ready */
         static OnNavMeshReadyObservable: BABYLON.Observable<BABYLON.Mesh>;
+        /** Fires right before the navigation mesh data is destroyed, so crowds/agents can release themselves. */
+        static OnNavMeshDestroyObservable: BABYLON.Observable<BABYLON.Scene>;
         private static NavMeshPlugin;
         private static NavMeshSurface;
         private static NavMeshDebugger;
@@ -583,7 +583,7 @@ declare namespace TOOLKIT {
          * @param showDebugMesh Whether to show a debug mesh
          */
         static CreateNavigationMeshSceneDataAsync(scene: BABYLON.Scene, properties: TOOLKIT.IUnityNavigationOptions, geometry: BABYLON.Mesh[], heightMesh?: BABYLON.Mesh, createDebugMesh?: boolean): Promise<void>;
-        static DestroyNavigationMeshData(): void;
+        static DestroyNavigationMeshData(scene?: BABYLON.Scene): void;
         /** Toggle full screen scene mode. */
         static ToggleFullscreenMode(scene: BABYLON.Scene, requestPointerLock?: boolean): void;
         /** Enter full screen scene mode. */
@@ -1064,9 +1064,9 @@ declare namespace TOOLKIT {
         hasSkinnedMesh(): boolean;
         /** Gets the safe transform skinned mesh entity */
         getSkinnedMesh(): BABYLON.AbstractMesh;
-        /** Gets the safe transform mesh entity */
+        /** Gets the safe transform mesh entity (Fast Skinned Mesh Check) */
         getTransformMesh(): BABYLON.Mesh;
-        /** Gets the safe transform abstract mesh entity */
+        /** Gets the safe transform abstract mesh entity (Fast Skinned Mesh Check) */
         getAbstractMesh(): BABYLON.AbstractMesh;
         /** Gets the safe transform instanced mesh entity */
         getInstancedMesh(): BABYLON.InstancedMesh;
@@ -1141,13 +1141,22 @@ declare namespace TOOLKIT {
         private static UnpackObjectProperty;
     }
     /**
-     * Babylon game mode controller class (Unreal Engine Style Game Modes)
+     * Babylon toolkit scene controller class (React Framework - Scene Viewer Main Entry Point)
      * @class SceneController - All rights reserved (c) 2024 Mackey Kinard
      */
     abstract class SceneController extends TOOLKIT.ScriptComponent {
+        /** Automatically hide the splash screen after the scene is initialized. Default is true. */
         autoHideSplashScreen: boolean;
+        /** Delay in milliseconds to trigger the createScene function on the script component. Note: This is required to ensure the scene is fully initialized before createScene is called. Default is 500 milliseconds. */
         postCreateSceneDelayMs: number;
-        hideSplashScreenDelayMs: number;
+        /** Prewarm the scene and optionally hide the splash screen after a delay. Note: This is required to trigger the createScene function on the script component. Default is 2500 milliseconds. */
+        scenePrewarmDurationMs: number;
+        /**
+         * @param transform The transform node associated with this scene controller.
+         * @param scene The Babylon.js scene instance.
+         * @param properties Additional properties for the scene controller.
+         * @param alias An optional alias for the scene controller.
+         */
         constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties?: any, alias?: string);
         protected createSceneHandled: boolean;
         protected preCreateScene(data?: any): Promise<void>;
@@ -1956,6 +1965,45 @@ declare namespace TOOLKIT {
         static readonly IBL_SPEC_FACTOR: number;
         /** The scale factor used for reflection probe power (default: 1.0) */
         static readonly IBL_PROBE_FACTOR: number;
+        /**
+         * Suppresses the derived diffuse irradiance (spherical polynomial) on a local reflection probe so it
+         * contributes specular only, matching Unity's specular-only reflection probe model. Babylon lazily
+         * integrates a spherical polynomial from the cube faces the first time a PBR material reads it, so
+         * nulling the value alone is not enough - we must also flag it as computed to stop regeneration.
+         */
+        static SuppressReflectionProbeDiffuse(texture: BABYLON.BaseTexture): void;
+        /**
+         * Applies the scene's global Unity ambient spherical-harmonics irradiance to a local reflection probe so the
+         * probe contributes Unity-style specular reflections while its diffuse ambient comes from the SAME global SH
+         * the rest of the scene uses - instead of being derived from (or suppressed on) the probe's own cube faces.
+         * Babylon reads diffuse irradiance from the material's own reflectionTexture, so without this a probe-bearing
+         * material would lose all baked IBL ambient. When no global SH is available we fall back to specular-only
+         * (suppressed diffuse), preserving the previous Unity behavior.
+         */
+        static ApplyGlobalReflectionProbeDiffuse(texture: BABYLON.BaseTexture, scene: BABYLON.Scene, createPolynomialsFromFaces?: boolean): void;
+        /** Tracks whether the global box-projection reflection shader fix has been installed (install-once). */
+        private static _boxProjectionShaderPatched;
+        /**
+         * Installs a Unity-faithful per-pixel containment test into Babylon's shared `parallaxCorrectNormal`
+         * box-projection helper (patches both the GLSL and WGSL copies of the `helperFunctions` shader include).
+         *
+         * Babylon applies box (local cubemap) projection to EVERY pixel of a material that has a reflection
+         * bounding box, with no skybox fallback. Surfaces that sit OUTSIDE the probe box - e.g. a tall building
+         * reflecting a ground-level racetrack probe - therefore hit the slab-intersection math in its invalid
+         * regime (exit distance <= 0) and sample the dark box floor, turning glossy/metallic surfaces black.
+         *
+         * Unity instead evaluates probe contribution per-pixel: "When a pixel of an object is outside of any
+         * reflection probe volume, Unity uses the skybox reflection." This injects exactly that rule - if the
+         * shaded world position is outside the probe box on any axis, return the un-projected (infinite)
+         * reflection vector so the pixel reflects the environment (the probe's sky hemisphere) instead of the
+         * dark face. Pixels INSIDE the box are byte-for-byte unchanged, so ground reflections keep their
+         * parallax correction.
+         *
+         * The patch is install-once, idempotent (sentinel guarded) and FAIL-SAFE: if a future Babylon release
+         * renames or reformats the helper so the anchor is not found, it logs a warning and leaves the stock
+         * shader untouched (reverting to Babylon's default behavior) rather than emitting a broken shader.
+         * See README.md ("Box-Projected Reflection Shader Patch") for the full rationale.
+         */
         /** Defines whether this extension is enabled. */
         enabled: boolean;
         private _webgpu;
@@ -1988,19 +2036,38 @@ declare namespace TOOLKIT {
         private _licenseName;
         private _licenseType;
         private _pendingReflectionTextures;
-        private _deferredCustomMaterials;
         private static ScriptBundleCache;
         /** @hidden */
         constructor(loader: BABYLON.GLTF2.GLTFLoader);
         /** @hidden */
         dispose(): void;
+        /**
+         * @hidden Async extension factory used by the glTF loader extension registry.
+         *
+         * The glTF loader awaits each registered extension factory inside _loadExtensionsAsync()
+         * AFTER the glTF JSON has been parsed (loader._gltf is populated) but BEFORE _extensionsOnLoading()
+         * and any scene/node/material loading runs. This is the only safe place to await the project
+         * script bundle so that custom material classes (eg. vertex splat shaders) are registered on the
+         * global scope before createMaterial() needs to instantiate them.
+         *
+         * IMPORTANT: We cannot await the bundle inside loadSceneAsync(). The loader's re-entrancy guard
+         * (_applyExtensions -> _activeLoaderExtensionFunctions) is only held across the SYNCHRONOUS call
+         * into this._loader.loadSceneAsync(). Awaiting before that call clears the guard, so the base loader
+         * re-dispatches back into this extension -> infinite recursion / hang. The factory phase has no such
+         * guard, so awaiting here is safe and deterministic.
+         */
+        static CreateExtensionAsync(loader: BABYLON.GLTF2.GLTFLoader): Promise<TOOLKIT.CVTOOLS_unity_metadata>;
+        /**
+         * Reads the project script bundle (script/project) from the parsed glTF scene metadata and loads it.
+         * Safe to await: this runs during the extension factory phase, before any material is created.
+         */
+        preloadProjectScriptBundleAsync(): Promise<void>;
         /** @hidden */
         onLoading(): void;
         /** @hidden */
         onReady(): void;
         /** @hidden */
         onComplete(): void;
-        loadProjectScriptAsync(): Promise<void>;
         getScriptBundleTag(): string;
         getScriptBundleUrl(): string;
         finishComplete(): void;
@@ -2018,7 +2085,6 @@ declare namespace TOOLKIT {
         /** @hidden */
         loadSceneAsync(context: string, scene: BABYLON.GLTF2.Loader.IScene): Promise<void> | null;
         private _loadSceneInternalAsync;
-        private _resolveDeferredCustomMaterials;
         private _loadSceneExAsync;
         /** @hidden */
         loadNodeAsync(context: string, node: BABYLON.GLTF2.Loader.INode, assign: (babylonMesh: BABYLON.TransformNode) => void): Promise<BABYLON.TransformNode> | null;
@@ -2047,7 +2113,29 @@ declare namespace TOOLKIT {
         _loadMeshPrimitiveAsync(context: string, name: string, node: BABYLON.GLTF2.INode, mesh: BABYLON.GLTF2.IMesh, primitive: any, assign: (babylonMesh: BABYLON.AbstractMesh) => void): Promise<BABYLON.AbstractMesh>;
         private _setupBabylonMesh;
         private _setupBabylonMultiMaterials;
+        /**
+         * Rebuilds Unity-style LOD switching from the per-node `lods`/`distances` metadata (this project does
+         * not use MSFT_lod). Each `lods` entry is one LOD level and is either a single renderer name (a
+         * `string`, `"*"` = the group root) or the names of every renderer in that level (a `string[]`); legacy
+         * single-renderer metadata (all strings) parses unchanged. `distances[i]` is the far threshold of level
+         * `i` and `distances[N-1]` doubles as the cull threshold.
+         *
+         * HYBRID strategy, decided per group after normalization:
+         *  - Native fast path (every level resolves to exactly one mesh): `master.addLODLevel(distances[i-1], mesh)`
+         *    for the detail levels plus a final `addLODLevel(cull, null)` band - identical perf/behavior to
+         *    legacy content. Native LOD cannot be used on an InstancedMesh master, so unused detail instances
+         *    are disposed as the legacy code did.
+         *  - Custom switcher (any level has >1 mesh): a single `onBeforeRenderObservable` handler that toggles
+         *    all meshes of a level together on band transitions, because native `addLODLevel` is strictly
+         *    1 master -> 1 replacement and cannot express N renderers per level.
+         */
         private _processLevelOfDetail;
+        /**
+         * Registers a single per-frame LOD switcher for a group that has at least one level with multiple
+         * renderers (native `addLODLevel` cannot represent that structurally). Toggles every mesh of the active
+         * level together, only on band transitions, and tears the observer down on scene/root dispose.
+         */
+        private _setupLevelOfDetailSwitcher;
         private _processShaderMaterials;
         private preProcessSceneProperties;
         private postProcessSceneProperties;
@@ -2058,6 +2146,7 @@ declare namespace TOOLKIT {
         private _parseMultiMaterialAsync;
         private _parseCommonConstantProperties;
         private _parseUniformAndSamplerProperties;
+        private applyRepoWatermark;
     }
     /**
      * Babylon Toolkit Editor - Loader Class
@@ -2117,6 +2206,33 @@ declare namespace TOOLKIT {
         protected shader: string;
         protected plugin: BABYLON.MaterialPluginBase;
         private _unityLightingPlugin;
+        /** Per-skin Texture2DArray switching — opt-in via enableSkinArray(). One shared mesh + an N-layer
+         *  albedo array renders a different "skin" per layer, selected by tkSkinLayer. Unlike the atlas path
+         *  there is NO UV remap: the surface UVs are used as-is and the layer index picks the slice, so every
+         *  skin keeps full resolution with its OWN clean mip chain (no atlas cross-cell bleed). */
+        private _skinArray;
+        /** Per-skin NORMAL Texture2DArray switching — opt-in via enableSkinArrayNormal() once a tkNormalArray
+         *  is assigned. The fragment overrides normalW at CUSTOM_FRAGMENT_BEFORE_LIGHTS by running Babylon's
+         *  OWN perturbNormal() on its OWN interpolated vTBN with our slice texel substituted for the bump-
+         *  sampler fetch — i.e. byte-for-byte the native tangent-space bump, no reinvented/derivative TBN
+         *  (that derivative frame is what specular-speckled glossy metal). The normal array is built WITHOUT
+         *  mips (box-downsampled normals de-normalize and grain on WebGPU) and kept linear. */
+        private _skinArrayNormal;
+        /** Per-skin METALLIC-ROUGHNESS Texture2DArray switching — opt-in via enableSkinArrayMetalRough() once a
+         *  tkMetalRoughArray is assigned. Its hook (CUSTOM_FRAGMENT_UPDATE_METALLICROUGHNESS) is INSIDE Babylon's
+         *  reflectivityBlock where UVs/samplers aren't in scope, so the slice is sampled in main() (UPDATE_ALBEDO)
+         *  into a module-global and READ at the hook: metallicRoughness.r=metallic (slice .B), .g=roughness
+         *  (slice .G), matching the glTF MR layout. Built MIPPED + linear (roughness wants mip filtering). */
+        private _skinArrayMetalRough;
+        /** Per-skin EMISSIVE Texture2DArray switching — opt-in via enableSkinArrayEmissive() once a tkEmissiveArray
+         *  is assigned. Overrides finalEmissive at CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION with
+         *  toLinearSpace(slice) (slices are sRGB-authored, mipped). finalEmissive exists even with NO base emissive
+         *  on the material, so this drives emissive-only swaps (e.g. brake lights on/off) with no albedo needed. */
+        private _skinArrayEmissive;
+        /** When true tkSkinLayer is a shared material uniform (one skin per mesh); otherwise a per-instance
+         *  vertex attribute (per-instance skins on a hardware-instanced mesh). Independent of which channels are on. */
+        private _skinLayerUniform;
+        private _skinArraySwitchingPlugin;
         getPlugin(): BABYLON.MaterialPluginBase;
         getClassName(): string;
         constructor(name: string, scene: BABYLON.Scene);
@@ -2129,6 +2245,102 @@ declare namespace TOOLKIT {
         checkSampler(samplerName: string, texture?: any): void;
         /** Splits the IBL lighting contributions */
         splitLighting(diffuseIbl: number, specularIbl: number): void;
+        /**
+         * Enable (or disable) per-skin Texture2DArray switching for this material (albedo channel).
+         *
+         * One shared mesh + an N-layer albedo array renders a different "skin" per layer. The surface UVs are
+         * used as-is (NO atlas remap); a single layer index selects the slice:
+         *
+         *     surfaceAlbedo = texture(tkAlbedoArray, vec3(uv, tkSkinLayer))
+         *
+         * Each layer is a full-resolution slice with its OWN clean mip chain — no atlas cross-cell bleed.
+         * Assign the array first with addTextureArrayUniform("tkAlbedoArray", array), then call this to gate
+         * the shader. Disabled by default — a material that never opts in compiles to identical code (every
+         * injected line is gated behind TOOLKIT_SKIN_ARRAY).
+         *
+         * Layer source:
+         *  - Shared uniform (layerUniform = true): tkSkinLayer is one material uniform (setSkinLayer) — the
+         *    only mode that works on a NON-instanced mesh (one skin per mesh).
+         *  - Per-instance (layerUniform = false): tkSkinLayer is a per-instance vertex attribute — register
+         *    mesh.registerInstancedBuffer("tkSkinLayer", 1) and set inst.instancedBuffers.tkSkinLayer = i.
+         */
+        enableSkinArray(layerUniform?: boolean): TOOLKIT.CustomShaderMaterial;
+        /** Set the shared per-skin array layer (uniform mode — one skin for the whole mesh). No shader
+         *  rebuild; just updates the uniform. For per-instance skins set inst.instancedBuffers.tkSkinLayer. */
+        setSkinLayer(layer: number): TOOLKIT.CustomShaderMaterial;
+        /**
+         * Enable (or disable) per-skin NORMAL Texture2DArray switching for this material.
+         *
+         * Assign the array first with addTextureArrayUniform("tkNormalArray", array), then call this. The
+         * fragment overrides normalW at CUSTOM_FRAGMENT_BEFORE_LIGHTS using Babylon's native tangent-space
+         * bump EXACTLY — its own perturbNormal() on its own vTBN, only the sampled texel swapped for our
+         * slice. It is therefore only active where the native tangent frame exists: BUMP && TANGENT && NORMAL
+         * (i.e. the base material has a normal/bump map and the geometry has tangents — true for skinned
+         * characters). Where that frame is absent the override compiles out and the native normal stands.
+         * Fully INDEPENDENT of the other channels: the shared vSkinLayer/vSkinUV varyings are forwarded whenever
+         * ANY skin channel is enabled, so normal can be used with NO albedo array (and vice-versa).
+         */
+        enableSkinArrayNormal(enabled?: boolean): TOOLKIT.CustomShaderMaterial;
+        /**
+         * Enable (or disable) per-skin METALLIC-ROUGHNESS Texture2DArray switching. Assign the array first with
+         * addTextureArrayUniform("tkMetalRoughArray", array), then call this. The slice is sampled in main() and
+         * applied at CUSTOM_FRAGMENT_UPDATE_METALLICROUGHNESS as metallicRoughness.r=metallic (slice .B) and
+         * .g=roughness (slice .G) — the glTF MR channel layout. Only active under METALLICWORKFLOW (PBR metallic).
+         * Independent of every other channel (shared varyings forward whenever any channel is on).
+         */
+        enableSkinArrayMetalRough(enabled?: boolean): TOOLKIT.CustomShaderMaterial;
+        /**
+         * Enable (or disable) per-skin EMISSIVE Texture2DArray switching. Assign the array first with
+         * addTextureArrayUniform("tkEmissiveArray", array), then call this. Overrides finalEmissive at
+         * CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION with toLinearSpace(slice). Works with NO base emissive on
+         * the material, so it can drive emissive-only swaps (e.g. brake lights on/off) standalone. Independent of
+         * every other channel.
+         */
+        enableSkinArrayEmissive(enabled?: boolean): TOOLKIT.CustomShaderMaterial;
+        /**
+         * Set the per-skin layer DELIVERY mode independently of which channels are enabled: uniform = true drives
+         * a single shared layer for the whole mesh (tkSkinLayerUni, set via setSkinLayer) — the only mode that
+         * works on a non-instanced mesh; uniform = false reads a per-instance tkSkinLayer vertex attribute. Call
+         * this once for the mesh (regardless of channel mix) so e.g. an emissive-only mesh still selects layers.
+         */
+        setSkinArrayLayerMode(uniform: boolean): TOOLKIT.CustomShaderMaterial;
+        /** Register a Texture2DArray sampler (sampler2DArray / texture_2d_array) for skin switching. The
+         *  declaration is emitted by SkinArraySwitchingPlugin (co-gated with its usage); here we only register
+         *  the name for binding and store the texture for upload. Marked raw — arrays carry no UV transform. */
+        addTextureArrayUniform(name: string, texture: BABYLON.BaseTexture): TOOLKIT.CustomShaderMaterial;
+        /** True when per-skin ALBEDO Texture2DArray switching is enabled (see enableSkinArray). */
+        get skinArray(): boolean;
+        /** True when per-skin NORMAL Texture2DArray switching is enabled (see enableSkinArrayNormal). */
+        get skinArrayNormal(): boolean;
+        /** True when per-skin METALLIC-ROUGHNESS switching is enabled (see enableSkinArrayMetalRough). */
+        get skinArrayMetalRough(): boolean;
+        /** True when per-skin EMISSIVE switching is enabled (see enableSkinArrayEmissive). */
+        get skinArrayEmissive(): boolean;
+        /** True when ANY per-skin channel is enabled — the master gate for the shared layer/UV varyings + the
+         *  per-instance tkSkinLayer attribute, so any single channel works without the others. */
+        get skinArrayActive(): boolean;
+        /** True when tkSkinLayer is a shared material uniform rather than a per-instance vertex attribute. */
+        get skinLayerUniform(): boolean;
+        /**
+         * Clone this material, preserving the CustomShaderMaterial SUBCLASS and ALL toolkit state — the
+         * custom uniforms / samplers / attributes, the IBL split, and the per-skin Texture2DArray switching
+         * configuration. Each clone is independent: it can hold its own skin (layer index) without affecting
+         * the source material, which makes per-mesh skin selection on NON-instanced meshes safe.
+         *
+         * BabylonJS PBRMaterial.clone() builds a plain PBRMaterial through its own factory, which would
+         * drop the toolkit shader hooks and the skin-array API. Here we instead:
+         *  1. construct the correct subclass via `this.constructor` so the two material plugins
+         *     (UnityStyleLightingPlugin, SkinArraySwitchingPlugin) and the base UBO uniforms are recreated
+         *     FRESH and bound to the clone — we deliberately do NOT plugin-clone the source's plugins;
+         *  2. copy the standard PBR surface properties with SerializationHelper (shares texture refs);
+         *  3. copy the toolkit-private collections + skin-array config (see copyCustomStateTo).
+         *
+         * NOTE: VertexAnimationMaterial carries extra VAT state and provides its own cloneForInstance();
+         * prefer that for VAT materials.
+         */
+        clone(name: string, cloneTexturesOnlyOnce?: boolean, rootUrl?: string): TOOLKIT.CustomShaderMaterial;
+        /** Copies all toolkit-private state (custom shader collections + skin-array config) onto a clone. */
+        protected copyCustomStateTo(result: TOOLKIT.CustomShaderMaterial): void;
         /** Adds a texture uniform property */
         addTextureUniform(name: string, texture: BABYLON.Texture): TOOLKIT.CustomShaderMaterial;
         /** Sets the texture uniform value */
@@ -2242,6 +2454,55 @@ declare namespace TOOLKIT {
         getUniforms(shaderLanguage: BABYLON.ShaderLanguage): any;
         prepareDefines(defines: BABYLON.MaterialDefines, scene: BABYLON.Scene, mesh: BABYLON.AbstractMesh): void;
         bindForSubMesh(uniformBuffer: BABYLON.UniformBuffer, scene: BABYLON.Scene, engine: BABYLON.AbstractEngine, subMesh: BABYLON.SubMesh): void;
+    }
+    /**
+      * Per-Skin Texture2DArray Switching Plugin (BABYLON.MaterialPluginBase)
+      *
+      * Opt-in base-material feature that selects a per-skin SLICE from a Texture2DArray albedo channel by a
+      * single layer index — one shared mesh + an N-layer array presents a different "skin" per mesh or per
+      * instance (e.g. ten jockeys, each a layer). Unlike the texture atlas there is NO UV remap: the surface
+      * UVs are used as-is and the layer index picks the slice, so every skin gets a full-resolution slice with
+      * its OWN clean mip chain (no cross-cell bleed).
+      *
+      *     surfaceAlbedo = texture(tkAlbedoArray, vec3(uv, layer))   // albedo only (this phase)
+      *
+      * The layer comes from a per-instance vertex attribute (tkSkinLayer) OR a shared material uniform
+      * (tkSkinLayerUni, the only mode that works on a NON-instanced mesh — one skin per mesh). The layer
+      * value is constant across every vertex of a draw (uniform, or a per-instance attribute), so the
+      * interpolated varying is constant and floor(v + 0.5) recovers the exact integer with no flat qualifier.
+      *
+      * All injected lines are gated behind TOOLKIT_SKIN_ARRAY, so a material that never calls
+      * enableSkinArray() compiles to identical code.
+      * @class SkinArraySwitchingPlugin - All rights reserved (c) 2024 Mackey Kinard
+      */
+    class SkinArraySwitchingPlugin extends TOOLKIT.CustomShaderMaterialPlugin {
+        constructor(material: TOOLKIT.CustomShaderMaterial);
+        isCompatible(shaderLanguage: BABYLON.ShaderLanguage): boolean;
+        getClassName(): string;
+        /** Advertise the per-instance layer attribute to the vertex shader (skipped in shared-uniform mode).
+         *  Gated on ANY channel being active so an emissive-only / normal-only mesh still gets the layer. */
+        getAttributes(attributes: string[], scene: BABYLON.Scene, mesh: BABYLON.AbstractMesh): void;
+        /** Register the array sampler(s) with the effect so setTexture() can bind them. The actual sampler
+         *  DECLARATIONS are emitted by this plugin's CUSTOM_FRAGMENT_DEFINITIONS (co-gated with their usage). */
+        getSamplers(samplers: string[]): void;
+        prepareDefines(defines: BABYLON.MaterialDefines, scene: BABYLON.Scene, mesh: BABYLON.AbstractMesh): void;
+        getCustomCode(shaderType: string, shaderLanguage: BABYLON.ShaderLanguage): any;
+        private getGLSLVertexDefinitions;
+        private getGLSLVertexMainEnd;
+        private getGLSLFragmentDefinitions;
+        private getGLSLAlbedoCode;
+        private getGLSLNormalCode;
+        private getGLSLMetalRoughSampleCode;
+        private getGLSLMetalRoughApplyCode;
+        private getGLSLEmissiveCode;
+        private getWGSLVertexDefinitions;
+        private getWGSLVertexMainEnd;
+        private getWGSLFragmentDefinitions;
+        private getWGSLAlbedoCode;
+        private getWGSLNormalCode;
+        private getWGSLMetalRoughSampleCode;
+        private getWGSLMetalRoughApplyCode;
+        private getWGSLEmissiveCode;
     }
     /**
      * Babylon custom uniform items (GLTF)
@@ -3208,13 +3469,19 @@ declare namespace TOOLKIT {
      */
     class VertexAnimationMaterial extends TOOLKIT.CustomShaderMaterial {
         controller: VertexAnimationController;
-        /** Optional per-material runtime skin texture arrays. When present, the fragment
-         *  shader samples runtimeAlbedoSkins[skinLayer] / runtimeNormalSkins[skinLayer]
-         *  instead of (or on top of) the standard albedo/bump samplers. Layer 0 is the
-         *  default skin — convention is that callers seed it with the original albedo/normal.
-         *  Bound by the plugin in bindForSubMesh(). */
-        runtimeAlbedoSkins: BABYLON.BaseTexture;
-        runtimeNormalSkins: BABYLON.BaseTexture;
+        /** VAT per-skin Texture2DArray switching state — opt-in via enableVatSkinArray(). The shared albedo
+         *  array (tkAlbedoArray) is sampled at the layer decoded from the cell index packed in g_vatAnim1.w. */
+        private _vatSkinArray;
+        /** VAT per-skin NORMAL Texture2DArray switching — opt-in via enableVatSkinArrayNormal() once a
+         *  tkNormalArray is assigned. Overrides normalW with Babylon's native perturbNormal()/vTBN (only the
+         *  texel swapped for our slice), at the layer decoded from g_vatAnim1.w. Built unmipped + linear. */
+        private _vatSkinArrayNormal;
+        /** VAT per-skin METALLIC-ROUGHNESS switching — opt-in via enableVatSkinArrayMetalRough() once a
+         *  tkMetalRoughArray is assigned. metallic=slice.B, roughness=slice.G; mipped + linear. */
+        private _vatSkinArrayMetalRough;
+        /** VAT per-skin EMISSIVE switching — opt-in via enableVatSkinArrayEmissive() once a tkEmissiveArray is
+         *  assigned. Overrides finalEmissive with toLinearSpace(slice); works with no base emissive. */
+        private _vatSkinArrayEmissive;
         constructor(name: string, scene: BABYLON.Scene);
         awake(): void;
         update(): void;
@@ -3230,44 +3497,55 @@ declare namespace TOOLKIT {
          */
         cloneForInstance(instanceName: string): TOOLKIT.VertexAnimationMaterial;
         /**
-         * Install runtime skin texture arrays. Layer 0 is treated as the default skin and is
-         * what every instance sees when its `runtimeSkinIndex` is 0 (or unset). Pass either
-         * `BABYLON.RawTexture2DArray` or any BaseTexture exposing a 2D-array view.
+         * Enable per-skin Texture2DArray "skin" switching on this VAT material WITHOUT adding any vertex
+         * buffer. VAT instances are already at the vertex-buffer ceiling (instanced world matrix +
+         * g_vatAnim0 + g_vatAnim1), so the skin LAYER index is PACKED into g_vatAnim1.w alongside the
+         * loop-blend flag, decoded in-shader and used to sample the shared albedo Texture2DArray:
          *
-         * When `nullOutDefaults` is true (default), the standalone `albedoTexture` and
-         * `bumpTexture` are nulled so PBR drops their sampler bindings — the plugin writes
-         * its own perturbed normal in the fragment when bumpTexture is absent. Pass false
-         * to keep the originals around (then runtime arrays act as overrides on top).
+         *     layer        = floor(g_vatAnim1.w * 0.5)        // 0,1,2,... selects the array slice
+         *     surfaceAlbedo = texture(tkAlbedoArray, vec3(uv, layer))
+         *
+         * Surface UVs are used as-is (NO atlas remap) — each layer is a full-resolution slice with its own
+         * clean mip chain. Assign the array first with addTextureArrayUniform("tkAlbedoArray", array), then
+         * call this. Set the per-instance layer with VertexAnimationController.SetAtlasCellIndex(mesh, index).
+         *
+         * Albedo only for now (normal/MR/AO/emissive fold in later).
          */
-        setRuntimeSkinArrays(albedoArray: BABYLON.BaseTexture, normalArray: BABYLON.BaseTexture, nullOutDefaults?: boolean): void;
-        /** Remove runtime skin arrays. Does NOT restore previously-nulled albedo/bump textures. */
-        clearRuntimeSkinArrays(): void;
+        enableVatSkinArray(): TOOLKIT.VertexAnimationMaterial;
+        /** Disable VAT skin-array switching (g_vatAnim1.w reverts to the loop-blend flag only). */
+        disableVatSkinArray(): void;
         /**
-         * Convenience: load a list of {albedo, normal} URL pairs, assemble two RawTexture2DArrays,
-         * and install them via setRuntimeSkinArrays(). Layer 0 is whatever you put at index 0 of
-         * the input list (the convention is "default skin first").
-         *
-         * All input textures must share the same `width × height` — texture arrays are not ragged.
-         * Missing/malformed images reject the promise.
-         *
-         * @param layers   ordered list of skin layers; index in array == GPU layer index == skinIndex value
-         * @param width    pixel width every input texture must be (e.g. 1024)
-         * @param height   pixel height every input texture must be (e.g. 1024)
-         * @param options.nullOutDefaults  null mat.albedoTexture/bumpTexture after install (default true)
-         * @param options.rootUrl          base URL for resolving relative paths (default "")
-         * @param options.generateMipMaps  generate mips on the GPU arrays (default true)
-         * @param options.samplingMode     BABYLON.Texture.* sampling mode (default TRILINEAR_SAMPLINGMODE)
+         * Enable per-skin NORMAL Texture2DArray switching on this VAT material. Assign the array first with
+         * addTextureArrayUniform("tkNormalArray", array), then call this. The fragment overrides normalW with
+         * Babylon's native tangent-space bump EXACTLY (its own perturbNormal()/vTBN, our slice texel swapped
+         * in), at the layer decoded from g_vatAnim1.w. Only active where the native tangent frame exists
+         * (BUMP && TANGENT && NORMAL — i.e. the VAT material carries a bumpTexture and the geometry has
+         * tangents); elsewhere it compiles out and the native VAT normal stands. Normal array is unmipped.
          */
-        installSkinsFromUrlsAsync(layers: {
-            albedo: string;
-            normal: string;
-        }[], width: number, height: number, options?: {
-            nullOutDefaults?: boolean;
-            rootUrl?: string;
-            generateMipMaps?: boolean;
-            samplingMode?: number;
-        }): Promise<void>;
-        private _notifyPluginOfRuntimeSkinChange;
+        enableVatSkinArrayNormal(): TOOLKIT.VertexAnimationMaterial;
+        /** Disable VAT per-skin NORMAL array switching (normalW reverts to the native VAT normal). */
+        disableVatSkinArrayNormal(): void;
+        /** Enable VAT per-skin METALLIC-ROUGHNESS switching (metallic=slice.B, roughness=slice.G), decoded at
+         *  the layer packed in g_vatAnim1.w. Assign tkMetalRoughArray first. Only active under METALLICWORKFLOW. */
+        enableVatSkinArrayMetalRough(): TOOLKIT.VertexAnimationMaterial;
+        /** Disable VAT per-skin METALLIC-ROUGHNESS switching. */
+        disableVatSkinArrayMetalRough(): void;
+        /** Enable VAT per-skin EMISSIVE switching (finalEmissive = toLinearSpace(slice)) at the packed layer.
+         *  Assign tkEmissiveArray first. Works with no base emissive on the material. */
+        enableVatSkinArrayEmissive(): TOOLKIT.VertexAnimationMaterial;
+        /** Disable VAT per-skin EMISSIVE switching. */
+        disableVatSkinArrayEmissive(): void;
+        /** True when VAT per-skin Texture2DArray switching is enabled (see enableVatSkinArray). */
+        get vatSkinArray(): boolean;
+        /** True when VAT per-skin NORMAL Texture2DArray switching is enabled (see enableVatSkinArrayNormal). */
+        get vatSkinArrayNormal(): boolean;
+        /** True when VAT per-skin METALLIC-ROUGHNESS switching is enabled. */
+        get vatSkinArrayMetalRough(): boolean;
+        /** True when VAT per-skin EMISSIVE switching is enabled. */
+        get vatSkinArrayEmissive(): boolean;
+        /** True when ANY VAT per-skin channel is enabled — master gate for the shared vVatSkin varyings + the
+         *  packed cell-index decode, so any single channel works without the others. */
+        get vatSkinArrayActive(): boolean;
     }
     /**
      * Static renderer reference emitted on Animator metadata for each VAT target.
@@ -3372,13 +3650,14 @@ declare namespace TOOLKIT {
         static GetOrCreate(guid: string, scene: BABYLON.Scene, rootUrl?: string, lazyLoadTextures?: boolean): TOOLKIT.VertexAnimationController;
         /** Collect unique renderer targets from the flat VAT settings array emitted by C#. */
         static CollectRendererTargets(settings: TOOLKIT.IVertexAnimationSettings[]): TOOLKIT.IVertexAnimationRendererReference[];
-        /** Set a per-mesh runtime skin index. Stored on the mesh as `runtimeSkinIndex`.
-         *  Each Babylon InstancedMesh under one VAT controller can carry an independent value;
-         *  the value is packed into g_vatAnim1.w during _tick() and decoded by the shader.
-         *  Unset / out-of-range values are treated as 0 (the default skin = layer 0 of the runtime arrays). */
-        static SetSkinIndex(mesh: BABYLON.AbstractMesh, skinIndex: number): void;
-        /** Read a per-mesh runtime skin index. Returns 0 when the mesh has no value set. */
-        static GetSkinIndex(mesh: BABYLON.AbstractMesh): number;
+        /** Set a per-mesh skin layer index for VAT per-skin Texture2DArray switching. Stored on the mesh as
+         *  `atlasCellIndex` and packed into g_vatAnim1.w during _tick (alongside the loop-blend flag), so
+         *  each InstancedMesh under one VAT controller can display a different array layer with no extra
+         *  vertex buffer. Requires enableVatSkinArray() on the material. Unset / out-of-range values are
+         *  treated as 0 (the first array layer). */
+        static SetAtlasCellIndex(mesh: BABYLON.AbstractMesh, cellIndex: number): void;
+        /** Read a per-mesh atlas cell index. Returns 0 when the mesh has no value set. */
+        static GetAtlasCellIndex(mesh: BABYLON.AbstractMesh): number;
         /** Dispose every controller (optionally only those tied to a given scene). */
         static DisposeAll(scene?: BABYLON.Scene): void;
         readonly guid: string;
@@ -3430,28 +3709,6 @@ declare namespace TOOLKIT {
         getClip(name: string): IVertexAnimationClip | null;
         setSpeed(speed: number): void;
         setLoop(loop: boolean): void;
-        /** Install runtime skin texture arrays on every registered VAT material plugin.
-         *  Convenience fan-out — equivalent to calling material.setRuntimeSkinArrays() on each material. */
-        setRuntimeSkinArrays(albedoArray: BABYLON.BaseTexture, normalArray: BABYLON.BaseTexture, nullOutDefaults?: boolean): void;
-        /** Remove runtime skin arrays from every registered VAT material plugin. */
-        clearRuntimeSkinArrays(): void;
-        /**
-         * Convenience: load skin texture pairs from URLs into RawTexture2DArrays and install them
-         * on every registered VAT material. Builds the arrays exactly once and shares the GPU
-         * resources across all materials — no per-material duplication. Uses this controller's
-         * `rootUrl` for relative path resolution unless an explicit one is passed in options.
-         *
-         * See VertexAnimationMaterial.installSkinsFromUrlsAsync for parameter semantics.
-         */
-        installSkinsFromUrlsAsync(layers: {
-            albedo: string;
-            normal: string;
-        }[], width: number, height: number, options?: {
-            nullOutDefaults?: boolean;
-            rootUrl?: string;
-            generateMipMaps?: boolean;
-            samplingMode?: number;
-        }): Promise<void>;
         setCurrentTime(time: number): void;
         getCurrentTime(): number;
         addPlugin(plugin: VertexAnimationMaterialPlugin): void;
@@ -3531,11 +3788,6 @@ declare namespace TOOLKIT {
         private _targetRendererGuid;
         /** 1×1 fallback texture — keeps WebGPU bind groups valid before a clip is assigned */
         private _placeholderTexture;
-        /** 1×1×1 fallback texture-array — keeps WebGPU bind groups valid before runtime skin
-         *  arrays are installed. Two variants: a grey (0.5, 0.5, 0.5, 1) for albedo and a
-         *  flat-up (0.5, 0.5, 1.0, 1) for tangent-space normal. */
-        private _placeholderAlbedoArray;
-        private _placeholderNormalArray;
         private _cc_posTex;
         private _cc_normTex;
         private _cc_prevPosTex;
@@ -3561,12 +3813,7 @@ declare namespace TOOLKIT {
         getSamplers(samplers: string[]): void;
         getAttributes(attributes: string[], scene: BABYLON.Scene, mesh: BABYLON.AbstractMesh): void;
         prepareDefines(defines: BABYLON.MaterialDefines, scene: BABYLON.Scene, mesh: BABYLON.AbstractMesh): void;
-        /** Called by VertexAnimationMaterial when runtime skin arrays change so we can mark
-         *  defines dirty and force a shader rebuild. */
-        onRuntimeSkinArraysChanged(): void;
         bindForSubMesh(uniformBuffer: BABYLON.UniformBuffer, scene: BABYLON.Scene, engine: BABYLON.AbstractEngine, subMesh: BABYLON.SubMesh): void;
-        /** Bind runtime skin texture arrays (or their 1-layer placeholder fallbacks). */
-        private _pushRuntimeSkinSamplers;
         /**
          * Wire this material to a VertexAnimationController for the given settings.
          * Called from the AnimationState machine at scene-load time.
@@ -3619,14 +3866,20 @@ declare namespace TOOLKIT {
         private getWGSLVertexDefinitions;
         private getWGSLVertexPositionCode;
         private getWGSLVertexNormalCode;
-        private getGLSLVertexMainEnd;
-        private getWGSLVertexMainEnd;
-        private getGLSLFragmentDefinitions;
-        private getGLSLFragmentAlbedoCode;
-        private getGLSLFragmentNormalCode;
-        private getWGSLFragmentDefinitions;
-        private getWGSLFragmentAlbedoCode;
-        private getWGSLFragmentNormalCode;
+        private getGLSLSkinLayerVaryingCode;
+        private getGLSLSkinFragmentDefs;
+        private getGLSLSkinAlbedoCode;
+        private getGLSLSkinNormalCode;
+        private getGLSLSkinMetalRoughSampleCode;
+        private getGLSLSkinMetalRoughApplyCode;
+        private getGLSLSkinEmissiveCode;
+        private getWGSLSkinLayerVaryingCode;
+        private getWGSLSkinFragmentDefs;
+        private getWGSLSkinAlbedoCode;
+        private getWGSLSkinNormalCode;
+        private getWGSLSkinMetalRoughSampleCode;
+        private getWGSLSkinMetalRoughApplyCode;
+        private getWGSLSkinEmissiveCode;
     }
 }
 declare namespace PROJECT {
@@ -3968,6 +4221,8 @@ declare namespace PROJECT {
         private _positionLocked;
         private _prevHandBrakeRequested;
         private _donutEngineScale;
+        private _donutEntryBlend;
+        private _donutEntrySpeedMps;
         private steeringWheelHub;
         private steeringWheelAxis;
         private maxSteeringAngle;
@@ -4165,11 +4420,8 @@ declare namespace PROJECT {
         donutFrontWheelPull: number;
         donutYawDegPerSec: number;
         donutYawResponse: number;
-        donutSpeedGovernorEnabled: boolean;
-        donutSpeedGovernorGain: number;
-        donutSpeedGovernorResponse: number;
-        donutSpeedGovernorMinScale: number;
-        donutSpeedGovernorMaxScale: number;
+        donutSlipAngle: number;
+        donutEntryTime: number;
         donutVelocityPinEnabled: boolean;
         donutVelocityPinResponse: number;
         roadConnectAccel: number;
@@ -4220,9 +4472,15 @@ declare namespace PROJECT {
         debugFrictionRestore: boolean;
         debugFrictionRestoreEveryNFrames: number;
         debugFrictionSnapDelta: number;
+        skidSlideEnabled: boolean;
+        skidSlideMinAngle: number;
+        skidSlideMaxAngle: number;
+        skidSlideMinSpeed: number;
+        skidRecoverDuration: number;
+        skidRecoverCurve: number;
+        debugSkidSlide: boolean;
+        debugSkidSlideEveryNFrames: number;
         skidReleaseBrakeFadeTime: number;
-        skidReleaseFrictionLerpScale: number;
-        skidReleaseFrictionRestoreSpeed: number;
         skidReleaseSnapRatio: number;
         skidStopFrictionResetSpeed: number;
         skidLaunchFrictionResetSpeed: number;
@@ -4350,6 +4608,11 @@ declare namespace PROJECT {
         private _handBrakeEntrySteerSign;
         private _skidReleaseBrakeTimer;
         private _skidFrictionRestorePending;
+        private _skidRecoverActive;
+        private _skidRecoverElapsed;
+        private _skidRecoverFrontStart;
+        private _skidRecoverRearStart;
+        private _skidSlideLogCounter;
         private _burnoutExitArcadeFadeTimer;
         private _burnoutExitFrictionRampTimer;
         private _burnoutExitArcadeReleaseTimer;
@@ -4394,6 +4657,8 @@ declare namespace PROJECT {
         private getVehicleEngineTorque;
         private createSmokeParticleSystem;
         private updateCurrentSkidInfo;
+        private computeSlideSkid;
+        private logSkidSlide;
         private updateCurrentContactMask;
         private hasPenaltyContactMask;
         private updateCurrentBrakeDamping;
@@ -4405,6 +4670,7 @@ declare namespace PROJECT {
         private resetSkidFrictionForStopOrLaunch;
         private restoreWheelFrictionToDefault;
         private isWheelFrictionAtDefault;
+        private updateSkidFrictionRecovery;
         private updateCurrentFrictionSlip;
         private armBurnoutExitSmoothing;
         private clearBurnoutExitSmoothing;
@@ -6912,7 +7178,7 @@ declare namespace TOOLKIT {
         static GetHardwareScalingLevel(): number;
         /** Quit the Windows Runtime host application. */
         static QuitWindowsApplication(): void;
-        static PrintToScreen(text: string, color?: string): void;
+        static PrintToScreen(text: string, color?: string, duration?: number): void;
         private static PrintElement;
     }
 }
@@ -8341,10 +8607,10 @@ declare namespace TOOLKIT {
     class NavigationAgent extends TOOLKIT.ScriptComponent {
         static TARGET_ANGLE_FACTOR: number;
         static ANGULAR_SPEED_RATIO: number;
+        static BRAKING_CUSHION_FACTOR: number;
         static GLOBAL_CROWD_INSTANCE: boolean;
         private crowd;
         private type;
-        private speed;
         private baseOffset;
         private avoidRadius;
         private avoidHeight;
@@ -8365,6 +8631,12 @@ declare namespace TOOLKIT {
         private currentRotation;
         private currentVelocity;
         private currentWaypoint;
+        private m_navStatus;
+        private m_stuckCounter;
+        private m_reachObserver;
+        private m_navMeshDestroyObserver;
+        speed: number;
+        reachRadius: number;
         heightOffset: number;
         angularSpeed: number;
         updatePosition: boolean;
@@ -8373,6 +8645,10 @@ declare namespace TOOLKIT {
         velocityEpsilon: number;
         offMeshVelocity: number;
         stoppingDistance: number;
+        minLookAtDistance: number;
+        enableLookAtDistance: boolean;
+        stuckFrameThreshold: number;
+        updateFlags: number;
         isReady(): boolean;
         isNavigating(): boolean;
         isTeleporting(): boolean;
@@ -8387,6 +8663,10 @@ declare namespace TOOLKIT {
         getCurrentVelocity(): BABYLON.Vector3;
         getAgentParameters(): BABYLON.IAgentParameters;
         setAgentParameters(parameters: BABYLON.IAgentParameters): void;
+        /** Gets the current navigation move status */
+        getNavStatus(): TOOLKIT.NavMoveStatus;
+        /** Returns true if the agent is currently stuck and unable to reach its destination */
+        isStuck(): boolean;
         /** Register handler that is triggered when the agent is ready for navigation */
         onReadyObservable: BABYLON.Observable<BABYLON.TransformNode>;
         /** Register handler that is triggered before the navigation update */
@@ -8395,6 +8675,8 @@ declare namespace TOOLKIT {
         onPostUpdateObservable: BABYLON.Observable<BABYLON.TransformNode>;
         /** Register handler that is triggered when the navigation is complete */
         onNavCompleteObservable: BABYLON.Observable<BABYLON.TransformNode>;
+        /** Register handler that is triggered when the agent becomes stuck */
+        onNavStuckObservable: BABYLON.Observable<BABYLON.TransformNode>;
         protected m_agentState: number;
         protected m_agentIndex: number;
         protected m_agentReady: boolean;
@@ -8411,14 +8693,16 @@ declare namespace TOOLKIT {
         protected destroy(): void;
         private awakeNavigationAgent;
         private updateNavigationAgent;
+        private getLookAtStopDistance;
         private updateAgentParameters;
+        private applyAgentUpdateFlags;
         private destroyNavigationAgent;
         /** Move agent relative to current position. */
         move(offset: BABYLON.Vector3, closetPoint?: boolean): void;
         /** Teleport agent to destination point. */
-        teleport(destination: BABYLON.Vector3, closetPoint?: boolean): void;
+        teleport(destination: BABYLON.Vector3, closetPoint?: boolean, initialRotation?: BABYLON.Quaternion): void;
         /** Sets agent current destination point. */
-        setDestination(destination: BABYLON.Vector3, closetPoint?: boolean): void;
+        setDestination(destination: BABYLON.Vector3, closetPoint?: boolean, initialRotation?: BABYLON.Quaternion): void;
         /** Sets agent current acceleration speed. */
         setAcceleration(speed: number): void;
         /** Sets agent current movement speed. */
@@ -8429,6 +8713,9 @@ declare namespace TOOLKIT {
         setOptimizationRange(range: number): void;
         /** Sets agent current collision query range (Defines how close a collision element must be before it is considered for steering behaviors). */
         setCollisionQueryRange(range: number): void;
+        /** Sets the Detour crowd update flags bitmask (ANTICIPATE_TURNS=1, OBSTACLE_AVOIDANCE=2,
+         *  SEPARATION=4, OPTIMIZE_VIS=8, OPTIMIZE_TOPO=16). Use 0 for a single agent to avoid doorway crawl/stall. */
+        setUpdateFlags(flags: number): void;
         /** Sets agent current radius. */
         setAgentRadius(radius: number): void;
         /** Sets agent current height. */
@@ -8447,6 +8734,17 @@ declare namespace TOOLKIT {
         getAgentWaypointToRef(result: BABYLON.Vector3): void;
         /** Cancel current waypoint path navigation. */
         cancelNavigation(): void;
+        /**
+         * Releases this agent's crowd binding so it can be safely rebuilt against a freshly baked
+         * navigation mesh. A Recast crowd (dtCrowd) holds a raw pointer to the dtNavMesh it was created
+         * against and is ticked every frame by the plugin's render observer; if the navMesh is freed
+         * while the crowd is alive, the next crowd update reads freed WASM memory ("memory access out
+         * of bounds"). Call this BEFORE destroying/rebuilding the navmesh — SceneManager.DestroyNavigationMeshData()
+         * broadcasts OnNavMeshDestroyObservable to invoke it automatically. After release,
+         * updateNavigationAgent() lazily recreates the crowd and re-adds the agent once new navigation
+         * data is available.
+         */
+        releaseNavigationCrowd(): void;
         /** Gets debug destination mesh. */
         getDebugDestinationMesh(): BABYLON.Mesh;
         /** Shows or hides the debug destination mesh. */
@@ -8459,6 +8757,21 @@ declare namespace TOOLKIT {
         DT_CROWDAGENT_STATE_INVALID = 0,///< The agent is not in a valid state.
         DT_CROWDAGENT_STATE_WALKING = 1,///< The agent is traversing a normal navigation mesh polygon.
         DT_CROWDAGENT_STATE_OFFMESH = 2
+    }
+    /**
+     * Navigation agent move status — reliable states trackable via the Recast V2 API.
+     * - Idle:      No destination set.
+     * - Moving:    Navigating toward destination; crowd system is steering the agent.
+     * - Reached:   Destination reached (driven by crowd.onReachTargetObservable + distance fallback).
+     * - Stuck:     Velocity near-zero for stuckFrameThreshold consecutive frames while navigating.
+     * - Cancelled: cancelNavigation() was explicitly called while Moving.
+     */
+    enum NavMoveStatus {
+        Idle = "idle",
+        Moving = "moving",
+        Reached = "reached",
+        Stuck = "stuck",
+        Cancelled = "cancelled"
     }
 }
 declare namespace TOOLKIT {
@@ -9720,6 +10033,55 @@ declare namespace TOOLKIT {
         customData?: any;
     }
 }
+declare namespace TOOLKIT {
+    /**
+     * Builds and caches BABYLON.RawTexture2DArray channels for the per-skin Texture2DArray switching
+     * system (see CustomShaderMaterial.enableSkinArray / SkinArraySwitchingPlugin).
+     *
+     * Each PBR channel (albedo, normal, metallic-roughness, occlusion, emissive) becomes one array of N
+     * same-size layers — one layer per skin. The layers are loaded from N separate image URLs and stacked
+     * into a single GPU array texture with mipmaps + trilinear + anisotropic filtering, so every skin gets
+     * a full-resolution slice with its own clean mip chain (no atlas cross-cell bleed). The array is shared
+     * by every mesh/instance that uses the same skin set — the pixel data exists once, and each draw merely
+     * selects a layer index.
+     *
+     * Color space: bytes are stored raw (RGBA8). sRGB channels (albedo, emissive) are linearized in the
+     * shader (toLinearSpace), so this builder is channel-agnostic — pass the URLs and it stacks them.
+     *
+     * @class SkinTextureArray
+     */
+    class SkinTextureArray {
+        /** Cache keyed by the joined URL list. The PROMISE is cached (not just the result) so concurrent
+         *  Build() calls for the same skin set (e.g. one per mesh) all await ONE build and share ONE GPU
+         *  array — no duplicate VRAM, no duplicate CPU mip work. Failed builds evict so a retry can happen. */
+        private static _cache;
+        /**
+         * Build (or fetch from cache) a Texture2DArray from N image URLs. All layers are resampled to the
+         * FIRST image's dimensions (arrays require uniform layer size). Returns a Promise that resolves to
+         * the array texture (or null when no URLs are supplied / loading fails). Shared across all callers
+         * with the same URL list.
+         */
+        static Build(scene: BABYLON.Scene, urls: string[], options?: {
+            samplingMode?: number;
+            aniso?: number;
+            invertY?: boolean;
+            mipmaps?: boolean;
+        }): Promise<BABYLON.RawTexture2DArray>;
+        /** Upload a CPU-generated mip chain to every layer (works around the broken WebGPU array auto-mip-gen).
+         *  Each level is a box-downsample of the previous, uploaded via engine.updateRawTexture2DArray(.., mipLevel). */
+        private static _uploadMipChain;
+        /** Box-average (2x2) downsample every layer of a stacked RGBA8 buffer to (dw x dh). Edge-clamped. */
+        private static _downsampleLayers;
+        /** GPU cap on Texture2DArray layers: WebGPU device limit `maxTextureArrayLayers`, else WebGL2
+         *  `MAX_ARRAY_TEXTURE_LAYERS`. Falls back to the spec-guaranteed floor (256) when it can't be read. */
+        private static _maxArrayLayers;
+        /** Load every URL as an HTMLImageElement (cross-origin enabled for canvas readback). */
+        private static _loadImages;
+        /** Dispose and drop every cached array (e.g. on scene teardown). Cached entries are promises, so we
+         *  resolve each before disposing (handles arrays still finishing their async build). */
+        static Clear(): void;
+    }
+}
 /** Babylon Toolkit Namespace */
 declare namespace TOOLKIT {
     /**
@@ -10153,6 +10515,149 @@ declare namespace TOOLKIT {
          * Convert a linear color value [0..1] to sRGB space using a gamma of ~2.2.
          */
         private static LinearToGamma;
+    }
+}
+declare namespace TOOLKIT {
+    /**
+     * Babylon Script Component — Texture Atlas Skin (Texture2DArray "skin slices")
+     *
+     * Mesh-first skin controller: ensures THIS component's owner mesh renders at a chosen skin index.
+     * The mesh's type decides the delivery mechanism; every skinned submesh of the mesh uses the SAME
+     * index (one index per mesh, changeable at runtime via setSkinIndex). Backed by a per-skin
+     * Texture2DArray ("skin slices"): the surface UVs are sampled as-is and the layer index picks the
+     * slice (full-res per-skin slices, each with its own clean mip chain — no atlas cross-cell bleed and
+     * no UV remap).
+     *
+     * Authored properties (auto-filled from the Unity editor):
+     *  Every channel below is OPTIONAL and INDEPENDENT — supply only the ones you want to swap. The shared
+     *  layer index works for whichever channel(s) are present, so e.g. emissive-only (brake lights on/off)
+     *  needs no albedo. Absent channels fall through to the material's native map.
+     *  - albedoSlices  — per-skin albedo (sRGB, mipped) → tkAlbedoArray, overrides surfaceAlbedo.
+     *  - normalSlices  — per-skin tangent-space normals (linear, UNMIPPED) → tkNormalArray, fed through
+     *        Babylon's native perturbNormal()/vTBN so it matches the engine's bump EXACTLY. Only applied where
+     *        the mesh has a tangent frame (BUMP+TANGENT). Unmipped because box-downsampled normals grain.
+     *  - metallicSlices — per-skin metallic-roughness (glTF B=metallic, G=roughness; linear, mipped) →
+     *        tkMetalRoughArray, overrides metallicRoughness under METALLICWORKFLOW.
+     *  - emissiveSlices — per-skin emissive (sRGB, mipped) → tkEmissiveArray, overrides finalEmissive (works
+     *        with no base emissive — e.g. brake lights).
+     *  - occlusionSlices — reserved for a later phase (parsed but NOT yet stacked; AO has no exact PBR hook).
+     *  - textureData   — optional skin manifest (JSON): { count, skins:[ { index, name } ], albedoLayers:[] }.
+     *        Synthesized from the slice count when absent.
+     *  - defaultIndex  — the skin index this mesh starts at (applied to all skinned parts).
+     *  - skinnedParts  — the submesh materials (Unity Material[]) to skin-switch on this mesh.
+     *
+     * Mesh-type routing:
+     *  - Regular BABYLON.Mesh      → CLONE each part material (private to this mesh, preserves the
+     *                                CustomShaderMaterial subclass + skin-array API) and drive a shared
+     *                                layer uniform. Clones the MultiMaterial too so the swap stays local.
+     *  - BABYLON.InstancedMesh     → shared material configured once; per-instance tkSkinLayer buffer.
+     *  - VAT (VertexAnimationMaterial) → shared material configured once (enableVatSkinArray); the layer is
+     *                                decoded in-shader from the cell index packed into g_vatAnim1.w, so each
+     *                                VAT instance under one controller can show a different slice.
+     *
+     * @class TextureAtlasSkin
+     */
+    class TextureAtlasSkin extends TOOLKIT.ScriptComponent {
+        private abtractMesh;
+        private textureData;
+        private defaultIndex;
+        private skinnedParts;
+        private albedoSlices;
+        private normalSlices;
+        private metallicSlices;
+        private occlusionSlices;
+        private emissiveSlices;
+        /** Guard so wiring runs once. */
+        private _applied;
+        /** Parsed (or synthesized) manifest. */
+        private _manifest;
+        /** The mesh's current skin index (all skinned parts share it). */
+        private _currentIndex;
+        /** Configured skin targets, with the delivery mechanism resolved per material. */
+        private _targets;
+        /** Per-mesh cloned MultiMaterial (regular-mesh path) so submaterial swaps stay local to this mesh. */
+        private _clonedMultiMaterial;
+        constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties?: any, alias?: string);
+        protected awake(): void;
+        protected start(): void;
+        /** Configure every skinned part for the skin array and apply defaultIndex. Idempotent (runs once). */
+        applySkins(): void;
+        /**
+         * Switch every skinned part of THIS mesh to skin `index` (scoped to this mesh only).
+         * Out-of-range indices are CLAMPED to [0, skinCount-1] with a warning. Returns the index applied.
+         */
+        setSkinIndex(index: number): number;
+        /** Clamp an index to [0, skinCount-1], warning (with the label) when it was out of range. */
+        private clampIndex;
+        /** Number of skins: skins[] length, else manifest count, else the largest channel's slice count. */
+        skinCount(): number;
+        /** Largest per-skin slice count across every supplied channel (albedo/normal/MR/occlusion/emissive) —
+         *  so the skin count is correct even when albedo is absent (e.g. an emissive-only material). */
+        private maxChannelSliceCount;
+        /** The mesh's current skin index. */
+        getSkinIndex(): number;
+        /** Build the albedo Texture2DArray (and, when normalSlices are present, an unmipped/linear normal
+         *  Texture2DArray) from the slice images, assign them to the material, then enable per-skin array
+         *  switching for the mesh type. Async (images load after start()): the layer index is applied again
+         *  once the arrays are ready.
+         *   - regular   → shared layer uniform (setSkinLayer)
+         *   - instanced → per-instance tkSkinLayer attribute buffer
+         *   - vat       → layer decoded in-shader from the cell index packed in g_vatAnim1.w (enableVatSkinArray) */
+        private configureMaterial;
+        /** Resolve the albedo channel slice URLs. PREFERS the exported slice TEXTURE references (albedoSlices)
+         *  — auto-parsed and resolved against the scene root — falling back to manifest.albedoLayers filenames. */
+        private albedoChannelUrls;
+        /** Resolve the normal channel slice URLs (one per skin, same order as albedo). PREFERS the exported
+         *  slice TEXTURE references (normalSlices), falling back to manifest.normalLayers filenames. Returns
+         *  null when no normal slices were authored (normal switching then stays off and the native normal
+         *  stands). */
+        private normalChannelUrls;
+        /** Resolve the metallic-roughness channel slice URLs (glTF layout: B=metallic, G=roughness; one per
+         *  skin, same order as albedo). PREFERS exported slice references (metallicSlices), else manifest
+         *  metalRoughLayers. Null when no MR slices were authored (MR switching stays off). */
+        private metalRoughChannelUrls;
+        /** Resolve the emissive channel slice URLs (one per skin, same order as albedo). PREFERS exported slice
+         *  references (emissiveSlices), else manifest emissiveLayers. Null when no emissive slices were authored
+         *  (emissive switching stays off). Drives emissive-only swaps such as brake lights on/off. */
+        private emissiveChannelUrls;
+        /** Resolve each exported slice to a URL. The slices are IUnityTexture references (a filename relative
+         *  to the scene root — NOT auto-loaded into a BABYLON.Texture, so no duplicate GPU upload):
+         *  url = GetRootUrl(scene) + filename. Also tolerates an already-loaded BABYLON.Texture (.url). */
+        private sliceUrls;
+        /** Resolve a manifest layer filename to a loadable URL (absolute passes through; else scene root). */
+        private resolveLayerUrl;
+        /** Apply the current index to every target via its mesh-type-specific path (this mesh only). */
+        private applyIndexToTargets;
+        /** Select the per-skin array layer for one target:
+         *   - vat       → the per-mesh cell index packed into g_vatAnim1.w by the VAT controller
+         *   - instanced → a per-instance tkSkinLayer attribute buffer
+         *   - regular   → a shared material uniform on the (cloned) regular-mesh material
+         *  Safe to call before the array finishes loading — the value persists and takes effect once the
+         *  shader is gated on. */
+        private applyLayerToMaterial;
+        /** True when this mesh must use the per-instance buffer: it is an InstancedMesh, OR a source Mesh
+         *  that has hardware instances (instances share sourceMesh.material, so a private clone + uniform
+         *  layer is impossible — every instance would read the same shared value). */
+        private isInstancedSetup;
+        /** Register the per-instance tkSkinLayer buffer (one float) on the source mesh if not already present. */
+        private ensureSkinLayerBuffer;
+        /** Collect the host mesh's material slots: each MultiMaterial sub-material, or the single material. */
+        private getMeshSlots;
+        /** Match a resolved part material (by identity, then by name) to one of the mesh's slots. */
+        private matchSlot;
+        /** Resolve a skinnedParts entry to a live material (already-a-material, wrapped, by name). */
+        private resolvePartMaterial;
+        /** Extract a material name from a skinnedParts entry (string, live material, or serialized ref). */
+        private partName;
+        /** Clone a regular mesh's part material (and its MultiMaterial) so this mesh's skin is private. */
+        private cloneForRegular;
+        /** textureData may arrive as a JSON string or an object. Returns null when there is no skins[] list. */
+        private parseManifest;
+        private toInt;
+        private isConfigured;
+        private markConfigured;
+        /** Human-readable label for a delivery mechanism (used in setup logging). */
+        private describeKind;
     }
 }
 declare namespace TOOLKIT {
