@@ -425,7 +425,7 @@ export default function PlayRoute() {
     <BabylonSceneViewer
       fullPage={true}
       allowQueryParams={true}
-      enableCustomOverlay={false}
+      enableCustomOverlay={true}
     />
   );
 }

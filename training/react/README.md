@@ -254,7 +254,7 @@ The viewer fills its parent container. Use this for 3D content embedded in a reg
         fullPage={false}
         gameMode="ShowroomMode"
         sceneUrl="https://cdn.mygame.com/showroom/car.gltf"
-        enableCustomOverlay={false}
+        enableCustomOverlay={true}
     />
 </div>
 ```
