@@ -231,7 +231,7 @@ src/app.tsx
 ```
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { DefaultBabylonPreloader, babylonLogo } from './babylon/custom/loading';
+import { DefaultBabylonPreloader, babylonLogo } from './chrome/loading';
 import { useUnifiedNavigation } from "./babylon/system/platform";
 import { ReactRouterNavAdapter } from './routing/adpter';
 import reactLogo from './assets/react.svg'
@@ -683,7 +683,7 @@ export function NextNavAdapter({ children }: { children: ReactNode }) {
 app/play/page.tsx
 ```
 import { Suspense } from "react";
-import { DefaultBabylonPreloader } from "@/src/babylon/custom/loading";
+import { DefaultBabylonPreloader } from "@/src/chrome/loading";
 import BabylonSceneViewer from "@/src/babylon/system/babylon";
 
 export default function Play() {

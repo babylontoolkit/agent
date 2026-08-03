@@ -64,7 +64,7 @@ z-index 1000   .page-viewer / .div-viewer container
 
 ### Layer 1 — DefaultBabylonPreloader (Initial Download Suspense State)
 
-**File:** `src/babylon/custom/loading.tsx`
+**File:** `src/chrome/loading.tsx`
 
 **What it is:** The `DefaultBabylonPreloader` is a React `Suspense` fallback component. It is shown immediately when the user navigates to the `/play` route — **before** any Babylon code, engine, or scene has loaded. Its purpose is to communicate the *initial download suspense state*: the moment the user is waiting for the Babylon runtime bundle, wasm physics, and other heavy JavaScript to arrive from the network.
 
@@ -77,7 +77,7 @@ z-index 1000   .page-viewer / .div-viewer container
 
 **Customization example:**
 ```tsx
-// src/babylon/custom/loading.tsx
+// src/chrome/loading.tsx
 export function DefaultBabylonPreloader() {
   return (
     <div style={{
@@ -103,7 +103,7 @@ export { babylonLogo, spinnerImage };
 
 ### Layer 2 — SplashScreen (Asset Loading + Scene Initialization Screen)
 
-**File:** `src/babylon/custom/splash.tsx` + `src/babylon/custom/splash.css`
+**File:** `src/chrome/splash.tsx` + `src/chrome/splash.css`
 
 **What it is:** The `SplashScreen` is the full-screen animated loading screen shown *inside* the `BabylonSceneViewer` while the engine initializes, the GLTF scene loads from CDN/S3, the physics engine starts, and the `SceneController.createScene()` method runs. It subscribes to `GameManager.EventBus.OnMessage("OnLoadProgress", ...)` and shows live progress messages.
 
@@ -132,7 +132,7 @@ export { babylonLogo, spinnerImage };
 
 **Customization example:**
 ```tsx
-// src/babylon/custom/splash.tsx
+// src/chrome/splash.tsx
 import { useEffect, useState } from 'react';
 import GameManager from '../globals';
 import './splash.css';
@@ -182,7 +182,7 @@ constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties: 
 
 ### Layer 3 — CustomOverlay (Master In-Game UI Layer)
 
-**File:** `src/babylon/custom/overlay.tsx` + `src/babylon/custom/overlay.css`
+**File:** `src/chrome/overlay.tsx` + `src/chrome/overlay.css`
 
 **What it is:** The `CustomOverlay` is the **master controller for ALL in-game view UI content** that overlays the Babylon game engine's rendered scene. It is a React `<div>` positioned absolutely over the canvas at `z-index 1002`. It is the single authoritative container for every piece of game UI that lives in DOM space above the WebGPU/WebGL render surface.
 
@@ -269,7 +269,7 @@ Full-screen blocking UI for pause menus, settings, inventory, dialogue boxes. Se
 
 **Full overlay architecture pattern:**
 ```tsx
-// src/babylon/custom/overlay.tsx
+// src/chrome/overlay.tsx
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useUnifiedNavigation } from '../system/platform';

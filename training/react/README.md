@@ -1050,7 +1050,7 @@ export function HomeScreen() {
 ### Step 4: Wire Up the Game UI Overlay
 
 ```tsx
-// src/babylon/custom/overlay.tsx
+// src/chrome/overlay.tsx
 // Full HUD: speed, laps, timer, pause menu
 // See Section 7 above for the full implementation pattern.
 ```
@@ -1061,7 +1061,7 @@ export function HomeScreen() {
 // src/App.tsx
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Suspense, lazy } from 'react';
-import { DefaultBabylonPreloader } from './babylon/custom/loading';
+import { DefaultBabylonPreloader } from './chrome/loading';
 import { HomeScreen } from './screens/HomeScreen';
 
 const PlayRoute = lazy(() => import('./routing/router'));
