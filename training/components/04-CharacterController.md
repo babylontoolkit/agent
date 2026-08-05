@@ -231,7 +231,7 @@ namespace TOOLKIT {
             const dt       = this.getDeltaSeconds();
             const vertical = TOOLKIT.InputController.GetUserInput(TOOLKIT.UserInputAxis.Vertical);
             const horiz    = TOOLKIT.InputController.GetUserInput(TOOLKIT.UserInputAxis.Horizontal);
-            const jumpKey  = TOOLKIT.InputController.GetKeyPress(TOOLKIT.UserInputKey.Space);
+            const jumpKey  = TOOLKIT.InputController.WasKeyboardButtonTapped(TOOLKIT.UserInputKey.SpaceBar, true);
 
             // ── Rotation (Y-axis) ────────────────────────────────────────────
             if (Math.abs(horiz) > 0.01) {

@@ -84,7 +84,7 @@ namespace TOOLKIT {
             // ── Movement ─────────────────────────────────────────────────────
             const fwd    = TOOLKIT.InputController.GetUserInput(TOOLKIT.UserInputAxis.Vertical);
             const horiz  = TOOLKIT.InputController.GetUserInput(TOOLKIT.UserInputAxis.Horizontal);
-            const isSprinting = TOOLKIT.InputController.GetKeyPress(TOOLKIT.UserInputKey.Shift);
+            const isSprinting = TOOLKIT.InputController.GetKeyboardInput(TOOLKIT.UserInputKey.Shift);
             const speed = this.moveSpeed * (isSprinting ? this.sprintMultiplier : 1.0);
 
             // Move relative to camera yaw, not character yaw
@@ -110,7 +110,7 @@ namespace TOOLKIT {
             this.cc?.move(hasInput ? this.moveDir : BABYLON.Vector3.Zero());
 
             // ── Jump ─────────────────────────────────────────────────────────
-            if (TOOLKIT.InputController.GetKeyDown(TOOLKIT.UserInputKey.Space)) {
+            if (TOOLKIT.InputController.WasKeyboardButtonTapped(TOOLKIT.UserInputKey.SpaceBar, true)) {
                 if (this.cc?.isGrounded() && this.cc.canJump()) {
                     this.cc.jump(this.jumpForce);
                     this.anim?.setTrigger("Jump");
@@ -344,7 +344,7 @@ namespace TOOLKIT {
 
             const accel  = TOOLKIT.InputController.GetUserInput(TOOLKIT.UserInputAxis.Vertical);
             const steer  = TOOLKIT.InputController.GetUserInput(TOOLKIT.UserInputAxis.Horizontal);
-            const braking = TOOLKIT.InputController.GetKeyPress(TOOLKIT.UserInputKey.Space);
+            const braking = TOOLKIT.InputController.GetKeyboardInput(TOOLKIT.UserInputKey.SpaceBar);
 
             // Smooth steering
             const targetSteer = steer * this.maxSteeringAngle;

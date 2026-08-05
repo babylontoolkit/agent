@@ -231,7 +231,7 @@ namespace TOOLKIT {
             this.vehicle?.setSteeringValue(-this.steerValue, 1);
 
             // Braking
-            const braking = TOOLKIT.InputController.GetKeyPress(TOOLKIT.UserInputKey.Space) ? 50 : 0;
+            const braking = TOOLKIT.InputController.GetKeyboardInput(TOOLKIT.UserInputKey.SpaceBar) ? 50 : 0;
             for (let i = 0; i < 4; i++) this.vehicle?.setBrake(braking, i);
         }
     }

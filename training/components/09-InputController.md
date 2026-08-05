@@ -70,22 +70,32 @@ const p2Fwd = TOOLKIT.InputController.GetUserInput(TOOLKIT.UserInputAxis.Vertica
 ## Keyboard Input
 
 ```typescript
-// Returns true every frame the key is held
-static GetKeyPress(keyCode: TOOLKIT.UserInputKey, player?: TOOLKIT.PlayerNumber): boolean
+// Returns true every frame the key is held down
+static GetKeyboardInput(keycode: number): boolean
 
-// Returns true only on the frame the key went down
-static GetKeyDown(keyCode: TOOLKIT.UserInputKey, player?: TOOLKIT.PlayerNumber): boolean
+// Is the specified keyboard button held down (same polling family as GetKeyboardInput)
+static IsKeyboardButtonHeld(keycode: number): boolean
 
-// Returns true only on the frame the key was released
-static GetKeyUp(keyCode: TOOLKIT.UserInputKey, player?: TOOLKIT.PlayerNumber): boolean
+// Single-fire: true once after the key was tapped — pass reset = true to consume the tap
+static WasKeyboardButtonTapped(keycode: number, reset?: boolean): boolean
+
+// Event handlers (alternative to polling)
+static OnKeyboardDown(callback: (keycode: number) => void): void
+static OnKeyboardUp(callback: (keycode: number) => void): void
+static OnKeyboardPress(keycode: number, callback: () => void): void
 ```
+
+> ⚠️ There is **no** `GetKeyDown`, `GetKeyUp`, or `GetKeyPress` — those are Unity `Input` names and
+> do not exist in the Toolkit runtime. Calling them throws `TypeError: ... is not a function` at
+> runtime (Vite dev does not typecheck). Use the polling and tap functions above; pass
+> `TOOLKIT.UserInputKey` values as the numeric keycodes.
 
 **Common Key Codes:**
 ```typescript
 enum UserInputKey {
     BackSpace = 8,   Tab = 9,    Enter = 13,  Shift = 16,
     Ctrl = 17,       Alt = 18,   Pause = 19,  CapsLock = 20,
-    Escape = 27,     Space = 32, PageUp = 33, PageDown = 34,
+    Escape = 27,     SpaceBar = 32, PageUp = 33, PageDown = 34,
     End = 35,        Home = 36,  LeftArrow = 37, UpArrow = 38,
     RightArrow = 39, DownArrow = 40,
     Delete = 46,
@@ -103,23 +113,26 @@ enum UserInputKey {
     // Numpad
     Numpad0 = 96, Numpad1 = 97, Numpad2 = 98, Numpad3 = 99,
     // Etc.
-    LeftBracket = 219,  BackSlash = 220,  RightBracket = 221,
+    OpenBracket = 219,  BackSlash = 220,  CloseBraket = 221,
 }
 ```
+
+> ⚠️ The member for the space key is **`SpaceBar`** (not `Space`), and the close-bracket member is
+> spelled **`CloseBraket`** in the runtime — use the names exactly as listed.
 
 **Example:**
 ```typescript
 protected update(): void {
     // Hold to sprint
-    const isSprinting = TOOLKIT.InputController.GetKeyPress(TOOLKIT.UserInputKey.Shift);
+    const isSprinting = TOOLKIT.InputController.GetKeyboardInput(TOOLKIT.UserInputKey.Shift);
 
-    // Single-frame jump
-    if (TOOLKIT.InputController.GetKeyDown(TOOLKIT.UserInputKey.Space)) {
+    // Single-fire jump (reset = true consumes the tap so it fires once)
+    if (TOOLKIT.InputController.WasKeyboardButtonTapped(TOOLKIT.UserInputKey.SpaceBar, true)) {
         this.cc.jump(8.0);
     }
 
     // Reload on tap
-    if (TOOLKIT.InputController.GetKeyDown(TOOLKIT.UserInputKey.R)) {
+    if (TOOLKIT.InputController.WasKeyboardButtonTapped(TOOLKIT.UserInputKey.R, true)) {
         this.weapon.reload();
     }
 }
@@ -130,17 +143,25 @@ protected update(): void {
 ## Mouse Input
 
 ```typescript
-// Mouse buttons — true every frame button is held
-static GetLeftButtonDown(player?): boolean
-static GetRightButtonDown(player?): boolean
-static GetMiddleButtonDown(player?): boolean
+// Mouse buttons — true every frame the button is held
+static GetLeftButtonDown(): boolean
+static GetMiddleButtonDown(): boolean
+static GetRightButtonDown(): boolean
 
-// Positions
-static GetClientX(player?): number    // absolute X in pixels
-static GetClientY(player?): number    // absolute Y in pixels
-static GetMouseX(player?): number     // delta X this frame
-static GetMouseY(player?): number     // delta Y this frame
-static GetMouseWheelDelta(player?): number  // scroll delta
+// Pointer buttons by index (0 = left, 1 = middle, 2 = right)
+static GetPointerInput(button: number): boolean                      // held this frame
+static IsPointerButtonHeld(button: number): boolean
+static WasPointerButtonTapped(button: number, reset?: boolean): boolean  // single-fire
+
+// Position — pixels; bottomUp = true gives Unity-style bottom-left-origin coordinates
+static GetMousePosition(scene: BABYLON.Scene, bottomUp?: boolean): BABYLON.Vector3
+
+// Deltas — read the user-input axes (there is no GetMouseX/GetMouseY)
+TOOLKIT.InputController.GetUserInput(TOOLKIT.UserInputAxis.MouseX)   // delta X this frame
+TOOLKIT.InputController.GetUserInput(TOOLKIT.UserInputAxis.MouseY)   // delta Y this frame
+
+// Wheel
+static IsWheelScrolling(): boolean
 ```
 
 ---
@@ -161,10 +182,13 @@ TOOLKIT.InputController.LockMousePointer(scene, true);
 ## Gamepad Input
 
 ```typescript
-// Check gamepad buttons (pressed state)
-static GetGamepadButtonDown(button: number, player?): boolean
-static GetGamepadButtonUp(button: number, player?): boolean
-static GetGamepadButtonPress(button: number, player?): boolean
+// Check gamepad buttons
+static GetGamepadButtonInput(button: number, player?: TOOLKIT.PlayerNumber): boolean   // held this frame
+static IsGamepadButtonHeld(button: number, player?: TOOLKIT.PlayerNumber): boolean
+static IsGamepadButtonTapped(button: number, player?: TOOLKIT.PlayerNumber): boolean   // single-fire
+
+// Analog triggers [0..1]
+static GetGamepadTriggerInput(trigger: number, player?: TOOLKIT.PlayerNumber): number
 
 // Button mappings (standard)
 // 0 = A/Cross, 1 = B/Circle, 2 = X/Square, 3 = Y/Triangle
@@ -193,10 +217,10 @@ enum GamepadType {
 
 ```typescript
 // Set left joystick position from virtual stick UI
-static SetLeftJoystickBuffer(xAxis: number, yAxis: number, player?): void
+static SetLeftJoystickBuffer(leftStickX: number, leftStickY: number, invertY?: boolean): void
 
 // Set right joystick position
-static SetRightJoystickBuffer(xAxis: number, yAxis: number, player?): void
+static SetRightJoystickBuffer(rightStickX: number, rightStickY: number, invertY?: boolean): void
 
 // Enable virtual joystick (disables physical input for the axis)
 TOOLKIT.SceneManager.VirtualJoystickEnabled = true;
@@ -221,35 +245,36 @@ enum PlayerNumber {
 
 ```typescript
 class UserInputOptions {
-    // Keyboard movement sensibility (default 1.0)
-    static keyboardMoveDeadZone: number;
-    static keyboardMoveEngaged: number;
-    static keyboardMoveSensibility: number;
+    // Keyboard
+    static KeyboardSmoothing: boolean;
+    static KeyboardMoveSensibility: number;
+    static KeyboardArrowSensibility: number;
+    static KeyboardMoveDeadZone: number;
 
-    // Gamepad axis sensibility
-    static gamepadDeadStickValue: number;       // default 0.1
-    static gamepadLeftSensibility: number;
-    static gamepadRightSensibility: number;
-    static gamepadLefTriggerValue: number;
-    static gamepadRightTriggerValue: number;
+    // Gamepad
+    static GamepadDeadStickValue: number;
+    static GamepadLStickXInverted: boolean;
+    static GamepadLStickYInverted: boolean;
+    static GamepadRStickXInverted: boolean;
+    static GamepadRStickYInverted: boolean;
+    static GamepadLStickSensibility: number;
+    static GamepadRStickSensibility: number;
 
-    // Mouse
-    static mouseRightClickButton: number;       // default 2
-    static mouseMiddleClickButton: number;      // default 1
-    static mouseSensibility: number;            // default 1.0
-    static mouseWheelDeadZone: number;          // default 0.1
-    static mouseMoveDeadZone: number;
-
-    // Pointer
-    static pointerAngularSensibility: number;
-    static pointerWheelDeadZone: number;
+    // Pointer / mouse
+    static BabylonAngularSensibility: number;
+    static DefaultAngularSensibility: number;
+    static PointerWheelDeadZone: number;
+    static PointerMouseDeadZone: number;
+    static PointerMouseInverted: boolean;
+    static UseCanvasElement: boolean;
+    static UseArrowKeyRotation: boolean;
 }
 ```
 
-**Tuning example:**
+**Tuning example (fields are PascalCase):**
 ```typescript
-TOOLKIT.UserInputOptions.gamepadDeadStickValue = 0.15;
-TOOLKIT.UserInputOptions.mouseSensibility = 2.0;
+TOOLKIT.UserInputOptions.GamepadDeadStickValue = 0.15;
+TOOLKIT.UserInputOptions.KeyboardMoveSensibility = 2.0;
 ```
 
 ---
@@ -312,21 +337,21 @@ namespace TOOLKIT {
             // ── Move ─────────────────────────────────────────────────────────
             const fwd    = TOOLKIT.InputController.GetUserInput(TOOLKIT.UserInputAxis.Vertical);
             const horiz  = TOOLKIT.InputController.GetUserInput(TOOLKIT.UserInputAxis.Horizontal);
-            const sprint = TOOLKIT.InputController.GetKeyPress(TOOLKIT.UserInputKey.Shift) ? 1.7 : 1.0;
+            const sprint = TOOLKIT.InputController.GetKeyboardInput(TOOLKIT.UserInputKey.Shift) ? 1.7 : 1.0;
 
             const worldFwd   = this.transform.forward.scale(fwd * this.moveSpeed * sprint);
             const worldRight = this.transform.right.scale(horiz * this.moveSpeed * sprint);
             this.cc?.move(worldFwd.add(worldRight));
 
             // ── Jump ─────────────────────────────────────────────────────────
-            if (TOOLKIT.InputController.GetKeyDown(TOOLKIT.UserInputKey.Space)) {
+            if (TOOLKIT.InputController.WasKeyboardButtonTapped(TOOLKIT.UserInputKey.SpaceBar, true)) {
                 if (this.cc?.isGrounded() && this.cc.canJump()) {
                     this.cc.jump(8.0);
                 }
             }
 
             // ── Escape — unlock mouse ─────────────────────────────────────────
-            if (TOOLKIT.InputController.GetKeyDown(TOOLKIT.UserInputKey.Escape)) {
+            if (TOOLKIT.InputController.WasKeyboardButtonTapped(TOOLKIT.UserInputKey.Escape, true)) {
                 TOOLKIT.InputController.LockMousePointer(this.scene, false);
             }
         }
@@ -338,7 +363,7 @@ namespace TOOLKIT {
 
 ## Notes For AI Agents
 
-1. **`GetKeyDown` vs `GetKeyPress`** — use `GetKeyDown` for single-fire actions (jump, shoot, reload); use `GetKeyPress` for continuous actions (sprint, crouch).
+1. **Single-fire vs continuous** — use `WasKeyboardButtonTapped(key, true)` for single-fire actions (jump, shoot, reload; `reset = true` consumes the tap) and `GetKeyboardInput(key)` for continuous actions (sprint, crouch). **`GetKeyDown` / `GetKeyUp` / `GetKeyPress` DO NOT EXIST** — they are Unity `Input` names, and calling them throws a runtime `TypeError` that Vite dev never catches. The space key is `UserInputKey.SpaceBar`, not `.Space`.
 2. **`GetUserInput(Vertical)`** returns +1 for W/forward, -1 for S/back — same as Unity's `Input.GetAxis("Vertical")`.
 3. **Mouse delta** — `GetUserInput(MouseX/Y)` returns the pixel delta this frame; multiply by sensitivity.
 4. **Pointer lock must be requested via a user gesture** (click) — browsers block programmatic pointer lock.
