@@ -172,8 +172,81 @@ Check the declaration files for detail class information
 
 ---
 
-Other details goe here
+## Babylon Toolkit Component Authority
+
+Supplied GLTF and GLB files may contain interactive Babylon Toolkit and project script components serialized in node `extras.metadata.components` (see the example above). These files are not just art assets — they are **interactive prefabs** carrying configured physics, component types, serialized properties, animation setup, and gameplay intent.
+
+Before implementing gameplay:
+
+1. Scan all supplied scene and asset files for component metadata.
+2. Produce a component inventory grouped by scene node.
+3. Identify each component class, execution order (`order`), serialized properties and intended responsibility.
+4. Cross-reference every `TOOLKIT.*` class against the declaration files listed above under **Declaration File Class Information** (`babylon.toolkit.d.ts`) and against the `Babylon Toolkit Component Reference` at https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/README.md — the component reference documents the Unity-style script component lifecycle every component follows (`awake`, `start`, `update`, `late`, `after`, `step`, `fixed`, `ready`, `destroy`).
+5. Do not invent component APIs, methods or properties.
+6. Do not bypass an existing component with direct transform manipulation or duplicate runtime systems.
+
+Treat `TOOLKIT.*` components as the preferred engine-level implementation for functionality they already provide, including character control, animation state machines, Havok physics integration, navigation and raycast vehicles.
+
+Build game-specific behavior through `PROJECT.*` ScriptComponents that orchestrate existing Toolkit systems. Register every project class with `TOOLKIT.SceneManager.RegisterClass("PROJECT.MyClass", MyClass)` so exported metadata can re-hydrate it at load time.
+
+For example:
+
+* Player scripts should calculate desired movement and invoke the existing character controller.
+* Animation drivers should update parameters on the existing animation state component (`setFloat`, `setBool`, `setInteger`, `setTrigger`) instead of starting or stopping animation groups directly.
+* Vehicle input and AI scripts should command the existing raycast vehicle and car controller components.
+* Enemy logic should use existing navigation and character-control components where supplied.
+* Gameplay scripts must follow the Babylon Toolkit component lifecycle and cleanup conventions (release observers, timers, input handlers and temporary resources in `destroy()`).
+
+Do not remove, replace or reimplement a supplied `TOOLKIT.*` component merely because another architecture is possible.
+
+Replacement is permitted only when:
+
+* A required capability is absent from the declared API;
+* A reproducible defect cannot be resolved through configuration or composition;
+* Measured performance fails an explicit budget;
+* Or a documented architectural requirement makes the supplied component incompatible.
+
+Any proposed replacement must include:
+
+1. The demonstrated limitation;
+2. The test that reproduces it;
+3. Configuration and composition alternatives attempted;
+4. The scope and risks of replacement;
+5. A rollback path;
+6. Regression tests proving that existing behavior remains intact.
+
+Preserve Unity-authored serialized values unless a measured gameplay, physics or performance issue justifies changing them.
+
+**Agents should improve gameplay by composing and tuning the supplied systems, not by rebuilding foundational engine functionality.**
 
 ---
 
-**Use these references for for details on interactive scene content**
+## Toolkit Component Cross-Reference
+
+The `TOOLKIT` namespace ships first-class, production implementations of the systems a game needs. **If a row below covers the functionality you are about to write, the Toolkit component IS the implementation — write a `PROJECT.*` orchestration script around it, never a replacement.** Exact signatures for every class live in `babylon.toolkit.d.ts`; detailed usage lives in the numbered component reference documents at https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/README.md.
+
+| Game functionality | First-class Toolkit components | Reference document |
+|---|---|---|
+| Scene lifecycle & orchestration | `TOOLKIT.SceneManager` (static hub — loading, timing, queries, event bus, `RegisterClass`, `FindScriptComponent`), `TOOLKIT.SceneController` (per-scene main controller base), `TOOLKIT.ScriptComponent` (Unity-style base class for ALL components) | [01-SceneManager](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/01-SceneManager.md), [02-ScriptComponent](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/02-ScriptComponent.md) |
+| Character movement | `TOOLKIT.CharacterController` (Havok capsule — `move`, `jump`, `turn`, `set`, grounding, slope limits, step offsets), `TOOLKIT.RecastCharacterController`, `TOOLKIT.SimpleCharacterController` | [04-CharacterController](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/04-CharacterController.md) |
+| Ready-made player controllers | `TOOLKIT.StandardPlayerController` (full first/third person), `TOOLKIT.ThirdPersonPlayerController`, `TOOLKIT.RemotePlayerController` (networked remote player) | [12-StarterContent](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/12-StarterContent.md) §5 |
+| Animation | `TOOLKIT.AnimationState` (Unity Mecanim-style state machine — `setFloat`/`setBool`/`setInteger`/`setTrigger`, transitions, blend trees, layers, root motion), `TOOLKIT.AnimationMixer`, the blend-tree system classes | [03-AnimationState](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/03-AnimationState.md) |
+| AI & navigation | `TOOLKIT.NavigationAgent` (Recast/Detour — `setDestination`, crowd simulation, `teleport`, off-mesh links) | [05-NavigationAgent](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/05-NavigationAgent.md) |
+| Physics | `TOOLKIT.RigidbodyPhysics` (Havok rigidbodies, raycast, shapecast), `TOOLKIT.TriggerVolume`, Havok joint components (`BallSocketJoint`, `DistanceJoint`, `FixedHingeJoint`, `LockedJoint`, `PrismaticJoint`, `SixdofJoint`, `SliderJoint`) | [06-RigidbodyPhysics](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/06-RigidbodyPhysics.md), [12-StarterContent](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/12-StarterContent.md) §8 |
+| Vehicles & racing | `TOOLKIT.RaycastVehicle` (wheel raycasts, suspension), `TOOLKIT.StandardCarController` (engine, gearbox, burnout), `TOOLKIT.VehicleInputController` (human input OR AI autopilot), `TOOLKIT.VehicleCameraManager`, `TOOLKIT.CheckpointManager` (laps), `TOOLKIT.RaceTrackManager` (track spline, leaderboard), `TOOLKIT.SkidMarkManager`, `TOOLKIT.RemoteCarController` | [06-RigidbodyPhysics](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/06-RigidbodyPhysics.md), [13-RacingSystem](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/13-RacingSystem.md) |
+| Cameras | `TOOLKIT.DefaultCameraSystem` (main camera rig, post-processing pipeline, split-screen), `TOOLKIT.VehicleCameraManager`, `TOOLKIT.SideCameraController` (picture-in-picture) | [12-StarterContent](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/12-StarterContent.md) §4 |
+| Input | `TOOLKIT.InputController` (keyboard/mouse/gamepad — axes, key state, pointer lock), `TOOLKIT.MobileInputController` (touch joysticks), `TOOLKIT.UserInputOptions` | [09-InputController](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/09-InputController.md), [12-StarterContent](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/12-StarterContent.md) §10 |
+| Audio | `TOOLKIT.AudioSource` (spatial + 2D — play, pause, stop, volume), `TOOLKIT.SoundManager`, `TOOLKIT.SceneSoundSystem` | [07-AudioSource](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/07-AudioSource.md) |
+| Particles & VFX | `TOOLKIT.ShurikenParticles` (Unity Shuriken-style), `TOOLKIT.FxParticleSystem`, `TOOLKIT.PostProcessor` | [10-ProComponents](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/10-ProComponents.md) |
+| Materials & shaders | `TOOLKIT.CustomShaderMaterial` family, `TOOLKIT.UniversalTerrainMaterial`, `TOOLKIT.WaterMaterialSystem`, `TOOLKIT.SkyMaterialSystem`, `TOOLKIT.VertexAnimationMaterial` (VAT crowds), `TOOLKIT.TextureAtlasSkin` (skin variants), Node Material components (`NodeMaterialInstance`/`Particle`/`Process`/`Texture`) | [08-Materials](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/08-Materials.md), [12-StarterContent](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/12-StarterContent.md) §9 |
+| Terrain & environment | `TOOLKIT.TerrainBuilder`, grass/tree/foliage materials (`GrassStandardMaterial`, `GrassBillboardMaterial`, `TreeBranchMaterial`) | [10-ProComponents](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/10-ProComponents.md) |
+| UI | `TOOLKIT.UserInterface`, Unity-style GUI controls (`UnityDropdownMenu`, `UnityScrollBar`, `UnitySlider`) | [10-ProComponents](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/10-ProComponents.md), plus the UI Design System and Babylon GUI references |
+| Asset pipeline & pooling | `TOOLKIT.AssetPreloader`, `TOOLKIT.PreloadAssetsManager`, `TOOLKIT.PrefabObjectPool` (object pooling), `TOOLKIT.AssetExporter`, the `CVTOOLS_unity_metadata` glTF loader extension | [12-StarterContent](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/12-StarterContent.md) §7 |
+| Multiplayer / networking | Starter content `PROJECT.ColyseusGameServer` / `PROJECT.ColyseusNetworkEntity` / `PROJECT.ColyseusNetworkAvatar`, `PROJECT.NetworkCarPrediction` (client-side interpolation), `TOOLKIT.EntityController`, `TOOLKIT.GlobalMessageBus` / `TOOLKIT.LocalMessageBus` (event messaging) | [12-StarterContent](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/12-StarterContent.md) §6, [13-RacingSystem](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/13-RacingSystem.md) |
+| Video, debug & utilities | `TOOLKIT.WebVideoPlayer`, `TOOLKIT.DebugInformation` (dev console overlay), `TOOLKIT.Utilities` (layer masks, math, helpers), `TOOLKIT.SceneManager.WaitForSeconds` (coroutine-style waits) | [10-ProComponents](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/10-ProComponents.md), [12-StarterContent](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/12-StarterContent.md) §11 |
+
+Complete, coded game patterns — third-person player, AI enemy (navigation + animation + health), racing car, HUD/UI manager, object pooling, coroutine-style timing — live in [14-GamePatterns](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/14-GamePatterns.md). All TOOLKIT enums and interfaces live in [11-Enums-Interfaces](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/11-Enums-Interfaces.md).
+
+---
+
+**Use these references for details on interactive scene content**
