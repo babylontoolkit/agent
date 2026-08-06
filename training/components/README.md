@@ -1,6 +1,6 @@
 # Babylon Toolkit — AI Agent Reference Overview
 
-> **Version:** 9.9.1 - R1  
+> **Version:** 9.16.1 - R1  
 > **Namespace:** `TOOLKIT`  
 > **Engine:** Babylon.js 9+  
 > **Purpose:** This reference is written for AI coding agents. It describes every class, lifecycle, API method, and common usage pattern in the Babylon Toolkit so an agent can write correct game-logic code without guessing.
@@ -14,6 +14,14 @@ The Babylon Toolkit (BT) is a **Unity-to-Babylon game runtime**. It exports Unit
 The key mental model: **Unity = editor / authoring tool. Babylon = runtime renderer. BT bridges them.**
 
 Everything lives in the `TOOLKIT` namespace (e.g. `TOOLKIT.SceneManager`, `TOOLKIT.AnimationState`).
+
+In an npm/ESM project, the `TOOLKIT` namespace is the root import of the `@babylonjs-toolkit/next` package:
+
+```typescript
+import * as TOOLKIT from "@babylonjs-toolkit/next";
+// named imports are equivalent: import { SceneManager, ScriptComponent } from "@babylonjs-toolkit/next";
+// Pro classes (DefaultCameraSystem, StandardCarController, ...) import from "@babylonjs-toolkit/next/project" only
+```
 
 ---
 

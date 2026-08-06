@@ -4,6 +4,15 @@
 
 ---
 
+## Import
+
+```typescript
+import * as TOOLKIT from "@babylonjs-toolkit/next";
+// named imports are equivalent: import { SceneManager, ScriptComponent, InputController, CharacterController } from "@babylonjs-toolkit/next";
+```
+
+---
+
 ## Pattern 1 — Third-Person Player Controller
 
 Full third-person controller: input → CharacterController movement → AnimationState → camera follow.
@@ -182,14 +191,14 @@ namespace TOOLKIT {
             this.anim  = this.getComponent("TOOLKIT.AnimationState");
             this.audio = this.getComponent("TOOLKIT.AudioSource");
 
-            this.playerNode = TOOLKIT.SceneManager.FindTransformByTag(this.scene, "Player");
+            this.playerNode = TOOLKIT.SceneManager.FindGameObjectWithTag(this.scene, "Player");
 
-            const ptNodes = TOOLKIT.SceneManager.FindAllTransformsByTag(this.scene, "PatrolPoint");
+            const ptNodes = TOOLKIT.SceneManager.FindGameObjectsWithTag(this.scene, "PatrolPoint");
             this.patrolPoints = ptNodes ?? [];
 
             // Animation events
             this.anim?.onAnimationEventObservable.add((evt) => {
-                if (evt.name === "DealDamage") this.dealMeleeDamage();
+                if (evt.function === "DealDamage") this.dealMeleeDamage();
             });
 
             // Nav complete
@@ -355,16 +364,16 @@ namespace TOOLKIT {
             this.brakeForce  = braking ? this.maxBrakingForce : 0;
 
             // Apply to vehicle
-            this.vehicle.applyEngineForce(this.engineForce, 2);
-            this.vehicle.applyEngineForce(this.engineForce, 3);
-            this.vehicle.setSteeringValue(-this.steerValue, 0);
-            this.vehicle.setSteeringValue(-this.steerValue, 1);
+            this.vehicle.setEngineForce(this.engineForce, 2);
+            this.vehicle.setEngineForce(this.engineForce, 3);
+            this.vehicle.setPhysicsSteeringAngle(-this.steerValue, 0);
+            this.vehicle.setPhysicsSteeringAngle(-this.steerValue, 1);
             for (let i = 0; i < 4; i++) {
-                this.vehicle.setBrake(this.brakeForce + (braking ? 0 : (accel === 0 ? 5 : 0)), i);
+                this.vehicle.setBrakingForce(this.brakeForce + (braking ? 0 : (accel === 0 ? 5 : 0)), i);
             }
 
             // Engine audio pitch based on speed
-            const speedKmh = Math.abs(this.vehicle.getCurrentSpeedKmHour());
+            const speedKmh = this.vehicle.getAbsCurrentSpeedKph();
             const pitchFactor = 0.8 + (speedKmh / 150) * 1.2; // 0.8 to 2.0
             // Note: accessing raw sound for pitch
             const sound = this.engineAudio?.getSoundClip() as BABYLON.Sound;
@@ -388,6 +397,8 @@ namespace TOOLKIT {
         private ammoText: BABYLON.GUI.TextBlock = null;
         private crosshair: BABYLON.GUI.Ellipse = null;
         private advancedTexture: BABYLON.GUI.AdvancedDynamicTexture = null;
+        private onHealthChanged = (data: any) => this.setHealth(data.current, data.max);
+        private onAmmoChanged   = (data: any) => this.setAmmo(data.current, data.reserve);
 
         constructor(t: BABYLON.TransformNode, s: BABYLON.Scene, p: any = {}) {
             super(t, s, p, "TOOLKIT.HUDManager");
@@ -398,13 +409,9 @@ namespace TOOLKIT {
         }
 
         protected start(): void {
-            // Subscribe to game events
-            TOOLKIT.SceneManager.EventBus.OnMessage("player:health-changed", (data) => {
-                this.setHealth(data.current, data.max);
-            });
-            TOOLKIT.SceneManager.EventBus.OnMessage("weapon:ammo-changed", (data) => {
-                this.setAmmo(data.current, data.reserve);
-            });
+            // Subscribe to game events (handlers stored so destroy() can remove them)
+            TOOLKIT.SceneManager.EventBus.OnMessage("player:health-changed", this.onHealthChanged);
+            TOOLKIT.SceneManager.EventBus.OnMessage("weapon:ammo-changed", this.onAmmoChanged);
         }
 
         private buildHUD(): void {
@@ -470,8 +477,8 @@ namespace TOOLKIT {
         }
 
         protected destroy(): void {
-            TOOLKIT.SceneManager.EventBus.ClearMessage("player:health-changed");
-            TOOLKIT.SceneManager.EventBus.ClearMessage("weapon:ammo-changed");
+            TOOLKIT.SceneManager.EventBus.RemoveHandler("player:health-changed", this.onHealthChanged);
+            TOOLKIT.SceneManager.EventBus.RemoveHandler("weapon:ammo-changed", this.onAmmoChanged);
             this.advancedTexture?.dispose();
         }
     }
@@ -529,7 +536,7 @@ namespace TOOLKIT {
         private bulletPool: ObjectPool<BulletBehavior> = null;
 
         protected start(): void {
-            const bulletPrefab = TOOLKIT.SceneManager.FindTransformNode(this.scene, "BulletPrefab");
+            const bulletPrefab = TOOLKIT.SceneManager.GetTransformNode(this.scene, "BulletPrefab");
             this.bulletPool = new ObjectPool<BulletBehavior>(
                 this.scene, bulletPrefab, "TOOLKIT.BulletBehavior", 20
             );
@@ -633,7 +640,7 @@ async function main(): Promise<void> {
     });
 
     // Configure Havok physics
-    await TOOLKIT.RigidbodyPhysics.ConfigurePhysicsEngine(scene, 1/60, 2);
+    await TOOLKIT.RigidbodyPhysics.ConfigurePhysicsEngine(scene);
 
     // Load scenes
     const am = new BABYLON.AssetsManager(scene);

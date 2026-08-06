@@ -6,6 +6,15 @@
 
 ---
 
+## Import
+
+```typescript
+import * as TOOLKIT from "@babylonjs-toolkit/next";
+// named imports are equivalent: import { NavigationAgent, ScriptComponent, SceneManager } from "@babylonjs-toolkit/next";
+```
+
+---
+
 ## Prerequisites
 
 The navigation plugin and navmesh must be baked and loaded before agents can navigate.
@@ -49,7 +58,6 @@ agent.onNavCompleteObservable.add(() => {
 ```typescript
 // Movement
 agent.speed            // number — movement speed (m/s)
-agent.acceleration     // number — acceleration (m/s²)
 agent.angularSpeed     // number — max rotation speed (deg/s, default 120)
 agent.stoppingDistance // number — distance from target to stop (m, default 0.5)
 
@@ -122,8 +130,8 @@ cancelNavigation(): void
 ```typescript
 agent.setMovementSpeed(speed: number): void       // m/s
 agent.setAcceleration(speed: number): void        // m/s²
-agent.setAngularSpeed(speed: number): void        // deg/s
-agent.setStoppingDistance(distance: number): void // m
+agent.angularSpeed = 180;                         // deg/s — public property, set directly
+agent.stoppingDistance = 1.0;                     // m — public property, set directly
 
 agent.setAgentRadius(radius: number): void        // capsule radius
 agent.setAgentHeight(height: number): void        // capsule height
@@ -201,11 +209,11 @@ namespace TOOLKIT {
             this.anim  = this.getComponent("TOOLKIT.AnimationState");
 
             // Find patrol points by tag
-            const pointNodes = TOOLKIT.SceneManager.FindAllTransformsByTag(this.scene, "PatrolPoint");
+            const pointNodes = TOOLKIT.SceneManager.FindGameObjectsWithTag(this.scene, "PatrolPoint");
             this.patrolPoints = pointNodes;
 
             // Find player
-            const playerNode = TOOLKIT.SceneManager.FindTransformByTag(this.scene, "Player");
+            const playerNode = TOOLKIT.SceneManager.FindGameObjectWithTag(this.scene, "Player");
             this.playerTransform = playerNode;
 
             // Navigation events

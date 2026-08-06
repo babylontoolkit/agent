@@ -104,7 +104,7 @@
 - `this.transform` = transform node / game object
 - `this.getDeltaTime()` = deltaTime (seconds)  
 - `TOOLKIT.SceneManager.GetComponent()` = get components
-- `TOOLKIT.SceneManager.GetLastCreatedScene()` = last scene
+- `BABYLON.EngineStore.LastCreatedScene` = last scene (SceneManager has no GetLastCreatedScene)
 - `TOOLKIT.SceneManager.PauseRenderLoop` = pause game
 - `TOOLKIT.SceneManager.WaitForSeconds` = yield wait for seconds
 - Input: use `IC` = alias for `TOOLKIT.InputController`  
@@ -184,8 +184,8 @@ character.rotate(x,y,z,w);
 character.set(x,y,z);
 
 // Static Scene Manager
-let engine:BABYLON.AbstractEngine = TOOLKIT.SceneManager.GetLastCreatedEngine();
-let scene = TOOLKIT.SceneManager.GetLastCreatedScene();
+let engine:BABYLON.AbstractEngine = BABYLON.EngineStore.LastCreatedEngine;
+let scene = BABYLON.EngineStore.LastCreatedScene;
 let script = TOOLKIT.SceneManager.GetComponent(transform, classname);
 let tranform = TOOLKIT.SceneManager.InstantiatePrefabFromContainer(container, prefabname, newprefabname);
 let instance = TOOLKIT.SceneManager.SearchForScriptComponentByName(scene, classname);

@@ -6,6 +6,15 @@
 
 ---
 
+## Import
+
+```typescript
+import * as TOOLKIT from "@babylonjs-toolkit/next";
+// named imports are equivalent: import { CustomShaderMaterial, SceneManager } from "@babylonjs-toolkit/next";
+```
+
+---
+
 ## Class Declaration
 
 ```typescript
@@ -21,7 +30,7 @@ class CustomShaderMaterial extends BABYLON.PBRMaterial {
 
 ```typescript
 // From a mesh
-const mesh = TOOLKIT.SceneManager.FindTransformNode(scene, "Character") as BABYLON.AbstractMesh;
+const mesh = TOOLKIT.SceneManager.GetAbstractMesh(scene, "Character");
 const mat  = mesh.material as TOOLKIT.CustomShaderMaterial;
 
 // Or from metadata
@@ -108,13 +117,10 @@ mat.setBoolValue("_IsHit", true);
 
 ## Lighting Split (Advanced)
 
-Decouples diffuse and specular contributions into separate render targets.
+Adjusts the diffuse and specular IBL (image-based lighting) contribution factors independently.
 
 ```typescript
-mat.splitLighting(
-    diffuseRenderTarget: BABYLON.RenderTargetTexture,
-    specularRenderTarget: BABYLON.RenderTargetTexture
-): void
+mat.splitLighting(diffuseIbl: number, specularIbl: number): void
 ```
 
 ---
@@ -137,10 +143,10 @@ When Unity exports a material reference in a script property, it arrives as `IUn
 ```typescript
 interface IUnityMaterial {
     type: string;       // "Material"
+    id: string;         // Unity asset id
     name: string;       // material asset name (use with scene.getMaterialByName)
-    filename: string;   // original Unity asset path
-    embedded: boolean;  // true if embedded in glTF, false if external
-    // ... additional metadata fields
+    shader: string;     // Unity shader name
+    gltf: number;       // glTF material index
 }
 ```
 
@@ -154,9 +160,12 @@ When Unity exports a texture reference, it arrives as `IUnityTexture`:
 interface IUnityTexture {
     type: string;       // "Texture2D" | "RenderTexture" | etc.
     name: string;
+    width: number;
+    height: number;
     filename: string;
-    embedded: boolean;
-    // texture settings: wrapU, wrapV, filterMode, anisoLevel, etc.
+    wrapmode: string;
+    filtermode: string;
+    anisolevel: number;
 }
 ```
 

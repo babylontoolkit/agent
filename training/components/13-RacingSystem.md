@@ -5,6 +5,17 @@
 
 ---
 
+## Import
+
+```typescript
+import * as TOOLKIT from "@babylonjs-toolkit/next";
+import { StandardCarController, VehicleInputController, VehicleCameraManager, RaceTrackManager, CheckpointManager, SkidMarkManager, RemoteCarController } from "@babylonjs-toolkit/next/project";
+// PROJECT racing classes are ONLY available from "@babylonjs-toolkit/next/project" — they are NOT exported from the root import.
+// There is NO "@babylonjs-toolkit/next/racing/..." subpath — it does not exist and importing it crashes.
+```
+
+---
+
 ## Table of Contents
 
 1. [System Architecture Overview](#1-system-architecture-overview)
@@ -164,10 +175,7 @@ The core vehicle simulation component. Uses Bullet Physics raycast vehicle (`TOO
 
 | Property | Type | Default | Description |
 |---|---|---|---|
-| `gearBoxMinPower` | `number` | `800` | Min RPM (idle) |
-| `gearBoxMaxPower` | `number` | `8000` | Redline RPM |
-| `gearBoxDifferential` | `number` | `3.73` | Final drive differential ratio |
-| `gearBoxOverdrive` | `number` | `0.82` | Overdrive gear ratio multiplier |
+| `gearBoxMultiplier` | `number` | `1.0` | Gearbox force multiplier |
 | `gearBoxShiftDelay` | `number` | `0.5` | Seconds between possible gear shifts |
 | `gearBoxPitchScale` | `number` | `1.0` | Engine audio pitch scaling multiplier |
 | `gearBoxShiftRatios` | `number[]` | `[4.20, 2.64, 1.78, 1.31, 1.00, 0.82]` | Per-gear ratios (6-speed default) |
@@ -205,9 +213,9 @@ The core vehicle simulation component. Uses Bullet Physics raycast vehicle (`TOO
 
 | Property | Type | Default | Description |
 |---|---|---|---|
-| `maxSteeringAngle` | `number` | `65.0` | Maximum wheel steer angle in degrees |
-| `maxSteeringSpeed` | `number` | `15.0` | Max steering input slew rate |
 | `steeringInputCurve` | `number` | `1.8` | Input exponent (1.0=linear, 1.8=expo arcade) |
+| `skidSteeringKick` | `number` | — | Steering kick applied during skid |
+| `skidSteeringAngle` | `number` | — | Steering angle used during skid |
 | `lowSpeedSteering` | `number` | `0.1` | Understeer factor at low speed |
 | `highSpeedSteering` | `number` | `1.0` | Understeer factor at high speed |
 | `skidTurningAssist` | `number` | `2.0` | Counter-steer assist during skid |
@@ -580,7 +588,7 @@ Renders a secondary picture-in-picture viewport in the top-right corner. The cam
 
 ### Configuration
 
-Viewport is hardcoded to `new BABYLON.Viewport(0.75, 0.75, 0.25, 0.25)`. Override `enableWindowView()` in a subclass to customize.
+Viewport is hardcoded to `new BABYLON.Viewport(0.75, 0.75, 0.25, 0.25)`. The internal `enableWindowView()` is **private** — to customize the viewport, adjust the camera's `viewport` on `scene.activeCameras` after the component is ready.
 
 ---
 
@@ -741,18 +749,21 @@ static RegisterPlayer(id: number, name: string): void
 static UpdateLeaderboard(id: number, lap: number, checkpoint: number, position: BABYLON.Vector3): void
 // Update a player's race standing. Called every frame by CheckpointManager.
 
-static SortLeaderboardPositionList(): void
-// Re-rank all players. Called in after() every frame.
+static GetLeaderboardPosition(id: number): number
+// Get a player's current race position (1st, 2nd, ...).
+
+static GetLeaderboardPositionList(): PROJECT.PlayerRaceStats[]
+// Get the ranked leaderboard entries.
 ```
 
 ### Event Bus Usage
 
 ```typescript
-// Listen for race end event
+// Post the race end event
 PROJECT.RaceTrackManager.EventBus.PostMessage("GameOver");
 
 // Subscribe
-PROJECT.RaceTrackManager.EventBus.AddMessageListener("GameOver", () => {
+PROJECT.RaceTrackManager.EventBus.OnMessage("GameOver", () => {
     console.log("Race over! Show results screen.");
 });
 ```
@@ -860,6 +871,10 @@ The remote car reads these from the network entity buffer:
 **Namespace:** `PROJECT`  
 **Extends:** `TOOLKIT.ScriptComponent`  
 **File:** `Assets/[Racing]/Scripts/NetworkCarPrediction.ts`
+
+> ⚠️ **Script-bundle only:** `NetworkCarPrediction` (like `BABYLON.NetworkManager` it depends on)
+> ships in the starter script bundle — it is **not** in the `@babylonjs-toolkit/next` npm package
+> and cannot be imported from `"@babylonjs-toolkit/next/project"`.
 
 Registers a custom interpolation handler with `BABYLON.NetworkManager` for vehicle client-side prediction. The actual prediction algorithm is a stub for custom implementation.
 
@@ -1162,7 +1177,7 @@ namespace PROJECT {
 
 ```typescript
 // In your HUD script:
-const stats: PROJECT.PlayerRaceStats[] = PROJECT.RaceTrackManager.GetLeaderboard();
+const stats: PROJECT.PlayerRaceStats[] = PROJECT.RaceTrackManager.GetLeaderboardPositionList();
 stats.forEach((s, i) => {
     console.log(`P${i+1}: ${s.name} — Position ${s.position}`);
 });
@@ -1171,7 +1186,7 @@ stats.forEach((s, i) => {
 ### Listening for Race Over
 
 ```typescript
-PROJECT.RaceTrackManager.EventBus.AddMessageListener("GameOver", () => {
+PROJECT.RaceTrackManager.EventBus.OnMessage("GameOver", () => {
     const winner: BABYLON.TransformNode = PROJECT.RaceTrackManager.WinnerTransform;
     console.log("Race won by: " + winner.name);
     // Show finish screen

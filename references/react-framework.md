@@ -6,7 +6,7 @@ This `agentic react framework submodule` allows easy intergration of the interac
 
 * Always reference the `Babylon Toolkit React Training Reference` at https://raw.githubusercontent.com/babylontoolkit/agent/main/training/react/README.md for details regarding the agentic react game builder system.
 
-* Always use the `src/srcipts` folder as the root folder for creating new scripts, unless otherwise instructed. Use whatever script sub folder layout you see fit to best organize script file locations, unless otherwise instructed.
+* Always use the `src/scripts` folder as the root folder for creating new scripts, unless otherwise instructed. Use whatever script sub folder layout you see fit to best organize script file locations, unless otherwise instructed.
 
 * Important: Always use the default ES6 versions of BabylonJS, Babylon Toolkit, Babylon Toolkit React Framework and Babylon Toolkit Starter Projects, unless otherwise instructed to use the UMD versions.
 
@@ -233,7 +233,7 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { DefaultBabylonPreloader, babylonLogo } from './chrome/loading';
 import { useUnifiedNavigation } from "./babylon/system/platform";
-import { ReactRouterNavAdapter } from './routing/adpter';
+import { ReactRouterNavAdapter } from './routing/adapter';
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import heroImg from './assets/hero.png'
@@ -414,7 +414,7 @@ export default App
 
 ## React Router Navigation Adapter
 
-src/rounting/router.tsx
+src/routing/router.tsx
 ```
 'use client';
 
@@ -431,7 +431,7 @@ export default function PlayRoute() {
 }
 ```
 
-src/rounting/adapter.tsx
+src/routing/adapter.tsx
 ```
 'use client';
 

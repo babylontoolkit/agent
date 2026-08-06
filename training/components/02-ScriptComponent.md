@@ -7,6 +7,15 @@
 
 ---
 
+## Import
+
+```typescript
+import * as TOOLKIT from "@babylonjs-toolkit/next";
+// named imports are equivalent: import { ScriptComponent, SceneManager, SearchType } from "@babylonjs-toolkit/next";
+```
+
+---
+
 ## Class Declaration Pattern
 
 ```typescript
@@ -129,7 +138,7 @@ protected awake(): void {
     // Unity: public Transform spawnPoint;  → IUnityTransform
     const spawnData = this.getProperty<TOOLKIT.IUnityTransform>("spawnPoint");
     if (spawnData != null) {
-        const spawnNode = TOOLKIT.SceneManager.FindTransformNode(this.scene, spawnData.name);
+        const spawnNode = TOOLKIT.SceneManager.GetTransformNode(this.scene, spawnData.name);
     }
 
     // Unity: public AudioClip gunshot;  → IUnityAudioClip

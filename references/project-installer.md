@@ -179,13 +179,11 @@ import HavokPhysics from "@babylonjs/havok";
 import { SceneManager } from "@babylonjs-toolkit/next/scenemanager";
 import { ScriptComponent } from "@babylonjs-toolkit/next/scenemanager";
 import { LocalMessageBus } from "@babylonjs-toolkit/next/localmessagebus";
-import { CharacterController } from "@babylonjs-toolkit/next/charactercontroller";
+import { CharacterController } from "@babylonjs-toolkit/next/scenemanager";
 ```
 * Starter Content Import Libraries
 ```javascript
-import { DefaultCameraSystem } from "@babylonjs-toolkit/next/starter/DefaultCameraSystem";
-import { DebugInformation } from "@babylonjs-toolkit/next/starter/DebugInformation";
-import { StandardCarController } from "@babylonjs-toolkit/next/racing/StandardCarController";
+import { DefaultCameraSystem, DebugInformation, StandardCarController } from "@babylonjs-toolkit/next/project";
 ```
 
 * Legacy Global Namespace Import Libraries

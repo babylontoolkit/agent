@@ -110,7 +110,7 @@ export { babylonLogo, spinnerImage };
 **When it appears:**
 - Immediately after the Babylon engine is created (replaces the preloader)
 - Covers the canvas at `z-index 9999` for the full duration of asset loading
-- Auto-hidden by `TOOLKIT.SceneManager.HideSplashScreen()` after `hideSplashScreenDelayMs` (default 3000ms) once `createScene()` completes
+- Auto-hidden by `TOOLKIT.SceneManager.HideSplashScreen()` after `scenePrewarmDurationMs` (default 2500ms) once `createScene()` completes
 
 **Progress message flow:**
 ```
@@ -172,7 +172,7 @@ export default SplashScreen;
 ```typescript
 constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties: any = {}) {
   super(transform, scene, properties);
-  this.hideSplashScreenDelayMs = 2000; // ms after createScene() completes
+  this.scenePrewarmDurationMs = 2000; // ms after createScene() completes
 }
 ```
 

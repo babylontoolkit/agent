@@ -12,8 +12,10 @@
 
 - **Node ESM TypeScript**:
 	- Use import { Engine, Scene } from '@babylonjs/core'
-	- Use import { SceneManager, ScriptComponent } from '@babylonjs-toolkit/next'
-	- No triple-slash or decorators or namespaces
+	- Use import { SceneManager, ScriptComponent, InputController } from '@babylonjs-toolkit/next'
+	- Or use import * as TOOLKIT from '@babylonjs-toolkit/next' — this is proper ESM and the canonical way to write the `TOOLKIT.*` style used throughout the training docs; named imports from the root are equivalent
+	- Pro/starter/racing classes (DefaultCameraSystem, DebugInformation, StandardCarController, ThirdPersonPlayerController, etc.) are imported from '@babylonjs-toolkit/next/project' (they are NOT in the root package)
+	- No triple-slash or decorators or namespaces ("no namespaces" means no UMD/script-tag globals and no TypeScript `namespace` blocks — ESM namespace imports like `import * as TOOLKIT` are fine)
 - **Exported classes**:
   - If the original C# `class` extends `MonoBehaviour` or `EditorScriptComponent`, extend `ScriptComponent`
   - Remove **ANY** and **ALL** namespaces
@@ -102,7 +104,7 @@
 - `this.transform` = transform node / game object
 - `this.getDeltaTime()` = deltaTime (seconds)  
 - `SceneManager.GetComponent()` = get components
-- `SceneManager.GetLastCreatedScene()` = last scene
+- `EngineStore.LastCreatedScene` = last scene (from `@babylonjs/core` — SceneManager has no GetLastCreatedScene)
 - `SceneManager.PauseRenderLoop` = pause game
 - `SceneManager.WaitForSeconds` = yield wait for seconds
 - Input: use `IC` = alias for `InputController`  
@@ -179,8 +181,8 @@ character.rotate(x,y,z,w);
 character.set(x,y,z);
 
 // Static Scene Manager
-let engine:AbstractEngine = SceneManager.GetLastCreatedEngine();
-let scene = SceneManager.GetLastCreatedScene();
+let engine:AbstractEngine = EngineStore.LastCreatedEngine;   // import { EngineStore } from '@babylonjs/core'
+let scene = EngineStore.LastCreatedScene;
 let script = SceneManager.GetComponent(transform, classname);
 let tranform = SceneManager.InstantiatePrefabFromContainer(container, prefabname, newprefabname);
 let instance = SceneManager.SearchForScriptComponentByName(scene, classname);

@@ -6,6 +6,15 @@
 
 ---
 
+## Import
+
+```typescript
+import * as TOOLKIT from "@babylonjs-toolkit/next";
+// named imports are equivalent: import { AnimationState, ScriptComponent, SceneManager } from "@babylonjs-toolkit/next";
+```
+
+---
+
 ## Quick-Start Lookup
 
 ```typescript
@@ -199,10 +208,10 @@ anim.onAnimationIKObservable.add((layerIndex: number) => {
 **Animation events (Unity-style):**
 ```typescript
 anim.onAnimationEventObservable.add((evt: TOOLKIT.IAnimatorEvent) => {
-    // evt.name — string function name set in Unity Animation Event
+    // evt.function — string function name set in Unity Animation Event
     // evt.time — float (normalized clip time)
-    if (evt.name === "FootstepLeft") { playFootstep("left"); }
-    if (evt.name === "SpawnProjectile") { spawnBullet(); }
+    if (evt.function === "FootstepLeft") { playFootstep("left"); }
+    if (evt.function === "SpawnProjectile") { spawnBullet(); }
 });
 ```
 
@@ -296,7 +305,7 @@ namespace TOOLKIT {
 
             // Listen for animation events
             this.anim?.onAnimationEventObservable.add((evt) => {
-                if (evt.name === "AttackHit") this.dealMeleeDamage();
+                if (evt.function === "AttackHit") this.dealMeleeDamage();
             });
         }
 

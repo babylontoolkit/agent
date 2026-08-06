@@ -4,36 +4,54 @@
 
 ---
 
-## Core Enums
-
-### `System` (Constants Object)
+## Import
 
 ```typescript
-namespace TOOLKIT {
-    const System = {
-        // Math
-        Deg2Rad: 0.017453292519943295,   // Math.PI / 180
-        Rad2Deg: 57.29577951308232,      // 180 / Math.PI
-        
-        // Common layer constants
-        AllLayerMask:     0xFFFFFFFF,
-        DefaultLayerMask: 0x0FFFFFFF,
-        HiddenLayerMask:  0x10000000,
+import * as TOOLKIT from "@babylonjs-toolkit/next";
+// named imports are equivalent: import { SearchType, PlayerNumber, UserInputKey, CollisionFilters } from "@babylonjs-toolkit/next";
+```
 
-        // Named layer bits (Unity layer numbers)
-        DefaultLayer:     0x00000001,  // layer 0
-        TransparentFXLayer: 0x00000002, // layer 1
-        IgnoreRaycastLayer: 0x00000004, // layer 2
-        WaterLayer:       0x00000010,  // layer 4
-        UILayer:          0x00000020,  // layer 5
+---
 
-        // Physics
-        DefaultGravity:   -9.81,
-        MeterToUnit:      1.0,
-        UnitToMeter:      1.0,
-    };
+## Core Enums
+
+### `System` (Constants Enum)
+
+```typescript
+enum System {
+    // Math
+    Deg2Rad,                        // Math.PI / 180
+    Rad2Deg,                        // 180 / Math.PI
+    Epsilon = 0.000001,
+    SingleEpsilon = 1.401298e-45,
+    EpsilonNormalSqrt = 1e-15,
+
+    // Unit conversion
+    Kph2Mph = 0.621371,
+    Mph2Kph = 1.60934,
+    Mps2Kph = 3.6,
+    Mps2Mph = 2.23694,
+    Meter2Inch = 39.3701,
+    Inch2Meter = 0.0254,
+
+    // Physics
+    Gravity = 9.81,
+    Gravity3G = 29.4,
+    SkidFactor = 0.25,
+    WalkingVelocity = 4.4,          // 4 km/h
+    TerminalVelocity = 55,
+
+    // Misc
+    MaxInteger = 2147483647,
+    SmoothDeltaFactor = 0.2,
+    ToLinearSpace = 2.2,
+    ToGammaSpace = 0.45454545454545453,
 }
 ```
+
+> Layer-mask constants live on `TOOLKIT.SceneManager`, not `System`:
+> `SceneManager.AllLayerMask`, `SceneManager.DefaultLayerMask`, `SceneManager.HiddenLayerMask`,
+> plus `SceneManager.GetLayerMask(layer)` / `SceneManager.IsLayerMasked(mask, layer)`.
 
 ---
 
@@ -44,7 +62,7 @@ enum SearchType {
     ExactMatch    = 0,   // transform.name === query
     StartsWith    = 1,   // transform.name.startsWith(query)
     EndsWith      = 2,   // transform.name.endsWith(query)
-    Contains      = 3,   // transform.name.includes(query)
+    IndexOf       = 3,   // transform.name.includes(query)
 }
 ```
 
@@ -56,6 +74,7 @@ Used in all `FindChildTransformNode`, `getChildNode` calls.
 
 ```typescript
 enum PlayerNumber {
+    Auto  = 0,
     One   = 1,
     Two   = 2,
     Three = 3,
@@ -69,16 +88,8 @@ enum PlayerNumber {
 
 ```typescript
 enum PlayerControl {
-    FirstPersonCamera  = 0,
-    ThirdPersonCamera  = 1,
-    UniversalCamera    = 2,
-    FollowCamera       = 3,
-    ArcRotateCamera    = 4,
-    VirtualJoystick    = 5,
-    FreeCameraDevice   = 6,
-    GamepadTeleporter  = 7,
-    CustomController   = 8,
-    NavigationMesh     = 9,
+    FirstPerson = 0,
+    ThirdPerson = 1
 }
 ```
 
@@ -102,11 +113,11 @@ Used with `TOOLKIT.SceneManager.SetRenderQuality(q)`.
 
 ```typescript
 enum GamepadType {
-    None      = -1,
-    Generic   = 0,
-    Xbox360   = 1,
-    DualShock = 2,
-    Switch    = 4
+    None           = -1,
+    Generic        = 0,
+    Xbox360        = 1,
+    DualShock      = 2,
+    PoseController = 3
 }
 ```
 
@@ -120,17 +131,15 @@ enum UserInputAxis {
     Vertical     = 1,   // WASD / left stick Y
     ClientX      = 2,   // mouse absolute X
     ClientY      = 3,   // mouse absolute Y
-    MouseX       = 4,   // mouse delta X
-    MouseY       = 5,   // mouse delta Y
+    MouseX       = 4,   // mouse delta X (also right stick X)
+    MouseY       = 5,   // mouse delta Y (also right stick Y)
     Wheel        = 6,   // scroll wheel
-    RightStickX  = 7,
-    RightStickY  = 8,
-    DPadX        = 9,
-    DPadY        = 10,
-    LeftTrigger  = 11,
-    RightTrigger = 12,
 }
 ```
+
+> ⚠️ These 7 members are the whole enum — there are no right-stick, D-pad, or trigger axes.
+> Triggers: `InputController.GetGamepadTriggerInput(trigger, player)`. D-pad:
+> `InputController.GetGamepadDirectionInput(direction, player)`.
 
 ---
 
@@ -141,11 +150,11 @@ Selected important values:
 ```typescript
 enum UserInputKey {
     BackSpace = 8,   Tab = 9,    Enter = 13,  Shift = 16,
-    Ctrl = 17,       Alt = 18,   Escape = 27, Space = 32,
+    Ctrl = 17,       Alt = 18,   Escape = 27, SpaceBar = 32,
     LeftArrow = 37,  UpArrow = 38, RightArrow = 39, DownArrow = 40,
-    Delete = 46,
-    Alpha0 = 48, Alpha1 = 49, Alpha2 = 50, Alpha3 = 51, Alpha4 = 52,
-    Alpha5 = 53, Alpha6 = 54, Alpha7 = 55, Alpha8 = 56, Alpha9 = 57,
+    Insert = 45,     Delete = 46,
+    Num0 = 48, Num1 = 49, Num2 = 50, Num3 = 51, Num4 = 52,
+    Num5 = 53, Num6 = 54, Num7 = 55, Num8 = 56, Num9 = 57,
     A = 65, B = 66, C = 67, D = 68, E = 69, F = 70,
     G = 71, H = 72, I = 73, J = 74, K = 75, L = 76,
     M = 77, N = 78, O = 79, P = 80, Q = 81, R = 82,
@@ -157,10 +166,13 @@ enum UserInputKey {
     Numpad0 = 96, Numpad1 = 97, Numpad2 = 98, Numpad3 = 99,
     Numpad4 = 100, Numpad5 = 101, Numpad6 = 102, Numpad7 = 103,
     Numpad8 = 104, Numpad9 = 105,
-    NumpadMultiply = 106, NumpadAdd = 107, NumpadSubtract = 109,
-    NumpadDecimal = 110,  NumpadDivide = 111,
+    Multiply = 106, Add = 107, Subtract = 109,
+    DecimalPoint = 110, Divide = 111,
 }
 ```
+
+> ⚠️ The space key is **`SpaceBar`** (not `Space`), digits are **`Num0`–`Num9`** (not `Alpha0`–`Alpha9`),
+> and the numpad operators are **`Multiply`/`Add`/`Subtract`/`DecimalPoint`/`Divide`** (no `Numpad` prefix).
 
 ---
 
@@ -186,14 +198,15 @@ Used with `setCollisionFilters(group, mask)`.
 
 ```typescript
 enum CollisionState {
-    Active          = 0,   // normal dynamic simulation
-    Inactive        = 1,   // frozen / sleeping
-    ActiveVelocity  = 2,   // kinematic, driven by velocity
-    ActiveTransform = 3    // kinematic, driven by transform
+    ACTIVE_TAG           = 1,   // normal active dynamic body
+    ISLAND_SLEEPING      = 2,   // sleeping / deactivated
+    WANTS_DEACTIVATION   = 3,   // pending deactivation
+    DISABLE_DEACTIVATION = 4,   // never deactivate
+    DISABLE_SIMULATION   = 5    // simulation disabled
 }
 ```
 
-Used with `setCollisionState(state)`.
+Bullet-style activation states for physics bodies.
 
 ---
 
@@ -201,9 +214,17 @@ Used with `setCollisionState(state)`.
 
 ```typescript
 enum CollisionFlags {
-    Static    = 0,
-    Kinematic = 1,
-    Dynamic   = 2
+    CF_STATIC_OBJECT                    = 1,
+    CF_KINEMATIC_OBJECT                 = 2,
+    CF_NO_CONTACT_RESPONSE              = 4,
+    CF_CUSTOM_MATERIAL_CALLBACK         = 8,
+    CF_CHARACTER_OBJECT                 = 16,
+    CF_DISABLE_VISUALIZE_OBJECT         = 32,
+    CF_DISABLE_SPU_COLLISION_PROCESSING = 64,
+    CF_HAS_CONTACT_STIFFNESS_DAMPING    = 128,
+    CF_HAS_CUSTOM_DEBUG_RENDERING_COLOR = 256,
+    CF_HAS_FRICTION_ANCHOR              = 512,
+    CF_HAS_COLLISION_SOUND_TRIGGER      = 1024
 }
 ```
 
@@ -246,7 +267,7 @@ interface IRuntimeOptions {
 
 ```typescript
 interface IAssetPreloader {
-    addSceneAssets(manager: BABYLON.AssetsManager): void;
+    addPreloaderTasks(assetsManager: TOOLKIT.PreloadAssetsManager): void;
 }
 ```
 
@@ -263,8 +284,9 @@ These interfaces describe how Unity component references are serialized into scr
 ```typescript
 interface IUnityTransform {
     type: string;        // "Transform"
-    name: string;        // Unity GameObject name (use FindTransformNode to look up)
+    id: string;          // Unity object id
     tag: string;         // Unity tag
+    name: string;        // Unity GameObject name (use GetTransformNode to look up)
     layer: number;       // Unity layer number
 }
 ```
@@ -272,7 +294,7 @@ interface IUnityTransform {
 **Usage:**
 ```typescript
 const spawnData = this.getProperty<TOOLKIT.IUnityTransform>("spawnPoint");
-const spawnNode = TOOLKIT.SceneManager.FindTransformNode(this.scene, spawnData.name);
+const spawnNode = TOOLKIT.SceneManager.GetTransformNode(this.scene, spawnData.name);
 ```
 
 ---
@@ -281,25 +303,17 @@ const spawnNode = TOOLKIT.SceneManager.FindTransformNode(this.scene, spawnData.n
 
 ```typescript
 interface IUnityCurve {
-    type: string;        // "AnimationCurve"
-    length: number;      // number of keyframes
-    preWrapMode: number;
-    postWrapMode: number;
-    keys: Array<{
-        time: number;
-        value: number;
-        inTangent: number;
-        outTangent: number;
-    }>;
+    type: string;         // "AnimationCurve"
+    length: number;       // number of keyframes
+    prewrapmode: string;
+    postwrapmode: string;
+    animation: any;       // serialized animation curve data
 }
 ```
 
-**Evaluating a curve:**
-```typescript
-const curve = this.getProperty<TOOLKIT.IUnityCurve>("damageCurve");
-// Evaluate at normalized time t
-const value = TOOLKIT.SceneManager.EvaluateCurve(curve, t);
-```
+> ⚠️ There is no `SceneManager.EvaluateCurve` helper. The keyframe data arrives in the
+> `animation` field; parsed `BABYLON.Animation` objects can be sampled with
+> `TOOLKIT.Utilities.SampleAnimationFloat(animation, time)`.
 
 ---
 
@@ -308,10 +322,10 @@ const value = TOOLKIT.SceneManager.EvaluateCurve(curve, t);
 ```typescript
 interface IUnityMaterial {
     type: string;        // "Material"
+    id: string;          // Unity asset id
     name: string;        // material name in Babylon.js scene
-    filename: string;    // Unity asset path
-    embedded: boolean;   // embedded in glTF buffer
     shader: string;      // Unity shader name
+    gltf: number;        // glTF material index
 }
 ```
 
@@ -327,16 +341,14 @@ const mat = this.scene.getMaterialByName(matData.name) as TOOLKIT.CustomShaderMa
 
 ```typescript
 interface IUnityTexture {
-    type: string;        // "Texture2D" | "RenderTexture" | "Cubemap"
+    type: string;        // "Texture2D" | "RenderTexture" | etc.
     name: string;
-    filename: string;
-    embedded: boolean;
-    wrapU: number;       // 0=Repeat, 1=Clamp, 2=Mirror
-    wrapV: number;
-    filterMode: number;  // 0=Point, 1=Bilinear, 2=Trilinear
-    anisoLevel: number;
     width: number;
     height: number;
+    filename: string;
+    wrapmode: string;
+    filtermode: string;
+    anisolevel: number;
 }
 ```
 
@@ -374,11 +386,11 @@ interface IUnityVideoClip {
     type: string;        // "VideoClip"
     name: string;
     filename: string;    // video file URL
+    length: number;      // duration in seconds
     width: number;
     height: number;
-    frameRate: number;
-    length: number;      // duration in seconds
-    frameCount: number;
+    framerate: number;
+    framecount: number;
 }
 ```
 
@@ -417,9 +429,9 @@ const babylonColor = new BABYLON.Color4(colorData.r, colorData.g, colorData.b, c
 
 ```typescript
 interface IWindowMessage {
-    source: string;    // sender identifier
-    message: string;   // event name / type
-    payload?: any;     // arbitrary data
+    source: string;        // sender identifier
+    command: string;       // command name / type
+    [key: string]: any;    // arbitrary additional data fields
 }
 ```
 
@@ -465,11 +477,11 @@ interface NodeMetadata {
 
 ```typescript
 class GlobalMessageBus {
-    OnMessage(event: string, handler: (payload: any) => void): void
-    OffMessage(event: string, handler: (payload: any) => void): void
-    PostMessage(event: string, payload?: any): void
-    ClearMessage(event: string): void
-    ClearAllMessages(): void
+    OnMessage<T>(message: string, handler: (data: T) => void): void
+    PostMessage(message: string, data?: any, target?: string, transfer?: Transferable[]): void
+    RemoveHandler(message: string, handler: (data: any) => void): void
+    ResetHandlers(): void
+    Dispose(): void
 }
 ```
 
@@ -490,7 +502,7 @@ TOOLKIT.SceneManager.EventBus.PostMessage("player:died", {
 const handler = (data) => { /* ... */ };
 TOOLKIT.SceneManager.EventBus.OnMessage("item:collected", handler);
 // ... later:
-TOOLKIT.SceneManager.EventBus.OffMessage("item:collected", handler);
+TOOLKIT.SceneManager.EventBus.RemoveHandler("item:collected", handler);
 ```
 
 ---
@@ -501,10 +513,14 @@ Returned by `AnimationState.onAnimationEventObservable`:
 
 ```typescript
 interface IAnimatorEvent {
-    name: string;        // function name set in Unity Animation Event
-    time: number;        // float parameter
-    intParameter?: number;
-    stringParameter?: string;
-    objectParameter?: any;  // Unity Object reference
+    id: number;                  // event id
+    clip: string;                // animation clip name
+    time: number;                // event time within the clip
+    function: string;            // function name set in Unity Animation Event
+    intParameter: number;
+    floatParameter: number;
+    stringParameter: string;
+    objectIdParameter: string;   // Unity Object reference id
+    objectNameParameter: string; // Unity Object reference name
 }
 ```

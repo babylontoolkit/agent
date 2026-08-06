@@ -120,8 +120,9 @@ The `custom` folder allows easy customization of the `preloader`, `splash` and t
 export class MyGameMode extends TOOLKIT.SceneController {
     constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties: any = {}, alias: string = "MyGameMode") {
         super(transform, scene, properties, alias);
-        // Optional: override splash hide delay in milliseconds
-        this.hideSplashScreenDelayMs = 3000;
+        // Optional: override the scene prewarm duration (splash hide delay) in milliseconds
+        // (this property was formerly named hideSplashScreenDelayMs — that name no longer exists)
+        this.scenePrewarmDurationMs = 3000;
     }
 
     // ── Initialization ────────────────────────────────────────────────────────
@@ -192,7 +193,7 @@ Framework flow:
 3. SceneController instantiated + attached (BEFORE scene load)
 4. If sceneUrl provided: BABYLON.ImportMeshAsync() loads the GLTF
 5. ► gameMode.createScene(auxiliaryData) called  ◄  ← YOUR CODE HERE
-6. Splash screen hidden (after hideSplashScreenDelayMs)
+6. Splash screen hidden (after scenePrewarmDurationMs)
 ```
 
 ### Accessing Scene and Helpers
@@ -789,7 +790,7 @@ Scene starts loading
     ├── createScene() called
     │     └── GameManager.PostProgressStatus("Loading Player ...") — custom messages
     │
-    └── TOOLKIT.SceneManager.HideSplashScreen() — after hideSplashScreenDelayMs
+    └── TOOLKIT.SceneManager.HideSplashScreen() — after scenePrewarmDurationMs
 ```
 
 ### Customizing Loading Messages
@@ -803,7 +804,7 @@ protected async createScene(data?: any): Promise<void> {
     await loadStep2();
 
     GameManager.PostProgressStatus("Starting game ...");
-    // Splash hides automatically after hideSplashScreenDelayMs (default 3000ms)
+    // Splash hides automatically after scenePrewarmDurationMs (default 3000ms)
 }
 ```
 
@@ -812,7 +813,7 @@ protected async createScene(data?: any): Promise<void> {
 ```typescript
 constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties: any = {}) {
     super(transform, scene, properties);
-    this.hideSplashScreenDelayMs = 1500; // Shorten or lengthen the splash display
+    this.scenePrewarmDurationMs = 1500; // Shorten or lengthen the splash display
 }
 ```
 
@@ -1398,7 +1399,7 @@ awake → start → ready
 ✅ Import  in globals.ts → await import("./classes/MyGameMode")
 ✅ Navigate with  gameMode: "MyGameMode"  in state
 ✅ Optional: add HUD events to CustomOverlay
-✅ Optional: set this.hideSplashScreenDelayMs in constructor
+✅ Optional: set this.scenePrewarmDurationMs in constructor
 ```
 
 ### Blank Scene Template
@@ -1410,7 +1411,7 @@ export class MyGameMode extends TOOLKIT.SceneController {
 
     constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties: any = {}) {
         super(transform, scene, properties);
-        this.hideSplashScreenDelayMs = 2000;
+        this.scenePrewarmDurationMs = 2000;
     }
 
     protected async createScene(data?: any): Promise<void> {

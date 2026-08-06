@@ -6,6 +6,15 @@
 
 ---
 
+## Import
+
+```typescript
+import * as TOOLKIT from "@babylonjs-toolkit/next";
+// named imports are equivalent: import { CharacterController, InputController, UserInputAxis, UserInputKey } from "@babylonjs-toolkit/next";
+```
+
+---
+
 ## Quick-Start Pattern
 
 ```typescript
@@ -122,12 +131,12 @@ cc.getGroundContactInfo(): any   // raw ground contact data from Havok
 
 ```typescript
 cc.setRigidBodyMass(mass: number): void
-cc.setCollisionState(state: TOOLKIT.CollisionState): void
-// Sets Havok collision state: Active, Inactive, ActiveVelocity etc.
+cc.setCollisionState(collision: boolean): void
+// Enables/disables collision response on the capsule body.
 
 cc.setCollisionFilters(
-    group: TOOLKIT.CollisionFilters,
-    mask: TOOLKIT.CollisionFilters
+    membershipMask: number,   // TOOLKIT.CollisionFilters bits
+    collideMask: number       // TOOLKIT.CollisionFilters bits
 ): void
 // Adjust which layers the capsule collides with at runtime.
 ```
@@ -137,14 +146,14 @@ cc.setCollisionFilters(
 ## Observables
 
 ```typescript
-cc.onUpdatePositionObservable  // Observable<BABYLON.Vector3> — fires each frame with world position
-cc.onUpdateVelocityObservable  // Observable<BABYLON.Vector3> — fires each frame with velocity
+cc.onUpdatePositionObservable  // Observable<BABYLON.TransformNode> — fires each frame after position update
+cc.onUpdateVelocityObservable  // Observable<BABYLON.TransformNode> — fires each frame after velocity update
 ```
 
 **Example — footstep audio trigger:**
 ```typescript
-let lastY = 0;
-cc.onUpdateVelocityObservable.add((vel) => {
+cc.onUpdateVelocityObservable.add((node) => {
+    const vel = cc.getInputVelocity();
     if (cc.isGrounded() && Math.abs(vel.x) + Math.abs(vel.z) > 0.5) {
         const stepDist = BABYLON.Vector2.Distance(
             new BABYLON.Vector2(vel.x, vel.z), BABYLON.Vector2.Zero()
@@ -186,14 +195,15 @@ enum CollisionFilters {
 
 ## CollisionState Enum
 
-Used with `setCollisionState`.
+Bullet/Havok-style activation states (informational — `cc.setCollisionState` takes a plain `boolean`).
 
 ```typescript
 enum CollisionState {
-    Active          = 0,    // normal simulation
-    Inactive        = 1,    // frozen
-    ActiveVelocity  = 2,    // kinematic with velocity
-    ActiveTransform = 3     // kinematic with transform
+    ACTIVE_TAG           = 1,
+    ISLAND_SLEEPING      = 2,
+    WANTS_DEACTIVATION   = 3,
+    DISABLE_DEACTIVATION = 4,
+    DISABLE_SIMULATION   = 5
 }
 ```
 

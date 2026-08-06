@@ -6,6 +6,15 @@
 
 ---
 
+## Import
+
+```typescript
+import * as TOOLKIT from "@babylonjs-toolkit/next";
+// named imports are equivalent: import { AudioSource, ScriptComponent, SceneManager } from "@babylonjs-toolkit/next";
+```
+
+---
+
 ## Quick-Start
 
 ```typescript
@@ -34,20 +43,20 @@ If `playonawake = true` in the Unity Inspector, the audio source begins playback
 ```typescript
 // Start playback
 play(
-    startTime?: number,    // seconds offset to begin at
-    audioOffset?: number,  // internal buffer offset
-    audioLength?: number   // play only a sub-range of the clip
-): void
+    time?: number,     // seconds offset to begin at
+    offset?: number,   // internal buffer offset
+    length?: number    // play only a sub-range of the clip
+): Promise<boolean>
 
 // Pause (resumes from same position)
-pause(): void
+pause(): boolean
 
 // Stop and reset position
-stop(stopTime?: number): void    // optional ramp-down time in seconds
+stop(time?: number): boolean    // optional ramp-down time in seconds
 
 // Mute / unmute (preserves volume setting)
-mute(muteTime?: number): void
-unmute(unmuteTime?: number): void
+mute(time?: number): boolean
+unmute(time?: number): boolean
 ```
 
 ---
@@ -55,12 +64,14 @@ unmute(unmuteTime?: number): void
 ## Volume / Pitch
 
 ```typescript
-setVolume(volume: number, rampTime?: number): void   // [0..1], optional fade
+setVolume(volume: number, time?: number): boolean   // [0..1], optional fade
 getVolume(): number
 
-// Pitch is set from metadata only (no runtime setter by default)
-// To change pitch at runtime, access the raw sound:
-audio.getSoundClip()  // BABYLON.Sound | BABYLON.StaticSound
+// Pitch and playback speed
+setPitch(value: number): void
+getPitch(): number
+setPlaybackSpeed(rate: number): void
+getPlaybackSpeed(): number
 ```
 
 ---
@@ -70,9 +81,10 @@ audio.getSoundClip()  // BABYLON.Sound | BABYLON.StaticSound
 ```typescript
 audio.isPlaying(): boolean
 audio.isPaused(): boolean
-audio.isMuted(): boolean
-audio.getSoundName(): string   // the audio clip asset name
-audio.getSoundClip(): BABYLON.Sound | BABYLON.StaticSound  // raw engine sound
+audio.isReady(): boolean
+audio.isLegacy(): boolean      // true when using the legacy v1 BABYLON.Sound engine
+audio.getSoundClip(): BABYLON.StaticSound | BABYLON.Sound  // raw engine sound
+audio.getSoundClip()?.name     // the audio clip asset name
 ```
 
 ---
@@ -80,7 +92,7 @@ audio.getSoundClip(): BABYLON.Sound | BABYLON.StaticSound  // raw engine sound
 ## Observable
 
 ```typescript
-audio.onReadyObservable  // Observable<BABYLON.TransformNode> — fires when audio buffer is decoded
+audio.onReadyObservable  // Observable<BABYLON.StaticSound | BABYLON.Sound> — fires when audio buffer is decoded
 ```
 
 ---
@@ -90,11 +102,14 @@ audio.onReadyObservable  // Observable<BABYLON.TransformNode> — fires when aud
 If Unity's `Spatial Blend` is set to 1 (full 3D), the sound automatically tracks the transform position. The rolloff curve from Unity is exported as a custom curve in metadata.
 
 ```typescript
-// Properties set from metadata (read only at runtime):
-audio.spatialBlend   // number [0..1] — 0 = 2D, 1 = 3D
-audio.minDistance    // number — full volume distance
-audio.maxDistance    // number — silence distance
-audio.rolloffMode    // "linear" | "logarithmic" | "custom"
+// Initial values come from Unity metadata; runtime overrides:
+audio.setSpatialBlend(blend: number): void    // [0..1] — 0 = 2D, 1 = 3D
+audio.setMinDistance(distance: number): void  // full volume distance
+audio.setMaxDistance(distance: number): void  // silence distance
+audio.setRolloffMode(mode: string): void      // "linear" | "logarithmic" | "custom"
+audio.hasSpatialSound(): boolean
+audio.getSpatialSound(): BABYLON.AbstractSpatialAudio
+audio.attachToSpatialNode(transform: BABYLON.TransformNode): void
 ```
 
 ---
@@ -136,8 +151,8 @@ namespace TOOLKIT {
 
         protected start(): void {
             const all: TOOLKIT.AudioSource[] = this.getComponents("TOOLKIT.AudioSource");
-            this.bgm       = all.find(a => a.getSoundName().includes("ambient")) ?? null;
-            this.combatBgm = all.find(a => a.getSoundName().includes("combat")) ?? null;
+            this.bgm       = all.find(a => a.getSoundClip()?.name.includes("ambient")) ?? null;
+            this.combatBgm = all.find(a => a.getSoundClip()?.name.includes("combat")) ?? null;
 
             this.bgm?.play();
 

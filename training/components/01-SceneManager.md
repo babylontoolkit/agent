@@ -6,11 +6,20 @@
 
 ---
 
+## Import
+
+```typescript
+import * as TOOLKIT from "@babylonjs-toolkit/next";
+// named imports are equivalent: import { SceneManager, SearchType } from "@babylonjs-toolkit/next";
+```
+
+---
+
 ## Static Properties
 
 ### Global Configuration
 ```typescript
-TOOLKIT.SceneManager.Version              // string — "9.9.1 - R1"
+TOOLKIT.SceneManager.Version              // string — "9.16.1 - R1"
 TOOLKIT.SceneManager.Copyright            // string
 TOOLKIT.SceneManager.GlobalOptions        // any    — freeform key/value config store
 TOOLKIT.SceneManager.WindowState          // any    — window-scoped key/value store
@@ -24,7 +33,6 @@ TOOLKIT.SceneManager.AutoLoadScriptBundles  // boolean
 TOOLKIT.SceneManager.AnimationTargetFps     // number — glTF animation FPS (default 60)
 TOOLKIT.SceneManager.AnimationStartMode    // number — 0 = NONE
 TOOLKIT.SceneManager.PhysicsCapsuleShape   // number — 0 = default Havok capsule
-TOOLKIT.SceneManager.SupportSRGBBuffers    // boolean
 ```
 
 ### Light Intensity Factors
@@ -162,13 +170,14 @@ static UpdateSplashScreenStatus(text: string): void
 
 ### Finding Nodes
 ```typescript
-// By name (exact or partial)
-static FindTransformNode(scene, name, searchType?: TOOLKIT.SearchType, recursive?: boolean): BABYLON.TransformNode
-static FindAllTransformNodes(scene, name, searchType?, recursive?): BABYLON.TransformNode[]
+// By name (exact) or hierarchy path
+static GetTransformNode(scene, name): BABYLON.TransformNode
+static GetTransformNodeByID(scene, id): BABYLON.TransformNode
+static FindGameObject(scene, path): BABYLON.TransformNode  // "Parent/Child/Node" path search
 
 // By tag (Unity tag system)
-static FindTransformByTag(scene, tag): BABYLON.TransformNode
-static FindAllTransformsByTag(scene, tag): BABYLON.TransformNode[]
+static FindGameObjectWithTag(scene, tag): BABYLON.TransformNode
+static FindGameObjectsWithTag(scene, tag): BABYLON.TransformNode[]
 static GetTransformTag(transform): string
 static HasTransformTags(transform, query): boolean
 
@@ -214,7 +223,6 @@ const sounds: TOOLKIT.AudioSource[] = TOOLKIT.SceneManager.FindAllScriptComponen
 
 ### Meshes and Lights
 ```typescript
-static FindPrimitiveMeshes(transform): BABYLON.AbstractMesh[]
 static GetPrimitiveMeshes(transform): BABYLON.AbstractMesh[]
 static GetSkinnedMesh(transform): BABYLON.AbstractMesh
 static FindSceneLightRig(transform): BABYLON.Light

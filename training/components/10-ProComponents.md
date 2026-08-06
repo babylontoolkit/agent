@@ -4,6 +4,17 @@
 
 ---
 
+## Import
+
+```typescript
+import * as TOOLKIT from "@babylonjs-toolkit/next";
+// named imports are equivalent:
+// import { PostProcessor, TerrainBuilder, ShurikenParticles, WebVideoPlayer, UnitySlider, UnityScrollBar, UnityDropdownMenu } from "@babylonjs-toolkit/next";
+// ⚠️ Do NOT import from "@babylonjs-toolkit/next/shurikenparticles" or "/webvideoplayer" — those subpaths are broken; use the root import.
+```
+
+---
+
 ## TOOLKIT.PostProcessor
 
 > **Namespace:** `TOOLKIT`  
@@ -14,14 +25,12 @@
 const pp = TOOLKIT.PostProcessor.Instance;
 ```
 
-### Key Properties
+### Key Accessors
 ```typescript
-pp.scene                 // BABYLON.Scene
-pp.postProcessPipeline   // BABYLON.DefaultRenderingPipeline (main pipeline)
-pp.ssaoPipeline          // BABYLON.SSAO2RenderingPipeline
-pp.ssrPipeline           // BABYLON.ScreenSpaceReflectionPostProcess
-
-pp.cameraList            // BABYLON.Camera[] — cameras the pipeline is attached to
+pp.scene                        // BABYLON.Scene (inherited from ScriptComponent)
+pp.GetDefaultRenderPipeline()   // BABYLON.DefaultRenderingPipeline (main pipeline)
+pp.GetSSAORRenderPipeline()     // BABYLON.SSAORenderingPipeline
+pp.GetSSRRenderPipeline()       // BABYLON.SSRRenderingPipeline
 ```
 
 ### Configuring Post Effects at Runtime
@@ -29,48 +38,51 @@ pp.cameraList            // BABYLON.Camera[] — cameras the pipeline is attache
 The pipeline is built from Unity metadata, but you can modify properties at runtime:
 
 ```typescript
+const pipeline = pp.GetDefaultRenderPipeline();
+
 // Bloom
-pp.postProcessPipeline.bloomEnabled = true;
-pp.postProcessPipeline.bloomThreshold = 0.8;
-pp.postProcessPipeline.bloomWeight = 0.3;
-pp.postProcessPipeline.bloomKernel = 64;
-pp.postProcessPipeline.bloomScale = 0.5;
+pipeline.bloomEnabled = true;
+pipeline.bloomThreshold = 0.8;
+pipeline.bloomWeight = 0.3;
+pipeline.bloomKernel = 64;
+pipeline.bloomScale = 0.5;
 
 // Depth of Field
-pp.postProcessPipeline.depthOfFieldEnabled = true;
-pp.postProcessPipeline.depthOfField.focusDistance = 2000;  // mm
-pp.postProcessPipeline.depthOfField.focalLength = 50;
-pp.postProcessPipeline.depthOfField.fStop = 1.4;
+pipeline.depthOfFieldEnabled = true;
+pipeline.depthOfField.focusDistance = 2000;  // mm
+pipeline.depthOfField.focalLength = 50;
+pipeline.depthOfField.fStop = 1.4;
 
 // Chromatic Aberration
-pp.postProcessPipeline.chromaticAberrationEnabled = true;
-pp.postProcessPipeline.chromaticAberration.aberrationAmount = 30;
+pipeline.chromaticAberrationEnabled = true;
+pipeline.chromaticAberration.aberrationAmount = 30;
 
 // Grain
-pp.postProcessPipeline.grainEnabled = true;
-pp.postProcessPipeline.grain.intensity = 20;
-pp.postProcessPipeline.grain.animated = true;
+pipeline.grainEnabled = true;
+pipeline.grain.intensity = 20;
+pipeline.grain.animated = true;
 
 // Sharpening
-pp.postProcessPipeline.sharpenEnabled = true;
-pp.postProcessPipeline.sharpen.edgeAmount = 0.3;
+pipeline.sharpenEnabled = true;
+pipeline.sharpen.edgeAmount = 0.3;
 
 // Vignette
-pp.postProcessPipeline.imageProcessing.vignetteEnabled = true;
-pp.postProcessPipeline.imageProcessing.vignetteWeight = 1.5;
-pp.postProcessPipeline.imageProcessing.vignetteCameraFov = 0.5;
+pipeline.imageProcessing.vignetteEnabled = true;
+pipeline.imageProcessing.vignetteWeight = 1.5;
+pipeline.imageProcessing.vignetteCameraFov = 0.5;
 
 // Color Grading (LUT)
-pp.postProcessPipeline.imageProcessing.colorGradingEnabled = true;
-pp.postProcessPipeline.imageProcessing.colorGradingTexture = new BABYLON.ColorGradingTexture("lut.png", scene);
+pipeline.imageProcessing.colorGradingEnabled = true;
+pipeline.imageProcessing.colorGradingTexture = new BABYLON.ColorGradingTexture("lut.png", scene);
 ```
 
 ### SSAO
 ```typescript
-pp.ssaoPipeline.radius = 2.0;
-pp.ssaoPipeline.totalStrength = 1.0;
-pp.ssaoPipeline.maxZ = 100.0;
-pp.ssaoPipeline.base = 0.1;
+const ssao = pp.GetSSAORRenderPipeline();
+ssao.radius = 2.0;
+ssao.totalStrength = 1.0;
+ssao.fallOff = 0.000001;
+ssao.base = 0.1;
 ```
 
 ### Unity-Exported Volume Effects
@@ -109,22 +121,17 @@ TOOLKIT.TerrainBuilder.detailChunkWorldSize // number — chunk size in world un
 TOOLKIT.TerrainBuilder.meshDetailChunkTargetInstances  // number — target instances per chunk
 ```
 
-### Instance Methods
+### Instance API
+
+> ⚠️ `TerrainBuilder` exposes **no** public instance query methods — there is no `getTerrain()`,
+> `getTerrainData()`, or `getHeightAtPoint()`. The class is driven entirely by the static
+> configuration fields above plus the exported terrain metadata. To place objects on the ground
+> at runtime, raycast down against the terrain mesh instead:
 
 ```typescript
-terrain.getTerrain(): BABYLON.Mesh          // the Babylon terrain mesh
-terrain.getTerrainData(): any              // raw Unity terrain metadata
-terrain.getHeightAtPoint(x: number, z: number): number  // world-space height at XZ
-```
-
-### Usage Pattern
-```typescript
-// Get height for object placement
-const tb: TOOLKIT.TerrainBuilder = TOOLKIT.SceneManager.FindScriptComponent(
-    terrainNode, "TOOLKIT.TerrainBuilder"
-);
-const groundY = tb.getHeightAtPoint(spawnX, spawnZ);
-spawnNode.position.set(spawnX, groundY + 0.5, spawnZ);
+const ray = new BABYLON.Ray(new BABYLON.Vector3(spawnX, 1000, spawnZ), BABYLON.Vector3.Down(), 2000);
+const hit = scene.pickWithRay(ray, (m) => m.isPickable);
+if (hit?.pickedPoint) spawnNode.position.set(spawnX, hit.pickedPoint.y + 0.5, spawnZ);
 ```
 
 ---
@@ -173,10 +180,13 @@ ps.maxEmitPower = 3;
 ps.gravity = new BABYLON.Vector3(0, -9.81, 0);
 ```
 
-### Observable
+### More Methods
 
 ```typescript
-particles.onParticleSystemReadyObservable  // Observable<BABYLON.IParticleSystem>
+particles.reset(): void                 // reset the particle system
+particles.isPlaying(): boolean
+particles.getParticleCount(): number
+particles.getEmitterMesh(): BABYLON.AbstractMesh
 ```
 
 ---
@@ -193,28 +203,34 @@ const vp: TOOLKIT.WebVideoPlayer = TOOLKIT.SceneManager.FindScriptComponent(
     node, "TOOLKIT.WebVideoPlayer"
 );
 
-vp.play(): void
-vp.pause(): void
-vp.stop(): void
+vp.play(): Promise<boolean>
+vp.pause(): boolean
+vp.mute(): boolean
+vp.unmute(): boolean
 
-vp.setVolume(volume: number): void   // [0..1]
+vp.setVolume(volume: number): boolean   // [0..1]
 vp.getVolume(): number
 
 vp.getVideoElement(): HTMLVideoElement   // raw DOM video element
 vp.getVideoTexture(): BABYLON.VideoTexture
+vp.getVideoMaterial(): BABYLON.StandardMaterial
+vp.getVideoScreen(): BABYLON.AbstractMesh
+vp.setDataSource(source: string | string[] | HTMLVideoElement): void
 
+vp.isReady(): boolean
 vp.isPlaying(): boolean
 vp.isPaused(): boolean
-vp.getDuration(): number              // video duration in seconds
-vp.getCurrentTime(): number          // current playback position
-vp.setCurrentTime(seconds: number): void  // seek
+
+// Duration / seeking — use the raw DOM video element (there is no getDuration/getCurrentTime):
+vp.getVideoElement().duration           // video duration in seconds
+vp.getVideoElement().currentTime        // current playback position (assignable to seek)
 ```
 
 ### Observable
 
 ```typescript
-vp.onVideoReadyObservable    // Observable<BABYLON.TransformNode> — video loaded and ready
-vp.onVideoEndedObservable    // Observable<BABYLON.TransformNode> — video reached end
+vp.onReadyObservable    // Observable<BABYLON.VideoTexture> — video loaded and ready
+// For end-of-playback, use the DOM element: vp.getVideoElement().onended = () => { ... };
 ```
 
 ### Usage Pattern
@@ -222,7 +238,7 @@ vp.onVideoEndedObservable    // Observable<BABYLON.TransformNode> — video reac
 ```typescript
 protected start(): void {
     const vp: TOOLKIT.WebVideoPlayer = this.getComponent("TOOLKIT.WebVideoPlayer");
-    vp?.onVideoReadyObservable.add(() => {
+    vp?.onReadyObservable.add(() => {
         vp.play();
     });
 }
@@ -232,14 +248,14 @@ protected start(): void {
 
 ## Unity GUI Controls
 
-These custom Babylon.js GUI controls are registered automatically when the toolkit initializes. They extend `BABYLON.GUI.Control`.
+These custom GUI controls extend the Babylon.js GUI control classes (`Slider`, `ScrollBar`, `Container`) and are registered automatically for GUI parsing when the toolkit initializes. Import them from the package root as `TOOLKIT.UnitySlider`, `TOOLKIT.UnityScrollBar`, and `TOOLKIT.UnityDropdownMenu`.
 
-### `BABYLON.GUI.UnitySlider`
+### `TOOLKIT.UnitySlider`
 
-A slider matching Unity's `Slider` UI component.
+A slider matching Unity's `Slider` UI component. Extends `BABYLON.GUI.Slider` — all standard slider members are inherited.
 
 ```typescript
-const slider = control as BABYLON.GUI.UnitySlider;
+const slider = control as TOOLKIT.UnitySlider;
 
 slider.minimum: number         // min value (default 0)
 slider.maximum: number         // max value (default 1)
@@ -247,42 +263,44 @@ slider.value: number           // current value
 slider.step: number            // step increment
 slider.isVertical: boolean
 
-// Events
+// Events (inherited from BABYLON.GUI.Slider)
 slider.onValueChangedObservable.add((value: number) => {
     console.log("Slider value:", value);
 });
 ```
 
-### `BABYLON.GUI.UnityScrollBar`
+### `TOOLKIT.UnityScrollBar`
+
+Extends `BABYLON.GUI.ScrollBar` — standard scroll bar members are inherited, plus a `direction` accessor.
 
 ```typescript
-const sb = control as BABYLON.GUI.UnityScrollBar;
+const sb = control as TOOLKIT.UnityScrollBar;
 
 sb.value: number               // scroll position [0..1]
-sb.step: number
+sb.direction: string           // scroll direction
 
 sb.onValueChangedObservable.add((value: number) => {
     scrollContent.top = -(value * contentHeight) + "px";
 });
 ```
 
-### `BABYLON.GUI.UnityDropdownMenu`
+### `TOOLKIT.UnityDropdownMenu`
+
+Extends `BABYLON.GUI.Container`.
 
 ```typescript
-const dd = control as BABYLON.GUI.UnityDropdownMenu;
+const dd = control as TOOLKIT.UnityDropdownMenu;
 
-dd.items: string[]            // array of option labels
-dd.selectedIndex: number      // currently selected index
-dd.selectedValue: string      // currently selected label
-
-dd.addOption(label: string): void
-dd.removeOption(index: number): void
-dd.clearOptions(): void
-
-dd.onSelectionChangedObservable.add((index: number) => {
-    console.log("Selected:", dd.items[index]);
-});
+dd.selectedIndex: number      // currently selected index (get/set)
+dd.options = [                // replace the option list (setter)
+    { text: "Easy" },
+    { text: "Hard", imageSource: "skull.png" },
+];
 ```
+
+> ⚠️ There is no `items`, `selectedValue`, `addOption`, `removeOption`, `clearOptions`, or
+> `onSelectionChangedObservable` on `UnityDropdownMenu` — set the whole option list via the
+> `options` setter and read/write `selectedIndex`.
 
 ---
 
@@ -307,7 +325,7 @@ namespace TOOLKIT {
 
         private enterCombat(): void {
             this.playerInCombat = true;
-            const pp = this.ppInstance?.postProcessPipeline;
+            const pp = this.ppInstance?.GetDefaultRenderPipeline();
             if (!pp) return;
             // Intensify vignette and add chromatic aberration
             pp.imageProcessing.vignetteWeight = 3.5;
@@ -317,7 +335,7 @@ namespace TOOLKIT {
 
         private exitCombat(): void {
             this.playerInCombat = false;
-            const pp = this.ppInstance?.postProcessPipeline;
+            const pp = this.ppInstance?.GetDefaultRenderPipeline();
             if (!pp) return;
             pp.imageProcessing.vignetteWeight = 1.5;
             pp.chromaticAberrationEnabled = false;

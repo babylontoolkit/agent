@@ -7,6 +7,15 @@
 
 ---
 
+## Import
+
+```typescript
+import * as TOOLKIT from "@babylonjs-toolkit/next";
+// named imports are equivalent: import { RigidbodyPhysics, RaycastVehicle, CollisionFilters } from "@babylonjs-toolkit/next";
+```
+
+---
+
 ## Engine Initialization
 
 Must be called once before any physics components are created, typically in your scene setup.
@@ -14,25 +23,24 @@ Must be called once before any physics components are created, typically in your
 ```typescript
 static async RigidbodyPhysics.ConfigurePhysicsEngine(
     scene: BABYLON.Scene,
-    fixedTimeStep?: number,    // seconds (default 1/60)
-    subTimeStep?: number,      // substeps per frame (default 1)
-    maxSweep?: number,         // max CCD sweep (default 100)
-    ccdEnabled?: boolean,      // continuous collision detection (default true)
-    ccdPenetration?: number,   // CCD penetration depth (default 0)
-    gravity?: BABYLON.Vector3  // default (0, -9.81, 0)
-): Promise<BABYLON.HavokPlugin>
+    fixedTimeStep?: boolean,     // use a fixed physics timestep
+    subTimeStep?: number,        // substeps per frame (default 1)
+    maxWorldSweep?: number,      // max CCD sweep (default 100)
+    ccdEnabled?: boolean,        // continuous collision detection (default true)
+    ccdPenetration?: number,     // CCD penetration depth (default 0)
+    gravityLevel?: BABYLON.Vector3  // default (0, -9.81, 0)
+): Promise<void>
 ```
 
 **Example (scene setup):**
 ```typescript
-const hk = await TOOLKIT.RigidbodyPhysics.ConfigurePhysicsEngine(
+await TOOLKIT.RigidbodyPhysics.ConfigurePhysicsEngine(
     scene,
-    1/60,    // fixed timestep
+    true,    // fixed timestep
     2,       // 2 substeps for smoother simulation
     100,
     true
 );
-// hk is also stored in globalThis.HKP
 ```
 
 ---
@@ -47,7 +55,7 @@ static Raycast(
     origin: BABYLON.Vector3,
     direction: BABYLON.Vector3,
     length: number,
-    query?: BABYLON.IPhysicsRaycastQuery
+    query?: BABYLON.IRaycastQuery
 ): BABYLON.PhysicsRaycastResult
 ```
 
@@ -82,7 +90,7 @@ static RaycastToRef(
     from: BABYLON.Vector3,
     to: BABYLON.Vector3,   // absolute end point (not direction + length)
     result: BABYLON.PhysicsRaycastResult,
-    query?: BABYLON.IPhysicsRaycastQuery
+    query?: BABYLON.IRaycastQuery
 ): void
 ```
 
@@ -111,8 +119,8 @@ Cast a physics shape through the scene.
 
 ```typescript
 static Shapecast(
-    query: BABYLON.IPhysicsShapecastQuery
-): BABYLON.IPhysicsShapecastResult
+    query: BABYLON.IPhysicsShapeCastQuery
+): BABYLON.IPhysicsShapeCastResult
 ```
 
 ### `ShapecastToRef`
@@ -120,9 +128,9 @@ Reusable version for per-frame use.
 
 ```typescript
 static ShapecastToRef(
-    query: BABYLON.IPhysicsShapecastQuery,
-    localResult: BABYLON.ShapecastResult,
-    worldResult: BABYLON.ShapecastResult
+    query: BABYLON.IPhysicsShapeCastQuery,
+    localShapeResult: BABYLON.ShapeCastResult,
+    worldShapeResult: BABYLON.ShapeCastResult
 ): void
 ```
 
@@ -146,8 +154,8 @@ static SetMaxVelocities(
 When `RigidbodyPhysics` is attached to a node with a standard physics shape (box, sphere, convex, mesh), it creates the `BABYLON.PhysicsBody` automatically in `awake()`.
 
 ```typescript
-// Get the Babylon PhysicsBody
-const body = rigidbodyComponent.getPhysicsBody();
+// Get the Babylon PhysicsBody (attached to the transform node)
+const body = rigidbodyComponent.transform.physicsBody;
 
 // Common body operations
 body.setLinearVelocity(new BABYLON.Vector3(0, 10, 0));
@@ -178,22 +186,26 @@ const vehicle = rigidbody.getRaycastVehicle();
 ### `TOOLKIT.RaycastVehicle` Quick Reference
 
 ```typescript
-vehicle.applyEngineForce(force: number, wheelIndex: number): void
-vehicle.setBrake(brake: number, wheelIndex: number): void
-vehicle.setSteeringValue(steer: number, wheelIndex: number): void
+vehicle.setEngineForce(power: number, wheel: number): void
+vehicle.setBrakingForce(brake: number, wheel: number): void
+vehicle.setPhysicsSteeringAngle(angle: number, wheel: number): void  // radians — steers the physics wheel
+vehicle.setVisualSteeringAngle(angle: number, wheel: number): void   // wheel mesh display only
 
-vehicle.getWheelCount(): number
-vehicle.getWheelSpeed(wheelIndex: number): number    // m/s surface speed
-vehicle.getWheelRotation(wheelIndex: number): number  // radians
-vehicle.getWheelContactPoint(wheelIndex: number): BABYLON.Vector3
-vehicle.getWheelIsInContact(wheelIndex: number): boolean
+vehicle.getNumWheels(): number
+vehicle.getWheelInfo(wheel: number): TOOLKIT.btWheelInfo
+// wheelInfo.rotation           — number (radians)
+// wheelInfo.raycastInfo.isInContact   — boolean
+// wheelInfo.raycastInfo.contactPointWS — BABYLON.Vector3
+vehicle.getWheelTransformPosition(wheel: number): BABYLON.Vector3
+vehicle.getWheelTransformRotation(wheel: number): BABYLON.Quaternion
 
-vehicle.getLinearVelocity(): BABYLON.Vector3
-vehicle.getForwardSpeed(): number    // m/s forward velocity (can be negative)
-vehicle.getCurrentSpeedKmHour(): number
+vehicle.getForwardVector(): BABYLON.Vector3
+vehicle.getRawCurrentSpeedKph(): number   // signed km/h (negative = reversing)
+vehicle.getRawCurrentSpeedMph(): number   // signed mph
+vehicle.getAbsCurrentSpeedKph(): number   // absolute km/h
+vehicle.getAbsCurrentSpeedMph(): number   // absolute mph
 
-vehicle.resetVehicle(): void
-vehicle.setVehiclePosition(pos: BABYLON.Vector3, rot?: BABYLON.Quaternion): void
+vehicle.resetSuspension(): void
 ```
 
 **Basic vehicle controller pattern:**
@@ -223,16 +235,16 @@ namespace TOOLKIT {
             this.steerValue  = steer * this.maxSteer;
 
             // Rear-wheel drive (wheels 2 and 3)
-            this.vehicle?.applyEngineForce(this.engineForce, 2);
-            this.vehicle?.applyEngineForce(this.engineForce, 3);
+            this.vehicle?.setEngineForce(this.engineForce, 2);
+            this.vehicle?.setEngineForce(this.engineForce, 3);
 
             // Front-wheel steering (wheels 0 and 1)
-            this.vehicle?.setSteeringValue(-this.steerValue, 0);
-            this.vehicle?.setSteeringValue(-this.steerValue, 1);
+            this.vehicle?.setPhysicsSteeringAngle(-this.steerValue, 0);
+            this.vehicle?.setPhysicsSteeringAngle(-this.steerValue, 1);
 
             // Braking
             const braking = TOOLKIT.InputController.GetKeyboardInput(TOOLKIT.UserInputKey.SpaceBar) ? 50 : 0;
-            for (let i = 0; i < 4; i++) this.vehicle?.setBrake(braking, i);
+            for (let i = 0; i < 4; i++) this.vehicle?.setBrakingForce(braking, i);
         }
     }
 }

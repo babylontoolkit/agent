@@ -5,6 +5,17 @@
 
 ---
 
+## Import
+
+```typescript
+import * as TOOLKIT from "@babylonjs-toolkit/next";
+import { DefaultCameraSystem, StandardPlayerController, ThirdPersonPlayerController, DebugInformation, AssetPreloader, MobileInputController } from "@babylonjs-toolkit/next/project";
+// PROJECT starter classes are ONLY available from "@babylonjs-toolkit/next/project" — they are NOT exported from the root import.
+// ⚠️ The Colyseus networking classes (ColyseusGameServer, ColyseusNetworkEntity, ColyseusNetworkAvatar, BABYLON.NetworkManager) ship in the starter script bundle only — they are NOT in the npm package.
+```
+
+---
+
 ## Table of Contents
 
 1. [System Architecture Overview](#1-system-architecture-overview)
@@ -191,13 +202,13 @@ The universal camera manager. Supports Universal, Free, ArcRotate, WebXR cameras
 #### Static Fields
 
 ```typescript
-static PlayerOneCamera: BABYLON.FreeCamera    // Player 1 camera instance
-static PlayerTwoCamera: BABYLON.FreeCamera    // Player 2 camera instance
-static PlayerThreeCamera: BABYLON.FreeCamera  // Player 3 camera instance
-static PlayerFourCamera: BABYLON.FreeCamera   // Player 4 camera instance
-static XRExperienceHelper: BABYLON.WebXRDefaultExperience
 static FOLLOW_SPEED: number = 1.0             // Default follow lerp speed
 static OnXRExperienceHelperObservable: BABYLON.Observable<BABYLON.WebXRDefaultExperience>
+
+// Per-player camera instances are protected — use the static accessors instead:
+static GetPlayerCamera(scene: BABYLON.Scene, player?: TOOLKIT.PlayerNumber, detach?: boolean): BABYLON.FreeCamera
+static GetWebXR(): BABYLON.WebXRDefaultExperience
+static IsInWebXR(): boolean
 ```
 
 #### Static Query API
@@ -223,7 +234,7 @@ static GetCameraTransform(scene: BABYLON.Scene, playerNumber: number): BABYLON.T
 #### Static Multiplayer API
 
 ```typescript
-static SetMultiPlayerViewLayout(scene: BABYLON.Scene, count: number): void
+static SetMultiPlayerViewLayout(scene: BABYLON.Scene, totalNumPlayers: number): boolean
 // Set the viewport layout for 1, 2, 3, or 4 players.
 // Split-screen viewports are automatically configured.
 
@@ -439,11 +450,15 @@ public boomPosition: BABYLON.Vector3
 
 ```typescript
 enum PlayerMoveDirection {
-    Stationary = 0,
-    Forward    = 1,
-    Backward   = 2,
-    Left       = 3,
-    Right      = 4
+    Stationary    = 0,
+    Forward       = 1,
+    ForwardLeft   = 2,
+    ForwardRight  = 3,
+    Backward      = 4,
+    BackwardLeft  = 5,
+    BackwardRight = 6,
+    StrafingLeft  = 7,
+    StrafingRight = 8
 }
 ```
 
@@ -532,6 +547,11 @@ Drives the `TOOLKIT.AnimationState` of a remotely networked character using buff
 ## 6. SYSTEM: Network / Multiplayer
 
 The networking stack uses Colyseus Universal Game Room via `BABYLON.NetworkManager`.
+
+> ⚠️ **Script-bundle only:** `ColyseusGameServer`, `ColyseusNetworkEntity`, `ColyseusNetworkAvatar`,
+> and `BABYLON.NetworkManager` are provided by the starter script bundle at runtime — they are
+> **not** in the `@babylonjs-toolkit/next` npm package and cannot be imported from it.
+> Only `TOOLKIT.EntityController` (attribute queries) and `TOOLKIT.RoomErrorMessage` are npm exports.
 
 ### CLASS: `ColyseusGameServer`
 
@@ -864,10 +884,11 @@ public constraint: BABYLON.LockConstraint
 
 ### `SixdofJoint`
 
-Creates a `BABYLON.SixDofSpringConstraint`. Full 6-DOF with optional per-axis spring limits.
+Creates a `BABYLON.Physics6DoFConstraint`. Full 6-DOF with optional per-axis limits.
 
 ```typescript
-public constraint: BABYLON.SixDofSpringConstraint
+public constraint: BABYLON.Physics6DoFConstraint
+public axisLimits: BABYLON.Physics6DoFLimit[]
 // Per-axis limits configurable from inspector
 ```
 
@@ -1036,8 +1057,7 @@ Registers keyboard shortcuts for development and debug overlays.
 
 ```typescript
 // Scene & Engine
-GetLastCreatedScene(): BABYLON.Scene
-GetLastCreatedEngine(): BABYLON.AbstractEngine
+GetEngine(scene): BABYLON.Engine | BABYLON.WebGPUEngine
 GetRootUrl(scene): string
 GetSceneFile(scene): string
 LogMessage(msg): void
@@ -1056,7 +1076,7 @@ SearchForScriptComponentByName(scene, classAlias): TOOLKIT.ScriptComponent
 
 // Time
 GetGameTime(): number              // Total game time (seconds)
-GetDeltaSeconds(): number          // Frame delta time (seconds)
+GetDeltaSeconds(scene): number     // Frame delta time (seconds)
 WaitForSeconds(seconds): Promise<void>   // Async wait
 
 // Asset Management
@@ -1077,7 +1097,7 @@ VirtualJoystickEnabled: boolean    // Toggle virtual joystick mode
 ```typescript
 // Axes (returns -1..1)
 GetUserInput(axis: TOOLKIT.UserInputAxis): number
-// Axes: Horizontal, Vertical, MouseX, MouseY, Scroll, etc.
+// Axes: Horizontal, Vertical, ClientX, ClientY, MouseX, MouseY, Wheel
 
 // Buttons
 GetKeyboardInput(key: TOOLKIT.UserInputKey): boolean
@@ -1106,10 +1126,12 @@ AllowMobileControls: boolean
 
 ```typescript
 GetNetworkEntityId(transform): string
+GetNetworkEntityType(transform): number
+GetNetworkEntitySessionId(transform): string
 HasNetworkEntity(transform): boolean
 QueryNetworkAttribute(transform, key): string       // Named attribute
 QueryBufferedAttribute(transform, index): number    // Indexed attribute
-PostNetworkAttributes(transform, attributes: number[]): void
+PostBufferedAttribute(transform, index, value): void  // Post ONE indexed attribute
 ```
 
 ### `TOOLKIT.WindowManager` — Static Methods
@@ -1172,7 +1194,7 @@ anim.getFloat(name): number
 anim.getBool(name): boolean
 anim.getInteger(name): number
 anim.ikFrameEnabled(): boolean
-anim.onAnimationUpdateObservable: BABYLON.Observable<void>
+anim.onAnimationUpdateObservable: BABYLON.Observable<BABYLON.TransformNode>
 ```
 
 ### `TOOLKIT.CharacterController` — Instance Methods
@@ -1194,7 +1216,7 @@ const agent: TOOLKIT.NavigationAgent = this.getComponent("TOOLKIT.NavigationAgen
 agent.setDestination(destination: BABYLON.Vector3): void
 agent.teleport(destination: BABYLON.Vector3): void
 agent.isNavigating(): boolean
-agent.getRemainingDistance(): number
+agent.getTargetDistance(): number
 ```
 
 ---
@@ -1458,9 +1480,7 @@ constraint.isCollisionsEnabled = false;
 // [11]=isFalling, [12]=isSliding, [13]=isGrounded
 
 // On RemotePlayerController — reads same indices automatically.
-// For custom attributes, use EntityController directly:
-TOOLKIT.EntityController.PostNetworkAttributes(this.transform, [
-    myCustomValue1,
-    myCustomValue2
-]);
+// For custom attributes, use EntityController directly (one indexed value per call):
+TOOLKIT.EntityController.PostBufferedAttribute(this.transform, 14, myCustomValue1);
+TOOLKIT.EntityController.PostBufferedAttribute(this.transform, 15, myCustomValue2);
 ```

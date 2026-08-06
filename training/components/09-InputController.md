@@ -6,6 +6,15 @@
 
 ---
 
+## Import
+
+```typescript
+import * as TOOLKIT from "@babylonjs-toolkit/next";
+// named imports are equivalent: import { InputController, UserInputAxis, UserInputKey, PlayerNumber } from "@babylonjs-toolkit/next";
+```
+
+---
+
 ## Enabling Input
 
 ```typescript
@@ -42,17 +51,16 @@ enum UserInputAxis {
     Vertical        = 1,  // W/S keys or left joystick Y
     ClientX         = 2,  // mouse X (pixels)
     ClientY         = 3,  // mouse Y (pixels)
-    MouseX          = 4,  // mouse delta X
-    MouseY          = 5,  // mouse delta Y
+    MouseX          = 4,  // mouse delta X (also right joystick X)
+    MouseY          = 5,  // mouse delta Y (also right joystick Y)
     Wheel           = 6,  // scroll wheel delta
-    RightStickX     = 7,  // right joystick X
-    RightStickY     = 8,  // right joystick Y
-    DPadX           = 9,  // D-pad X
-    DPadY           = 10, // D-pad Y
-    LeftTrigger     = 11, // left trigger [0..1]
-    RightTrigger    = 12, // right trigger [0..1]
 }
 ```
+
+> ⚠️ These 7 members are the **entire** enum — there are no `RightStickX/Y`, `DPad`, or trigger
+> axes. Right-stick input arrives through the `MouseX`/`MouseY` axes; analog triggers are read
+> with `GetGamepadTriggerInput(trigger, player)`; the D-pad is read with the
+> `GetGamepadDirectionInput` family.
 
 **Examples:**
 ```typescript
@@ -203,11 +211,11 @@ static GetGamepadTriggerInput(trigger: number, player?: TOOLKIT.PlayerNumber): n
 static GetGamepadType(player?: TOOLKIT.PlayerNumber): TOOLKIT.GamepadType
 
 enum GamepadType {
-    None        = -1,
-    Generic     = 0,
-    Xbox360     = 1,
-    DualShock   = 2,
-    Switch      = 4
+    None           = -1,
+    Generic        = 0,
+    Xbox360        = 1,
+    DualShock      = 2,
+    PoseController = 3
 }
 ```
 
@@ -232,6 +240,7 @@ TOOLKIT.SceneManager.VirtualJoystickEnabled = true;
 
 ```typescript
 enum PlayerNumber {
+    Auto  = 0,
     One   = 1,
     Two   = 2,
     Three = 3,
@@ -367,4 +376,4 @@ namespace TOOLKIT {
 2. **`GetUserInput(Vertical)`** returns +1 for W/forward, -1 for S/back — same as Unity's `Input.GetAxis("Vertical")`.
 3. **Mouse delta** — `GetUserInput(MouseX/Y)` returns the pixel delta this frame; multiply by sensitivity.
 4. **Pointer lock must be requested via a user gesture** (click) — browsers block programmatic pointer lock.
-5. **Gamepad triggers** — use `GetUserInput(LeftTrigger/RightTrigger)` for analog [0..1] values.
+5. **Gamepad triggers** — use `GetGamepadTriggerInput(trigger, player)` for analog [0..1] values (there are no trigger axes on `UserInputAxis`).
