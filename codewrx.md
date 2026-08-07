@@ -6,7 +6,7 @@ AI app builders like Lovable, Bolt, Replit and Base44 proved that anyone can des
 
 ## The Business Opportunity
 
-"Vibe coding" is now a mainstream behavior: millions of non-technical people open a chat box, describe an app, and ship it. The platforms that serve them are worth billions — and every one of them builds **websites and business apps**.
+"Vibe coding" is now a mainstream behavior: millions of non-technical people open a chat box, describe an app, and ship it. The platforms that serve them are worth hundreds of millions — and every one of them builds **websites and business apps**.
 
 Games and simulations are the largest entertainment category on earth, the most-requested "can it do…?" on every AI builder, and the category where those builders fail hardest. That failure is not a model problem. It is a **framework problem** — and we own the framework.
 
