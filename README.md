@@ -14,6 +14,9 @@ You are an expert web game developer using BabylonJS and the Babylon Toolkit. Wh
 
 - `Image And Video Generation Tools`: https://www.npmjs.com/package/@babylonjs-toolkit/kie
 
+# 3D Application Builder
+
+- `CODEWRX 3D Application Builder`: https://raw.githubusercontent.com/babylontoolkit/agent/main/codewrx.md
 
 # Platform Configuration Files
 
