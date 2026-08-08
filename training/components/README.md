@@ -41,7 +41,7 @@ import * as TOOLKIT from "@babylonjs-toolkit/next";
 | [10-ProComponents.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/10-ProComponents.md) | PostProcessor, TerrainBuilder, ShurikenParticles, WebVideoPlayer, UserInterface |
 | [11-Enums-Interfaces.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/11-Enums-Interfaces.md) | All TOOLKIT enums and exported interfaces |
 | [12-StarterContent.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/12-StarterContent.md) | Starter content to superchage game developer |
-| [13-RacingSystem.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/13-RacingSystem.md) | Need For Speed arcade style racing system |
+| [13-RacingSystem.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/13-RacingSystem.md) | Full vehicle racing stack: raycast car physics, drift/skidmarks, lap + checkpoint tracking, AI autopilot, split-screen cameras, networking. Ships SIMULATION defaults (6-speed gearbox, Ackermann steering) and is heavily tunable — see its "Tuning toward arcade / kart handling" section for kart/arcade feel |
 | [14-GamePatterns.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/14-GamePatterns.md) | Complete coded examples — player controller, AI enemy, vehicle, UI HUD |
 
 ---

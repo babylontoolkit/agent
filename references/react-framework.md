@@ -272,6 +272,12 @@ function Home() {
       sceneUrl: 'https://repo.babylontoolkit.com/playground/openterrain.gltf',
     });
   };
+  /* NOTE: `samplescene.gltf` and `openterrain.gltf` above are the STARTER TEMPLATE's own demo
+   * buttons, kept here so the navigation pattern has a working example. The pattern is what matters —
+   * `navigate('/play', { gameMode, sceneUrl?, ...selections })`. The scene URLs are playground demo
+   * fixtures: do not carry them into a game unless the user asked for that specific content, and note
+   * that this whole page is REWRITTEN from scratch for each project anyway.
+   */
 
   return (
     <div id="vite">

@@ -16,6 +16,73 @@ import { StandardCarController, VehicleInputController, VehicleCameraManager, Ra
 
 ---
 
+## ⚠️ Read this before choosing this system
+
+**The defaults are a SIMULATION.** Out of the box `StandardCarController` is a Need-for-Speed-style
+raycast vehicle: a 6-speed gearbox with real shift ratios, an RPM band, Ackermann steering geometry,
+tyre-slip friction, understeer that grows with speed, and offroad surface penalties. That is exactly
+right for a sim/street racer and it is **not** what a kart game, a hover racer or a stylised arcade
+racer feels like.
+
+**But it is tunable, and tuning it is usually better than writing your own vehicle.** The physics,
+skidmarks, checkpoint/lap tracking, AI autopilot, split-screen cameras and networking are all real
+work you would otherwise repeat. Reach for a custom controller only when the movement is genuinely
+not a car — hovercraft, on-rails, top-down 2.5D, grid-based.
+
+### Tuning toward arcade / kart handling
+
+Every one of these is a documented property on `StandardCarController` (§4). Start here and adjust to
+taste — this is a starting point, not a magic preset:
+
+```typescript
+// --- flatten the drivetrain: karts have no gearbox drama ---
+car.gearBoxShiftRatios    = [1.0, 1.0];      // effectively single-speed
+car.gearBoxShiftUpRanges  = [60, 999];
+car.gearBoxShiftDownRanges = [0, 30];
+car.topEngineSpeed        = 60;              // karts are SLOW; the sense of speed comes from FOV + effects
+car.powerCoefficient      = 1.6;             // ...but accelerate hard
+
+// --- responsive, forgiving steering ---
+car.steeringInputCurve    = 1.8;             // expo arcade feel (1.0 = linear sim)
+car.lowSpeedSteering      = 0.6;             // much less low-speed understeer than the sim default (0.1)
+car.highSpeedSteering     = 0.8;
+car.maximumYawRateLow     = 120.0;           // turn far more sharply than a real car
+car.maximumYawRateHigh    = 80.0;
+car.ackermanTurnRadius    = 4.0;             // tight kart-sized turning circle
+
+// --- planted, predictable grip: no sim-style snap oversteer ---
+car.stableDownImpulse     = 1.4;
+car.constImpulseForce     = 0.3;
+car.wheelDriveType        = 2;               // AWD is much easier to control than the RWD default
+
+// --- drift as a MECHANIC, not a loss of control ---
+car.skidThreashold        = 0.5;             // enter a drift sooner
+car.skidTurningAssist     = 3.5;             // and stay pointed where the player is aiming
+car.driftSpeedDampener    = 0.6;             // bleed less speed through the drift
+
+// --- the mini-turbo: the booster system IS a boost pad / drift-charge reward ---
+car.powerBooster          = true;
+car.boosterCoefficient    = 14.0;
+car.topBoosterSpeed       = 85;
+car.maxBoosterTime        = 1.5;             // short, repeatable pops rather than one long NOS burn
+car.minBoosterSpeed       = 0.0;             // allow a boost from a standing start
+```
+
+Mario-Kart-style items, mini-turbo charge-up, rubber-banding AI and lap position logic are **game
+rules, not vehicle physics** — write those yourself in your own `ScriptComponent`s on top of this
+controller. `RaceTrackManager` + `CheckpointManager` already give you lap and position tracking to
+build them against.
+
+### Assets are NOT part of this system
+
+The examples in this document and in `05-DemoVehicleScene` use `riggedmustang` and `openterrain` from
+the shared playground repo. **Those are demonstration assets for showing the wiring — never ship them
+in a game unless the user asked for that specific car or that specific track.** A request for a kart
+racer is not a request for a Mustang on an open-terrain test map. Build or source the vehicle and
+track the game actually calls for; the controller does not care what mesh it drives.
+
+---
+
 ## Table of Contents
 
 1. [System Architecture Overview](#1-system-architecture-overview)

@@ -1,6 +1,16 @@
-# DemoSampleScene Script Component
+# DemoPlayerScene Script Component
 
 This script loads a physics enabled sample scene and playable character. It demonstrates initializing the playground.babylon.js editor, enabling havok physics, loading interactive scene content and attaching a script component to the player armature model.
+
+> ## ⚠️ THE ASSETS IN THIS EXAMPLE ARE DEMO ASSETS — DO NOT SHIP THEM
+>
+> `samplescene.gltf` and `playerarmature.gltf` are fixtures hosted in the shared playground repo so
+> this page has something concrete to wire up. **They show the WIRING — they are not the level and the
+> character for a game you build.**
+>
+> Copy the technique: load your assets, find the script component on the character node, configure it.
+> Do not carry these two filenames into a user's project unless they explicitly asked for that scene or
+> that character. Build or source the content the game actually calls for.
 
 ```
 class Playground {
