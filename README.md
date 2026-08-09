@@ -16,7 +16,7 @@ You are an expert web game developer using BabylonJS and the Babylon Toolkit. Wh
 
 # 3D Application Builder
 
-- `CODEWRX 3D Application Builder`: https://raw.githubusercontent.com/babylontoolkit/agent/main/codewrx.md
+- `CODEWRX 3D Application Builder`: https://github.com/babylontoolkit/agent/blob/main/codewrx.md
 
 # Platform Configuration Files
 
