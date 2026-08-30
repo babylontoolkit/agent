@@ -153,7 +153,7 @@ unity command eval 'return "pro=" + ToolkitManager.IsPro() + " type=" + ToolkitM
 Or read it back out of the exported file — the tier is baked in as `scenes[0].extras.metadata.license`:
 
 ```bash
-python3 -c "import json;print(json.load(open('Export/scenes/Level01.gltf'))['scenes'][0]['extras']['metadata']['license'])"
+python3 -c "import json;print(json.load(open('Export/scenes/level01.gltf'))['scenes'][0]['extras']['metadata']['license'])"
 # -> "community"  or  "professional"
 ```
 
@@ -2017,7 +2017,7 @@ Confirmed live on the test project:
 |---|---|
 | `WebServer.IsStarted` before → after | `False` → `True` |
 | `WebServer.Root` | `<ProjectRoot>/Export` |
-| `GET /scenes/Level01.gltf` | **200**, `Content-Type: application/gltf` |
+| `GET /scenes/level01.gltf` | **200**, `Content-Type: application/gltf` |
 | `GET /containers/Crates.glb` | **200** |
 | `GET /` and a missing path | **404** (no `index.html` when the web project build is skipped — §12.7) |
 | Calling `StartWebServer` a second time | no-op — `before=True after=True` (start-once guard) |
@@ -2031,7 +2031,7 @@ mirror the on-disk layout in §13. Three shapes matter:
 | URL | Serves |
 |---|---|
 | `http://localhost:8888/index.html` | the generated web project, loading its **default scene** |
-| `http://localhost:8888/index.html?scene=Level01.gltf` | the same player pointed at **one specific scene** |
+| `http://localhost:8888/index.html?scene=level01.gltf` | the same player pointed at **one specific scene** |
 | `http://localhost:8888/scenes/level01.gltf` | the **raw exported asset**, for your own loader or a fetch |
 
 - **`index.html` only exists after a build that generates the web project** — `BuildWebProject` on, i.e.
@@ -2043,12 +2043,12 @@ mirror the on-disk layout in §13. Three shapes matter:
   `SceneManager` at `http://localhost:8888/scenes/<name>.gltf` to develop against a live Unity Editor
   without copying files (see `project-installer.md`).
 - A prefab/asset-container export written with an explicit `folder` lands outside `scenes/` — serve it from
-  wherever it was written, e.g. `http://localhost:8888/containers/Crates.glb`.
+  wherever it was written, e.g. `http://localhost:8888/containers/crates.glb`.
 
 ```bash
 curl -sS -o /dev/null -w "%{http_code}\n" "http://localhost:8888/index.html"
-curl -sS -o /dev/null -w "%{http_code}\n" "http://localhost:8888/scenes/Level01.gltf"
-open "http://localhost:8888/index.html?scene=Level01.gltf"     # macOS
+curl -sS -o /dev/null -w "%{http_code}\n" "http://localhost:8888/scenes/level01.gltf"
+open "http://localhost:8888/index.html?scene=level01.gltf"     # macOS
 ```
 
 ### 12.8 Check status / reach it
@@ -2292,8 +2292,8 @@ unity command bt_devserver_start --project-path "$PROJ" --format json   # http:/
 unity command bt_devserver_status --project-path "$PROJ"
 # Preview (§12.7): default scene, one specific scene, or the raw asset
 open "http://localhost:8888/index.html"
-open "http://localhost:8888/index.html?scene=Level01.gltf"
-curl -sS -o /dev/null -w "%{http_code}\n" "http://localhost:8888/scenes/Level01.gltf"
+open "http://localhost:8888/index.html?scene=level01.gltf"
+curl -sS -o /dev/null -w "%{http_code}\n" "http://localhost:8888/scenes/level01.gltf"
 
 # 9. Verify, then shut the Editor down to release the license seat
 ls -la "$PROJ/Export/scenes" "$PROJ/Export/containers"
@@ -2347,7 +2347,7 @@ unity pipeline upgrade | list | list-versions --format json
 unity command bt_devserver_start [--port 8888] | bt_devserver_status
 unity command eval 'UnityTools.StartWebServer(CanvasTools.CVPanel.RelativeHostPath); return WebServer.IsStarted;'
 http://localhost:8888/index.html                      # default scene   (needs the web project build)
-http://localhost:8888/index.html?scene=Level01.gltf   # a specific scene, by file name
+http://localhost:8888/index.html?scene=level01.gltf   # a specific scene, by file name
 http://localhost:8888/scenes/level01.gltf             # the raw exported asset
 
 # Licence (§0) - check BEFORE trusting any export; community silently drops components

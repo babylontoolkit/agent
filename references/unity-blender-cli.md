@@ -541,8 +541,8 @@ unity command eval 'UnityEditor.AssetDatabase.Refresh(UnityEditor.ImportAssetOpt
 
 ```bash
 open "http://localhost:8888/index.html"                      # the default scene
-open "http://localhost:8888/index.html?scene=Level01.gltf"    # one specific scene, by file name
-curl -sS -o /dev/null -w "%{http_code}\n" "http://localhost:8888/scenes/Level01.gltf"   # the raw asset
+open "http://localhost:8888/index.html?scene=level01.gltf"    # one specific scene, by file name
+curl -sS -o /dev/null -w "%{http_code}\n" "http://localhost:8888/scenes/level01.gltf"   # the raw asset
 ```
 
 Confirm the GUID really did survive:
@@ -687,7 +687,7 @@ unity command eval 'UnityEditor.AssetDatabase.Refresh(UnityEditor.ImportAssetOpt
 
 # preview the re-exported result (unity-exporter-cli.md §12)
 http://localhost:8888/index.html                      # default scene
-http://localhost:8888/index.html?scene=Level01.gltf   # a specific scene, by file name
+http://localhost:8888/index.html?scene=level01.gltf   # a specific scene, by file name
 http://localhost:8888/scenes/level01.gltf             # the raw exported asset
 ```
 
