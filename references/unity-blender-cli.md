@@ -536,6 +536,15 @@ blender -b --factory-startup --python-exit-code 1         --python reweight.py -
 unity command eval 'UnityEditor.AssetDatabase.Refresh(UnityEditor.ImportAssetOptions.ForceSynchronousImport); return "ok";'   --project-path "$PROJ"
 ```
 
+**Look at the result in a browser.** Re-export the level, then load it off the Toolkit development web server
+(`unity-exporter-cli.md` §12) — that is how you verify a Blender edit actually survived the round trip:
+
+```bash
+open "http://localhost:8888/index.html"                      # the default scene
+open "http://localhost:8888/index.html?scene=Level01.gltf"    # one specific scene, by file name
+curl -sS -o /dev/null -w "%{http_code}\n" "http://localhost:8888/scenes/Level01.gltf"   # the raw asset
+```
+
 Confirm the GUID really did survive:
 
 ```bash
@@ -604,7 +613,10 @@ The method is always the same: **introspect the API (§7), write a script, run i
 
 Blender produces geometry, skinning, materials and animation. It **cannot** add Babylon Toolkit
 `extras.metadata.components` — Rigidbody, Animator, AudioSource, NavMeshAgent and the rest come from **Unity**,
-and only under a Pro licence (`unity-exporter-cli.md` §0).
+and only under a Pro licence (`unity-exporter-cli.md` §0). That licence must come from a valid
+`Assets/[Config]/license.json`: the two service-based grant paths (`ToolkitManager.HasActiveSubscription()`
+and `CanvasToolsExporter.GenerateDeveloperLicense()`) exist in the API but **do not work yet**. A community
+export still writes your Blender geometry and skinning perfectly — it just silently drops every component.
 
 So:
 
@@ -672,6 +684,11 @@ unity command eval 'UnityEditor.AssetDatabase.Refresh(UnityEditor.ImportAssetOpt
   --project-path "$PROJ"
 # in place  -> GUID + importer settings preserved, all scene refs survive
 # new path  -> new GUID, importer settings RESET - copy them across (8.3)
+
+# preview the re-exported result (unity-exporter-cli.md §12)
+http://localhost:8888/index.html                      # default scene
+http://localhost:8888/index.html?scene=Level01.gltf   # a specific scene, by file name
+http://localhost:8888/scenes/level01.gltf             # the raw exported asset
 ```
 
 **The five rules that break naive attempts:**

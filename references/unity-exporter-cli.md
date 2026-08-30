@@ -260,13 +260,54 @@ return "subscription=" + sub + " pro=" + ToolkitManager.IsPro() + " as=" + Toolk
 # then gate the export on IsPro() being true, whichever path granted it
 ```
 
+#### `GenerateDeveloperLicense()` — the one-call request path (ALSO NOT LIVE YET)
+
+Alongside `HasActiveSubscription()`, the exporter exposes a method that *asks the service to issue a licence*
+for the signed-in Unity user, rather than checking an existing entitlement:
+
+```csharp
+// CanvasTools.CanvasToolsExporter - Professional Edition
+public static int GenerateDeveloperLicense()
+{
+    string devid = "3D-APP-BUILDER";
+    string email = CloudProjectSettings.userName;   // the signed-in Unity account email
+    return ExporterLicenser.PostLicenseWebRequest(devid, email);
+}
+```
+
+> ⚠️ **Present in the API, but it does not work yet** — it posts to the same undeployed App Builder endpoint
+> as `HasActiveSubscription()`. **Do not build a pipeline that depends on it.** `license.json` remains the
+> only working way to get Pro today. It is documented here so tooling can prefer it once the service ships.
+
+What to know when it does go live:
+
+- **No arguments, no seeds, no file.** The developer id is the fixed constant `"3D-APP-BUILDER"` and the
+  identity is `CloudProjectSettings.userName`, so there is nothing to configure — none of the
+  `companyName` / `productGUID` seed rules above apply.
+- **The Editor must be signed in.** `CloudProjectSettings.userName` is the one cloud field that *is*
+  populated in `-batchmode` (see the table above), which is what makes this viable headless — but it is
+  empty if the seat is not signed in, and the request will then carry no identity.
+- **It returns an `int`** — the web-request result, not a bool and not the licence itself. Never treat a
+  return value as proof of anything: re-check `ToolkitManager.IsPro()` afterwards to find out whether the
+  Editor session actually gained Pro.
+
+Probe before calling, exactly as with the dev server in §12.4 — older Toolkit builds do not have it:
+
+```bash
+unity command eval 'var mi = typeof(CanvasTools.CanvasToolsExporter).GetMethod("GenerateDeveloperLicense",
+  System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+return mi != null ? "present" : "absent";' --project-path "$PROJ"
+```
+
 #### Where the licence lives
 
 `Assets/[Config]/license.json` — an encrypted file, generated in-Editor by
 `Tools ▸ Babylon Toolkit ▸ Developer Options ▸ Generate Project License`. It is **per project**, so a newly
-created project has none and defaults to community. There is also a session-level override: an
-`App Builder` subscription/credit check (`ToolkitManager.HasActiveSubscription()`) that can *grant* Pro for the
-session — it never revokes, is never called from `IsPro()`, and must be invoked explicitly.
+created project has none and defaults to community. There are also two session-level `App Builder` paths
+that can *grant* Pro without a file — `ToolkitManager.HasActiveSubscription()` (check an entitlement) and
+`CanvasToolsExporter.GenerateDeveloperLicense()` (request one for the signed-in user). Both must be invoked
+explicitly, neither is called from `IsPro()`, neither ever revokes — and **neither works yet**: the endpoint
+they share is not deployed.
 
 **For agent and CI work:** copy a valid `license.json` into `Assets/[Config]/` as part of project setup, and
 gate the pipeline on `IsPro()` returning true before exporting anything you intend to ship.
@@ -1978,11 +2019,39 @@ Confirmed live on the test project:
 | `WebServer.Root` | `<ProjectRoot>/Export` |
 | `GET /scenes/Level01.gltf` | **200**, `Content-Type: application/gltf` |
 | `GET /containers/Crates.glb` | **200** |
-| `GET /` and a missing path | **404** (no `index.html` when the web project build is skipped) |
+| `GET /` and a missing path | **404** (no `index.html` when the web project build is skipped — §12.7) |
 | Calling `StartWebServer` a second time | no-op — `before=True after=True` (start-once guard) |
 | `StartDevelopmentServer` on `CanvasToolsExporter` | **absent** — reflection finds *no* server-related public static method |
 
-### 12.7 Check status / reach it
+### 12.7 The preview URLs
+
+The document root is the **export folder** (`WebServer.Root`, normally `<ProjectRoot>/Export`), so the URLs
+mirror the on-disk layout in §13. Three shapes matter:
+
+| URL | Serves |
+|---|---|
+| `http://localhost:8888/index.html` | the generated web project, loading its **default scene** |
+| `http://localhost:8888/index.html?scene=Level01.gltf` | the same player pointed at **one specific scene** |
+| `http://localhost:8888/scenes/level01.gltf` | the **raw exported asset**, for your own loader or a fetch |
+
+- **`index.html` only exists after a build that generates the web project** — `BuildWebProject` on, i.e.
+  `EditorBuildType.Project` or `Automate`. Export a scene by itself and `/index.html` is a 404 (§12.6); the
+  raw `scenes/*.gltf` URL still works, because the exporter always writes that.
+- **`?scene=` takes a file name, not a path.** It is resolved against `DefaultScenePath` — the `scenes/`
+  subfolder of the export root. Use it to preview any level in the project without rebuilding the page.
+- **The raw asset URL is what a separate web project consumes.** Point a BabylonJS `SceneLoader` /
+  `SceneManager` at `http://localhost:8888/scenes/<name>.gltf` to develop against a live Unity Editor
+  without copying files (see `project-installer.md`).
+- A prefab/asset-container export written with an explicit `folder` lands outside `scenes/` — serve it from
+  wherever it was written, e.g. `http://localhost:8888/containers/Crates.glb`.
+
+```bash
+curl -sS -o /dev/null -w "%{http_code}\n" "http://localhost:8888/index.html"
+curl -sS -o /dev/null -w "%{http_code}\n" "http://localhost:8888/scenes/Level01.gltf"
+open "http://localhost:8888/index.html?scene=Level01.gltf"     # macOS
+```
+
+### 12.8 Check status / reach it
 
 ```bash
 unity command eval 'return WebServer.IsStarted + " root=" + WebServer.Root;' --project-path "$PROJ"
@@ -2221,6 +2290,10 @@ unity command bt_export_prefab --paths "Props/Crate,Props/Barrel" --filename Cra
 # 8. Serve the export folder so a browser can load it (§12)
 unity command bt_devserver_start --project-path "$PROJ" --format json   # http://localhost:8888/
 unity command bt_devserver_status --project-path "$PROJ"
+# Preview (§12.7): default scene, one specific scene, or the raw asset
+open "http://localhost:8888/index.html"
+open "http://localhost:8888/index.html?scene=Level01.gltf"
+curl -sS -o /dev/null -w "%{http_code}\n" "http://localhost:8888/scenes/Level01.gltf"
 
 # 9. Verify, then shut the Editor down to release the license seat
 ls -la "$PROJ/Export/scenes" "$PROJ/Export/containers"
@@ -2273,6 +2346,14 @@ unity pipeline upgrade | list | list-versions --format json
 # Development web server (§12)
 unity command bt_devserver_start [--port 8888] | bt_devserver_status
 unity command eval 'UnityTools.StartWebServer(CanvasTools.CVPanel.RelativeHostPath); return WebServer.IsStarted;'
+http://localhost:8888/index.html                      # default scene   (needs the web project build)
+http://localhost:8888/index.html?scene=Level01.gltf   # a specific scene, by file name
+http://localhost:8888/scenes/level01.gltf             # the raw exported asset
+
+# Licence (§0) - check BEFORE trusting any export; community silently drops components
+unity command eval 'return "pro=" + ToolkitManager.IsPro() + " type=" + ToolkitManager.GetLicenseType();'
+# NOT LIVE YET: ToolkitManager.HasActiveSubscription() and CanvasToolsExporter.GenerateDeveloperLicense()
+#               both hit an undeployed endpoint - license.json is the only working path today
 
 # Live Editor
 unity status --format json                 # GUI editors only
