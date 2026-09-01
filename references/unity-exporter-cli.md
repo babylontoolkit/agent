@@ -24,6 +24,10 @@ WebGL/WebGPU engine, with interactive components intact rather than baked down t
 a project where the first export actually succeeds. Then design levels (§8), export them (§9, §10), serve them
 (§12), and hand the result to **`bt-gauntlet`** to iterate on visual fidelity against a goal.
 
+> **The scaffold takes minutes, and the project is unusable until it finishes.** Packages resolve, the exporter
+> compiles in, and a resident Editor holds the project lock the whole time. Report it as *still installing* —
+> naming the current step — and never as a finished project before the `VERIFY` line prints. **§4B.2.**
+
 > **Read this together with:** `scene-components.md` (what the exported `extras.metadata.components` mean at
 > runtime) and `project-installer.md` (the web project that consumes the exported content).
 
@@ -651,13 +655,50 @@ Two ways to run it, and the reference supports both:
 Once a level exists, hand it to **`bt-gauntlet`** to iterate on visual fidelity against a goal — build,
 export, look, critique, adjust, repeat.
 
-### 4B.2 Create the three files, then run
+### 4B.2 While it is running the project is NOT ready to open — say so
 
-This document is fetched remotely, so **there is nothing to clone and no script on disk**. Write these three
+`bt-new-unity-project.sh` takes **~2–5 minutes**, and for nearly all of that time what is on disk is an
+incomplete Unity project. The directory appears within ~15 s and `Assets/` / `ProjectSettings/` fill in
+seconds later, so the Unity Hub will list it and offer to open it almost immediately — while the three
+packages are still resolving, the exporter has not compiled in, `DefaultProjectFolder` is empty,
+`package.json` and `node_modules` do not exist, and a **resident Editor is holding the project lock**.
+Opening it from the Hub inside that window either fails on the lock or races the agent's Editor.
+
+**So an agent must report the scaffold as work in progress, not as a finished project.** The common failure
+here is a *reporting* failure rather than a technical one: the create step returned, the folder exists, the
+agent announces *"created your Unity project"* — and the user opens a broken shell. If the agent kicked the
+script off in the background and moved on, it must still keep saying "installing" until the run ends.
+
+1. **Nothing is ready until the `VERIFY` line prints.** `VERIFY` is the readiness gate — the first point at
+   which all three packages are in, the exporter type has compiled, the bootstrap has run and `tsc` exists.
+   Every step before it is installation.
+2. **Give the user the current step, not silence.** "Still installing — resolving `org.khronos.unitygltf`
+   (package 2 of 3), ~2 min in" is a status; four silent minutes is not, and "your project is ready" at step 4
+   is simply wrong. The step names in §4B.4 are the vocabulary for this.
+3. **Read `VERIFY`, do not assume it.** Every poll loop in the script is bounded and *falls through* on
+   timeout instead of aborting, so a package that never resolved still reaches `VERIFY`. `pro=False` after a
+   `--license` was passed, `tsc=False`, or an empty `exportRoot` each mean the project is **not** usable —
+   name the one that failed rather than reporting success.
+4. **Say what the exit mode means for opening it**, because the two modes end in genuinely different states:
+   - `--mode headless` — the scaffold stops its own Editor and removes `Temp/UnityLockfile`. **Now** the
+     project is ready to open in the Hub.
+   - `--mode copilot` (the default) — the Editor is left running *deliberately*, so the agent can keep
+     driving it. The project is ready **for the agent**, not for the Hub. Tell the user that opening it
+     themselves means stopping that Editor first, and hand them the command: `bt-stop-editor.sh <ProjectPath>`
+     (§4B.3, file 4 of 4). Do **not** tell them to `kill` the pid the scaffold printed — on Windows that is the
+     shell's job id, not `Unity.exe`'s, and killing it does nothing.
+
+The same rule applies when an agent runs the steps by hand instead of through the script: the project is
+"installing" until the toolkit type compiles in, `package.json` exists, and `npm install` has finished.
+
+### 4B.3 Create the four files, then run
+
+This document is fetched remotely, so **there is nothing to clone and no script on disk**. Write these four
 files into a working directory of your choice (`./bt-unity/` below — the user's project, a scratch dir,
-anywhere), then run the shell script. They are reproduced in full so the scaffold is self-contained.
+anywhere), then run the shell script. They are reproduced in full so the scaffold is self-contained, and they
+run unmodified on **macOS, Linux and Windows (Git Bash)**.
 
-**File 1 of 3 — `bt-unity/bt-bootstrap.cs`** (replicates `CVPanel.OnEnable()` for headless):
+**File 1 of 4 — `bt-unity/bt-bootstrap.cs`** (replicates `CVPanel.OnEnable()` for headless):
 
 ```csharp
 // Headless replication of CVPanel.OnEnable() - the Scene Exporter bootstrap.
@@ -694,7 +735,7 @@ sb.Append(" pro=" + ToolkitManager.IsPro());
 return sb.ToString();
 ```
 
-**File 2 of 3 — `bt-unity/bt-newscene.cs`** (starter scene in the correct order):
+**File 2 of 4 — `bt-unity/bt-newscene.cs`** (starter scene in the correct order):
 
 ```csharp
 // Create a starter scene WITH LightingSettings (order: NewScene -> build -> save -> lighting).
@@ -714,12 +755,15 @@ if (!UnityEditor.Lightmapping.TryGetLightingSettings(out ls) || ls == null) {
     UnityEditor.AssetDatabase.CreateAsset(nls, "Assets/Settings/BtLightingSettings.lighting");
     UnityEditor.Lightmapping.lightingSettings = nls;
 }
+// Assigning lightingSettings does NOT mark the scene dirty, so SaveOpenScenes() skips it
+// and the reference is lost the next time the scene is loaded (sec 8.1).
+UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
 UnityEditor.SceneManagement.EditorSceneManager.SaveOpenScenes();
 UnityEditor.AssetDatabase.SaveAssets();
 return "scene=Assets/Scenes/" + sceneName + ".unity lighting=ok";
 ```
 
-**File 3 of 3 — `bt-unity/bt-new-unity-project.sh`** (the scaffold itself):
+**File 3 of 4 — `bt-unity/bt-new-unity-project.sh`** (the scaffold itself):
 
 ```bash
 #!/usr/bin/env bash
@@ -729,6 +773,10 @@ return "scene=Assets/Scenes/" + sceneName + ".unity lighting=ok";
 #   ./bt-new-unity-project.sh <ProjectName> [--path <dir>] [--editor <ver>]
 #                             [--template <id>] [--license <file>] [--company <name>]
 #                             [--mode copilot|headless] [--snippets <dir>]
+#
+# Runs on macOS, Linux and Windows (Git Bash). Requires the unity CLI, python3,
+# npm and a POSIX shell. Every platform difference is isolated in the four
+# helpers under "portable helpers" - the rest of the script is plain POSIX.
 #
 # Does everything needed for a build to actually succeed:
 #   1. resolve the Hub's default project directory (override with --path)
@@ -745,30 +793,85 @@ return "scene=Assets/Scenes/" + sceneName + ".unity lighting=ok";
 set -uo pipefail
 export PATH="$HOME/.unity/bin:$PATH"
 
-NAME="${1:?usage: bt-new-unity-project.sh <ProjectName> [--path dir] [--editor ver] [--license file] [--mode copilot|headless]}"; shift
-PARENT=""; EDITOR_VER="lts"; TEMPLATE="com.unity.template.3d"; LICENSE=""; COMPANY=""; MODE="copilot"; SNIPPETS="$(cd "$(dirname "$0")" && pwd)"
+NAME="${1:?usage: bt-new-unity-project.sh <ProjectName> [--path dir] [--editor ver] [--license file] [--company name] [--mode copilot|headless]}"; shift
+PARENT=""; EDITOR_VER="lts"; TEMPLATE="com.unity.template.3d"; LICENSE=""; COMPANY=""; MODE="copilot"
+SNIPPETS="$(cd "$(dirname "$0")" && pwd)"
 while [ $# -gt 0 ]; do case "$1" in
   --path) PARENT="$2"; shift 2;; --editor) EDITOR_VER="$2"; shift 2;;
   --template) TEMPLATE="$2"; shift 2;; --license) LICENSE="$2"; shift 2;;
+  --company) COMPANY="$2"; shift 2;;
   --mode) MODE="$2"; shift 2;; --snippets) SNIPPETS="$2"; shift 2;;
   *) echo "unknown arg: $1" >&2; exit 2;; esac; done
 say(){ echo "[$(date +%T)] $*"; }
-ev(){ unity command eval_file "$1" --project-path "$PROJ" --timeout 900 --format json 2>/dev/null | python3 -c "
+
+# --- portable helpers -------------------------------------------------------
+# 1. Paths passed to the Editor BINARY must be native Windows under Git Bash.
+#    (Paths passed to the `unity` CLI accept either form on every platform.)
+nat(){ if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
+
+# 2. The Editor executable. "location" from the CLI is the executable itself on
+#    Windows and Linux but a .app bundle on macOS, so probe the known shapes
+#    rather than hard-code /Applications/... .
+editor_exe(){
+  loc=$(unity editors --installed --format json 2>/dev/null | BT_VER="$1" python3 -c "
+import json, os, sys
+want = os.environ['BT_VER']
+try: d = json.load(sys.stdin)['data']
+except Exception: sys.exit(0)
+print(next((e['location'] for e in d if e['version'] == want), ''))")
+  [ -z "$loc" ] && return 1
+  loc=$(printf '%s' "$loc" | tr '\\' '/')
+  for c in "$loc" \
+           "$loc/Contents/MacOS/Unity" \
+           "$loc/Unity.app/Contents/MacOS/Unity" \
+           "$loc/Editor/Unity.app/Contents/MacOS/Unity" \
+           "$loc/Editor/Unity.exe" \
+           "$loc/Editor/Unity"; do
+    [ -f "$c" ] && { printf '%s' "$c"; return 0; }
+  done
+  return 1
+}
+
+# 3. The Editor's REAL pid, from the CLI. "$!" is the shell's job id, which under
+#    Git Bash is NOT a Windows pid - stopping the Editor with it silently fails.
+editor_pid(){
+  unity pipeline list --format json 2>/dev/null | BT_PROJ="$PROJ" python3 -c "
+import json, os, sys
+want = os.path.normcase(os.path.abspath(os.environ['BT_PROJ']))
+try: inst = json.load(sys.stdin)['data']['instances']
+except Exception: sys.exit(0)
+for i in inst:
+    if i.get('isRunning') and os.path.normcase(os.path.abspath(i.get('projectPath', ''))) == want:
+        print(i['pid']); break"
+}
+
+# 4. kill(1) cannot signal a native Windows process from Git Bash.
+stop_pid(){
+  [ -z "${1:-}" ] && return 0
+  if command -v taskkill >/dev/null 2>&1; then taskkill //PID "$1" //F >/dev/null 2>&1
+  else kill "$1" 2>/dev/null; fi
+}
+
+J(){ python3 -c "
 import json,sys
 try:
     d=json.load(sys.stdin)
-    print(d.get('data',{}).get('result',{}).get('result') if d.get('success') else 'ERR: '+d['errors'][0]['message'][:300])
+    print(d.get('data',{}).get('result',{}).get('result') if d.get('success') else 'ERR: '+(d.get('errors') or [{'message':'?'}])[0]['message'][:300])
 except Exception: print('unreachable')"; }
+ev(){  unity command eval_file "$1" --project-path "$PROJ" --timeout 900 --format json 2>/dev/null | J; }
+evs(){ unity command eval      "$1" --project-path "$PROJ" --timeout 900 --format json 2>/dev/null | J; }
 
 # 1. default project dir from the Hub (portable: userDataPath/projectDir.json)
 if [ -z "$PARENT" ]; then
   UDP=$(unity env --format json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['userDataPath'])" 2>/dev/null)
-  PARENT=$(python3 -c "
-import json,sys
-try: print(json.load(open('$UDP/projectDir.json'))['directoryPath'])
+  PARENT=$(BT_UDP="${UDP:-}" python3 -c "
+import json, os
+try: print(json.load(open(os.path.join(os.environ['BT_UDP'], 'projectDir.json')))['directoryPath'])
 except Exception: print('')" 2>/dev/null)
   [ -z "$PARENT" ] && PARENT="$HOME/Unity"
 fi
+# Windows writes this value with backslashes; normalise before joining onto it.
+PARENT=$(printf '%s' "$PARENT" | tr '\\' '/')
 PROJ="$PARENT/$NAME"
 say "project : $PROJ"; say "editor  : $EDITOR_VER"; say "mode    : $MODE"
 [ -e "$PROJ" ] && { echo "refusing to overwrite existing path: $PROJ" >&2; exit 1; }
@@ -788,32 +891,29 @@ grep -q '"com.unity.pipeline"' "$PROJ/Packages/manifest.json" || { echo "pipelin
 
 say "3/9 launching Editor ($MODE)"
 GFX=""; [ "$MODE" = "headless" ] && GFX="-nographics"
+EXE=$(editor_exe "$ED") || { echo "no Editor binary for $ED - check: unity editors --installed" >&2; exit 1; }
 mkdir -p "$PROJ/Logs"
-nohup "/Applications/Unity/Hub/Editor/$ED/Unity.app/Contents/MacOS/Unity" \
-  -batchmode $GFX -projectPath "$PROJ" -logFile "$PROJ/Logs/agent-editor.log" >/dev/null 2>&1 &
-EDPID=$!
+nohup "$EXE" -batchmode $GFX -projectPath "$(nat "$PROJ")" -logFile "$(nat "$PROJ/Logs/agent-editor.log")" >/dev/null 2>&1 &
+JOBPID=$!
 for i in $(seq 1 120); do unity command --project-path "$PROJ" >/dev/null 2>&1 && break; sleep 5; done
+EDPID=$(editor_pid); [ -z "$EDPID" ] && EDPID="$JOBPID"
 say "    editor pid=$EDPID ready"
 
 say "4/9 org.khronos.unitygltf (2/3)"
-unity command eval 'UnityEditor.PackageManager.Client.Add("https://github.com/babylontoolkit/unitygltf.git"); return "q";' --project-path "$PROJ" >/dev/null 2>&1
+evs 'UnityEditor.PackageManager.Client.Add("https://github.com/babylontoolkit/unitygltf.git"); return "q";' >/dev/null
+R=""
 for i in $(seq 1 120); do
-  R=$(unity command eval 'return UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/org.khronos.unitygltf/package.json") != null;' --project-path "$PROJ" --format json 2>/dev/null | python3 -c "
-import json,sys
-try: print(json.load(sys.stdin).get('data',{}).get('result',{}).get('result'))
-except Exception: print('x')")
+  R=$(evs 'return UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/org.khronos.unitygltf/package.json") != null;')
   [ "$R" = "True" ] && break; sleep 5; done
-say "    resolved"
+say "    resolved ($R)"
 
 say "5/9 com.babylontoolkit.editor (3/3)"
-unity command eval 'UnityEditor.PackageManager.Client.Add("https://github.com/babylontoolkit/professionaledition.git"); return "q";' --project-path "$PROJ" >/dev/null 2>&1
+evs 'UnityEditor.PackageManager.Client.Add("https://github.com/babylontoolkit/professionaledition.git"); return "q";' >/dev/null
+R=""
 for i in $(seq 1 180); do
-  R=$(unity command eval 'foreach (var a in System.AppDomain.CurrentDomain.GetAssemblies()) if (a.GetType("CanvasTools.CanvasToolsExporter") != null) return "READY"; return "no";' --project-path "$PROJ" --format json 2>/dev/null | python3 -c "
-import json,sys
-try: print(json.load(sys.stdin).get('data',{}).get('result',{}).get('result'))
-except Exception: print('x')")
+  R=$(evs 'foreach (var a in System.AppDomain.CurrentDomain.GetAssemblies()) if (a.GetType("CanvasTools.CanvasToolsExporter") != null) return "READY"; return "no";')
   [ "$R" = "READY" ] && break; sleep 5; done
-say "    toolkit compiled in"
+say "    toolkit compiled in ($R)"
 
 if [ -n "$LICENSE" ] && [ -f "$LICENSE" ]; then
   say "6/9 installing license.json"
@@ -821,14 +921,11 @@ if [ -n "$LICENSE" ] && [ -f "$LICENSE" ]; then
   # An EnterprisePartner licence is keyed on PlayerSettings.companyName. A NEW project is
   # "DefaultCompany", so copying the file alone leaves IsPro() false. Set it before validating.
   if [ -n "$COMPANY" ]; then
-    unity command eval "UnityEditor.PlayerSettings.companyName = \"$COMPANY\"; UnityEditor.AssetDatabase.SaveAssets(); return UnityEditor.PlayerSettings.companyName;" --project-path "$PROJ" >/dev/null 2>&1
+    evs "UnityEditor.PlayerSettings.companyName = \"$COMPANY\"; UnityEditor.AssetDatabase.SaveAssets(); return UnityEditor.PlayerSettings.companyName;" >/dev/null
     say "    companyName set to '$COMPANY' (EnterprisePartner seed)"
   fi
-  unity command eval 'UnityEditor.AssetDatabase.Refresh(); return "ok";' --project-path "$PROJ" >/dev/null 2>&1
-  PRO=$(unity command eval 'return ToolkitManager.IsPro();' --project-path "$PROJ" --format json 2>/dev/null | python3 -c "
-import json,sys
-try: print(json.load(sys.stdin).get('data',{}).get('result',{}).get('result'))
-except Exception: print('?')")
+  evs 'UnityEditor.AssetDatabase.Refresh(); return "ok";' >/dev/null
+  PRO=$(evs 'return ToolkitManager.IsPro();')
   [ "$PRO" = "True" ] && say "    licence ACTIVE" || say "    WARNING: licence did NOT validate (pro=$PRO). For EnterprisePartner pass --company '<Licensee Name>'; other plans are bound to the original productGUID and cannot be copied."
 else
   say "6/9 no --license given -> COMMUNITY (interactive components will be stripped)"
@@ -844,28 +941,70 @@ say "9/9 starter scene + LightingSettings"
 say "    $(ev "$SNIPPETS/bt-newscene.cs")"
 
 say "VERIFY"
-unity command eval 'string r = UnityTools.GetRootPath();
+say "    $(evs 'string r = UnityTools.GetRootPath();
 return "pro=" + ToolkitManager.IsPro()
      + " tsc=" + System.IO.File.Exists(System.IO.Path.Combine(r, CanvasTools.CVPanel.TscLocalPath))
      + " exportRoot=" + CanvasToolsInfo.DefaultProjectFolder
-     + " scene=" + UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene().path;' \
-  --project-path "$PROJ" --format json 2>/dev/null | python3 -c "
-import json,sys; d=json.load(sys.stdin); print('   ', d.get('data',{}).get('result',{}).get('result'))"
+     + " scene=" + UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene().path;')"
 
 if [ "$MODE" = "headless" ]; then
   say "headless mode -> stopping Editor (pid $EDPID) and releasing the licence seat"
-  kill "$EDPID" 2>/dev/null; sleep 6; rm -f "$PROJ/Temp/UnityLockfile" 2>/dev/null
+  stop_pid "$EDPID"; sleep 6; rm -f "$PROJ/Temp/UnityLockfile" 2>/dev/null
   say "DONE. Project ready at $PROJ (no Editor running - the Hub can open it)"
 else
   say "DONE. Editor pid $EDPID left running for copilot mode."
-  say "NOTE: stop it (kill $EDPID) before opening the project from the Unity Hub."
+  say "NOTE: the project is NOT ready to open in the Hub until that Editor is stopped."
+  say "      stop it with:  ./bt-stop-editor.sh \"$PROJ\""
 fi
+```
+
+**File 4 of 4 — `bt-unity/bt-stop-editor.sh`** (portably release the project so the Hub can open it):
+
+```bash
+#!/usr/bin/env bash
+# ============================================================================
+# bt-stop-editor.sh - Stop the resident Editor holding a project, on any platform.
+#
+#   ./bt-stop-editor.sh <ProjectPath>
+#
+# Copilot mode leaves an Editor running on purpose. Until it is stopped the
+# project is locked and the Unity Hub cannot open it. Use this rather than
+# `kill $!`: the pid the scaffold prints is the shell's job id, which is not a
+# Windows pid, and kill(1) cannot signal a native Windows process from Git Bash.
+# ============================================================================
+set -uo pipefail
+export PATH="$HOME/.unity/bin:$PATH"
+
+PROJ="${1:?usage: bt-stop-editor.sh <ProjectPath>}"
+PROJ=$(printf '%s' "$PROJ" | tr '\\' '/')
+
+PID=$(unity pipeline list --format json 2>/dev/null | BT_PROJ="$PROJ" python3 -c "
+import json, os, sys
+want = os.path.normcase(os.path.abspath(os.environ['BT_PROJ']))
+try: inst = json.load(sys.stdin)['data']['instances']
+except Exception: sys.exit(0)
+for i in inst:
+    if i.get('isRunning') and os.path.normcase(os.path.abspath(i.get('projectPath', ''))) == want:
+        print(i['pid']); break")
+
+if [ -z "$PID" ]; then
+  echo "no running Editor registered for $PROJ"
+else
+  echo "stopping Editor pid $PID"
+  if command -v taskkill >/dev/null 2>&1; then taskkill //PID "$PID" //F >/dev/null 2>&1
+  else kill "$PID" 2>/dev/null; fi
+  sleep 6
+fi
+
+# The lockfile is what actually blocks the Hub; clear it even if no pid was found.
+rm -f "$PROJ/Temp/UnityLockfile" 2>/dev/null
+echo "lock cleared - $PROJ can now be opened from the Unity Hub"
 ```
 
 Then:
 
 ```bash
-chmod +x bt-unity/bt-new-unity-project.sh
+chmod +x bt-unity/bt-new-unity-project.sh bt-unity/bt-stop-editor.sh
 
 # Copilot — leaves an Editor up for live level design
 bt-unity/bt-new-unity-project.sh MyGame \
@@ -874,6 +1013,9 @@ bt-unity/bt-new-unity-project.sh MyGame \
 # Fully headless / CI
 bt-unity/bt-new-unity-project.sh MyGame --mode headless \
   --editor 6000.5.10f1 --license ~/licenses/license.json --company "Mackey Kinard"
+
+# Release the copilot Editor when the user wants to open the project in the Hub
+bt-unity/bt-stop-editor.sh ~/Unity/MyGame
 ```
 
 Full option list:
@@ -884,16 +1026,30 @@ bt-new-unity-project.sh <ProjectName>
     [--editor <version>]        editor version, or lts (default: lts)
     [--template <id>]           project template (default: com.unity.template.3d)
     [--license <file>]          license.json to install
-    [--company "<Licensee>"]    required with an EnterprisePartner licence - see 4B.4
+    [--company "<Licensee>"]    required with an EnterprisePartner licence - see 4B.5
     [--mode copilot|headless]   default: copilot
     [--snippets <dir>]          where the two .cs files live (default: alongside the script)
 ```
 
-> **macOS/Linux shell script.** On Windows run it under Git Bash or WSL, or port the ~20 `unity` calls to
-> PowerShell — every `unity` command in it is already cross-platform; only the shell glue is not. The one
-> hard-coded macOS path is the Editor binary
-> (`/Applications/Unity/Hub/Editor/$ED/Unity.app/Contents/MacOS/Unity`); on Windows/Linux take `location`
-> from `unity editors --installed --format json` (§6.1).
+> **Runs on macOS, Linux and Windows.** Every platform difference is isolated in the four helpers at the top
+> of the script; nothing below them is platform-specific. It needs the `unity` CLI, `python3`, `npm` and a
+> POSIX shell — on Windows that means **Git Bash** (or WSL against a Linux Editor install).
+>
+> | Helper | Why it has to exist |
+> |---|---|
+> | `nat` | The Editor **binary** does not accept Git Bash's `/c/...` paths, so `-projectPath` and `-logFile` go through `cygpath -w`. Identity on macOS/Linux. (The `unity` CLI itself takes either form on every platform — only the binary is fussy.) |
+> | `editor_exe` | `location` from `unity editors --installed` is the executable itself on Windows and Linux but a `.app` bundle on macOS, so the known shapes are probed instead of hard-coding `/Applications/...`. |
+> | `editor_pid` | **`$!` is not the Editor's pid on Windows.** Under Git Bash it is the shell's job id, so `kill $!` silently fails and the project stays locked. `unity pipeline list --format json` reports the true pid at `data.instances[].pid` on every platform — match on `projectPath`. |
+> | `stop_pid` | `kill(1)` cannot signal a native Windows process from Git Bash — it reports `No such process` while the process is plainly alive. Use `taskkill //PID <pid> //F` there (the doubled slash is the MSYS argument-conversion escape), `kill` everywhere else. |
+>
+> One further Windows detail is handled inline: the Hub writes `projectDir.json` with escaped backslashes
+> (`{"directoryPath":"C:\\Projects\\Unity"}`), so `$PARENT` is normalised to forward slashes before any path
+> is joined onto it.
+>
+> *Verified on Windows 11 / Git Bash / Unity 6000.5.10f1: `$!` reported `1724` while the Editor was really
+> `36280`; `kill 36280` failed with `No such process`; `taskkill //PID 36280 //F` succeeded; and
+> `bt-stop-editor.sh` stopped a live Editor and cleared `Temp/UnityLockfile` end to end. The macOS and Linux
+> branches follow the Editor paths already documented in §6.1.*
 
 **Where it puts the project.** With no `--path` it reads the **Unity Hub's own default project directory**,
 portably:
@@ -912,7 +1068,7 @@ cat "$UDP/projectDir.json"          # -> {"directoryPath":"/Users/you/Documents/
 Falling back to `~/Unity` if the file is absent. `--path` overrides. It refuses to overwrite an existing
 directory.
 
-### 4B.3 What it does, and why each step is there
+### 4B.4 What it does, and why each step is there
 
 Every step maps to a failure documented elsewhere in this file:
 
@@ -937,7 +1093,7 @@ loads (verified: `Application.isBatchMode = True`, `CVPanel instances = 0`, `Def
 `InlineNonceHash` — and writes `package.json` using the live `BabylonCore.Info` values
 (`NAME`, `VERSION`, `TYPESCRIPT`), byte-identical to the panel's own template.
 
-### 4B.4 The licence caveat the scaffold cannot fully solve
+### 4B.5 The licence caveat the scaffold cannot fully solve
 
 `--license` copies the file, but a licence is **seed-bound** (§0):
 
@@ -952,7 +1108,7 @@ loads (verified: `Application.isBatchMode = True`, `CVPanel instances = 0`, `Def
 The scaffold reports `licence ACTIVE` or warns with the reason, so a community fallback is never silent.
 (When the subscription service ships, all of this collapses to "sign in" — see §0.)
 
-### 4B.5 Verified run
+### 4B.6 Verified run
 
 ```
 1/9 creating project                    16s
@@ -1305,6 +1461,23 @@ CS
 unity command eval_file /tmp/snippet.cs --project-path "$PROJ" --format json
 ```
 
+#### What the REPL will not accept
+
+The snippet is compiled as a **method body**, not as a source file, and it is compiled with **warnings as
+errors**. Two consequences bite straight away:
+
+- **No `using` directives.** A leading `using System.Linq;` fails with `Identifier expected` and
+  `'System.Linq' is a namespace but is used like a type` — the compiler is reading it as a `using`
+  *statement*. Fully qualify instead (`System.Linq.Enumerable.FirstOrDefault(...)`), or write a plain loop.
+- **`[Obsolete]` APIs are errors, not warnings.** On Unity 6 that includes
+  `Object.FindFirstObjectByType<T>()` and every `FindObjectsByType<T>(FindObjectsSortMode)` overload; the
+  snippet fails to compile with the deprecation text as the error. Use `FindAnyObjectByType<T>()` and
+  `FindObjectsByType<T>(FindObjectsInactive)`. `Unreachable code detected` is an error too, so never leave a
+  `return` above live statements while iterating on a snippet.
+
+Both surface as outer `success: false` with `"Compilation Failed"` and a line/column list in
+`errors[0].message` — that message names the exact line of *your snippet*, so read it rather than guessing.
+
 #### Reading an `eval` result
 
 The returned value is nested — under `--format json` it is at **`data.result.result`**, with
@@ -1454,15 +1627,211 @@ if (!has || existing == null) {
 with no lighting settings, so it *wipes* any assignment made earlier. The correct sequence is:
 
 ```
-NewScene  ->  build the hierarchy  ->  SaveScene  ->  assign LightingSettings  ->  BuildProject
+NewScene  ->  build the hierarchy  ->  SaveScene  ->  assign LightingSettings  ->  MarkSceneDirty + SaveOpenScenes  ->  BuildProject
 ```
 
 Assigning first and creating the scene second fails with the exact same "lightingSettings is null" error at
 export time, which looks like the fix did not work. (Verified: doing it in the wrong order reproduces the
 failure; reversing it succeeds.) Scenes authored in the GUI already have a LightingSettings asset.
 
+#### The assignment does not save itself — `MarkSceneDirty`, or you lose it
+
+**Verified blocker, and it hides behind the fix above.** `Lightmapping.lightingSettings = ls` writes the
+reference into the open scene *in memory* but does **not** mark that scene dirty. `SaveOpenScenes()` skips
+clean scenes, so it is never written to the `.unity` file. Nothing looks wrong at the time: the snippet
+returns `lighting=ok`, and the **first** export in that same session succeeds, because the in-memory
+assignment is still live.
+
+It breaks the first time the scene is re-loaded — an `OpenScene`, a later session, a domain reload that
+reopens it — which is usually a *different* command from the one that made the mistake, so it reads as
+"the lighting fix stopped working":
+
+```
+Runtime Error
+  Lightmapping.lightingSettings is null. Please assign it to an existing asset or a new instance.
+```
+
+Check the saved file rather than the return value. A scene that never persisted it reads `fileID: 0`:
+
+```bash
+grep -n "m_LightingSettings" Assets/Scenes/Level01.unity
+#  bad: m_LightingSettings: {fileID: 0}
+# good: m_LightingSettings: {fileID: 4890085278179872738, guid: 64c317a2828b0c541a5ab608bd7d87b3, type: 2}
+```
+
+So the assignment always ends in four lines, not three:
+
+```csharp
+UnityEditor.Lightmapping.lightingSettings = ls;
+UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);   // <-- without this the next line is a no-op
+UnityEditor.SceneManagement.EditorSceneManager.SaveOpenScenes();
+UnityEditor.AssetDatabase.SaveAssets();
+```
+
+*(Verified on Unity 6000.5.10f1 / toolkit 9.22.3: without `MarkSceneDirty` the scene file keeps
+`m_LightingSettings: {fileID: 0}` and the second export of that scene fails; with it, the guid is written and
+exports repeat cleanly.)*
+
 Attach Babylon Toolkit script components exactly as you would by hand — the exporter serialises them into
-`extras.metadata.components`. See `scene-components.md` for the component inventory and runtime contract.
+`extras.metadata.components`. See §8.2 for writing the C#/TypeScript pair, and `scene-components.md` for the
+component inventory and runtime contract.
+
+---
+
+### 8.2 Authoring a script component pair from the terminal
+
+A Babylon Toolkit script component is **two files with the same base name**: a C# `EditorScriptComponent` that
+exists only to carry inspector fields and be attachable to a GameObject, and a TypeScript class that is the
+actual runtime behaviour. The exporter serialises the C# component into `extras.metadata.components` and
+compiles the TypeScript into `Export/scenes/<Product>.js`. The templates behind the
+`Assets/Create/Babylon Toolkit/…` menu live in the package at `Template/Class/EditorClass.txt`,
+`Template/Class/ScriptClass.umd.txt` and `ScriptClass.esm.txt` — writing the two files directly is equivalent,
+and is what an agent should do.
+
+**The class name has to match on both sides**, and it is `<ROOTNAMESPACE>.<ClassName>`: the C#
+`[Babylon(Class=...)]` attribute and the TypeScript `SceneManager.RegisterClass(...)` key must be the same
+string, or the exported node names a class the runtime cannot resolve and the component silently does nothing.
+
+#### The root namespace is not yours to choose
+
+`ROOTNAMESPACE` is `EditorSettings.projectGenerationRootNamespace`, and `UnityTools.ValidateProjectRootNamespace()`
+**overwrites it** from the product name on every bootstrap (that is, every Scene Exporter panel `OnEnable`).
+Setting it by hand does not stick:
+
+```bash
+unity command eval 'UnityEditor.EditorSettings.projectGenerationRootNamespace = "PROJECT";
+UnityTools.ValidateProjectRootNamespace();
+return UnityEditor.EditorSettings.projectGenerationRootNamespace;' --project-path "$PROJ"
+# -> MY        (project "MyTestProject" - the value just set is discarded)
+```
+
+**Read it, never set it**, and build both class names from what comes back.
+
+#### The two files
+
+The C# side compiles into **`Assembly-CSharp`** — the toolkit's `App.asmdef` is `includePlatforms: ["Editor"]`
+and `autoReferenced`, so a plain `Assets/Scripts/*.cs` file resolves it and **no `Editor/` folder is needed**.
+`EditorScriptComponent`, `BabylonAttribute`, `AutoAttribute` and `SceneExporterTool` are all in the **global**
+namespace, in the `CanvasTools` assembly, so no `using` is required for them.
+
+`Assets/Scripts/DemoRotator.cs`:
+
+```csharp
+#if UNITY_EDITOR
+using System;
+using UnityEditor;
+using UnityEngine;
+
+[Babylon(Class="MY.DemoRotator"), AddComponentMenu("Scripts/My Project/Demo Rotator")]
+public class DemoRotator : EditorScriptComponent
+{
+    [Tooltip("Degrees per second applied around the rotation axis.")]
+    [Auto] public float rotationSpeed = 45.0f;
+
+    [Auto] public Vector3 rotationAxis = Vector3.up;
+
+    public override void OnUpdateProperties(Transform transform, SceneExporterTool exporter)
+    {
+        // last chance to normalise or derive values before they are serialised
+        if (this.rotationAxis.sqrMagnitude <= 0.0f) this.rotationAxis = Vector3.up;
+        this.rotationAxis = this.rotationAxis.normalized;
+    }
+}
+#endif
+```
+
+`Assets/Scripts/DemoRotator.ts` — UMD namespace style. **That is the one the Unity exporter compiles**; the
+ESM template is for standalone npm projects, and its `RegisterClass` key is the bare class name rather than
+the dotted one:
+
+```typescript
+namespace MY {
+    export class DemoRotator extends TOOLKIT.ScriptComponent {
+        private rotationSpeed: number = 45.0;
+        private rotationAxis: BABYLON.Vector3 = null;
+
+        constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties: any = {}, alias: string = "MY.DemoRotator") {
+            super(transform, scene, properties, alias);
+        }
+
+        protected awake(): void {
+            this.rotationSpeed = this.getProperty("rotationSpeed", 45.0);
+            const axis: any = this.getProperty("rotationAxis", { x: 0.0, y: 1.0, z: 0.0 });
+            this.rotationAxis = new BABYLON.Vector3(axis.x, axis.y, axis.z).normalize();
+        }
+
+        protected update(): void {
+            const radians: number = this.rotationSpeed * (Math.PI / 180.0) * this.getDeltaTime();
+            this.transform.rotate(this.rotationAxis, radians, BABYLON.Space.LOCAL);
+        }
+    }
+
+    TOOLKIT.SceneManager.RegisterClass("MY.DemoRotator", DemoRotator);
+}
+```
+
+Attach it from the terminal like any other component — the type is in `Assembly-CSharp`, so `eval` can name it
+directly once it has compiled:
+
+```csharp
+var spin = go.AddComponent<DemoRotator>();
+spin.rotationSpeed = 55f;
+spin.rotationAxis  = UnityEngine.Vector3.up;
+```
+
+#### `[Auto]` serialises as `auto__<field>` — and `getProperty` already knows
+
+An `[Auto]` field is written with an `auto__` prefix, so the exported component for the class above reads:
+
+```json
+{ "alias": "script", "klass": "MY.DemoRotator",
+  "properties": { "auto__rotationSpeed": 55.0, "auto__rotationAxis": { "x": 0.0, "y": 1.0, "z": 0.0 } } }
+```
+
+**Do not ask for `"auto__rotationSpeed"` in TypeScript.** `ScriptComponent.getProperty(name, default)` looks up
+`name` first and falls back to `"auto__" + name`, and `ScriptComponent.ParseAutoProperties` separately assigns
+every `auto__X` onto a same-named field of the instance, unpacking Vector3-shaped objects into a real
+`BABYLON.Vector3`. Ask for the plain name; both paths resolve it.
+
+#### One TypeScript error fails the whole export
+
+`BuildProject` runs the project's own `node_modules/typescript/bin/tsc` (§5.2), and a single TS error aborts
+the entire build — `Failed to build project`, no glTF written. The error goes to the **Editor log**, not to the
+`eval` result, which returns as if it succeeded:
+
+```bash
+grep -E "error TS|Failed to build" "$PROJ/Logs/agent-editor.log" | tail
+```
+
+The one that catches everybody is literal-type inference on a boolean default:
+
+```typescript
+// error TS2367: This comparison appears to be unintentional because the types 'false' and 'true' have no overlap.
+this.world = (this.getProperty("worldSpace", false) === true);
+
+// fine - name the type parameter
+this.world = this.getProperty<boolean>("worldSpace", false);
+```
+
+#### Verify the round trip
+
+```bash
+python3 -c "
+import json
+d = json.load(open('Export/scenes/SampleScene.gltf'))
+print('license:', d['scenes'][0]['extras']['metadata']['license'])
+for n in d['nodes']:
+    for c in n.get('extras', {}).get('metadata', {}).get('components', []):
+        if c['alias'] == 'script': print(' ', n['name'], c['klass'], c['properties'])"
+```
+
+`license` must be `professional` and every node must name your class — `community` means the components were
+silently dropped (§0). Then confirm the class reached the bundle, because an all-but-empty
+`Export/scenes/<Product>.js` means the TypeScript never compiled in:
+
+```bash
+grep -c "RegisterClass" Export/scenes/<Product>.js
+```
 
 ---
 
@@ -2297,7 +2666,8 @@ curl -sS -o /dev/null -w "%{http_code}\n" "http://localhost:8888/scenes/level01.
 
 # 9. Verify, then shut the Editor down to release the license seat
 ls -la "$PROJ/Export/scenes" "$PROJ/Export/containers"
-unity pipeline list --format json          # read data.instances[].pid, then kill that PID
+unity pipeline list --format json          # read data.instances[].pid, then stop THAT pid
+                                           # (Windows/Git Bash: taskkill //PID <pid> //F - kill(1) cannot)
 ```
 
 ### Measured timings (Unity 6000.5.10f1, macOS arm64, fresh 3D template)
@@ -2335,8 +2705,10 @@ unity projects create <Name> --path <dir> --editor-version <v> --template <id>
 unity open <project> | unity projects info <project> --format json
 
 # Scaffold a whole project (§4B) — packages, bootstrap, npm install, licence, starter scene
+# Takes ~2-5 min. NOT openable until VERIFY prints; copilot mode leaves an Editor holding the lock (§4B.2).
+# Runs on macOS, Linux and Windows (Git Bash). Release the copilot Editor with bt-stop-editor.sh (§4B.3).
 bt-new-unity-project.sh <Name> [--path <dir>] [--editor <ver>] \
-    [--license <file>] [--company "<Licensee>"] [--mode copilot|headless]   # script is inlined in §4B.2
+    [--license <file>] [--company "<Licensee>"] [--mode copilot|headless]   # script is inlined in §4B.3
 
 # Packages — ALL THREE, always (§4.1). Portable: unity CLI + Client.Add, no shell scripts.
 unity pipeline install [--project-path <p>] [--force] [--package-version <v>]   # installs ONLY com.unity.pipeline
