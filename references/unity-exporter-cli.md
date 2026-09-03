@@ -54,7 +54,7 @@ biggest source of wasted turns.
 |---|---|---|---|
 | **1. Unity CLI** (`unity`) | A standalone binary. Manages editors, projects, licenses, builds. | `install.sh` / `install.ps1` (§1) | `unity install`, `unity open`, `unity build`, `unity run`, `unity test` |
 | **2. Unity Pipeline package** (`com.unity.pipeline`) | A UPM package **inside a project**. Runs a local HTTP server in the Editor so the CLI can talk to a **live** Editor. | `unity pipeline install` (§4) | `unity status`, `unity command`, `unity list`, `unity command eval` |
-| **3. Babylon Toolkit Exporter** | **Two** UPM packages **inside a project** — `org.khronos.unitygltf` + `com.babylontoolkit.editor`. Adds `CanvasTools.CanvasToolsExporter` and the `Tools ▸ Babylon Toolkit` menu. | UPM git URL / tarball (§5) | `CanvasToolsExporter.BuildProject(...)` — the actual glTF export, plus the dev web server (§12) |
+| **3. Babylon Toolkit Exporter** | **Two** UPM packages **inside a project** — `org.khronos.unitygltf` + `com.babylontoolkit.editor`. Adds `CanvasTools.CanvasToolsExporter` and the `Tools ▸ Babylon Toolkit` menu. | UPM git URL / tarball (§5) | `CanvasToolsExporter.BuildProject(...)` — the actual glTF export, the dev web server (§12), and (9.22.3+) the shipped `bt_*` CLI bridge (§11) |
 
 > **"Install the Unity Pipeline" always means all three packages** — `com.unity.pipeline`,
 > `org.khronos.unitygltf`, and `com.babylontoolkit.editor`. One operation: **§4.1**.
@@ -2032,11 +2032,34 @@ Keys emitted for **both** levels and containers: `gltf`, `license`, `licensee`, 
 `unity command bt_export_level --scene Level01` instead of shipping C# strings every time. Parameters, help,
 and errors surface to the CLI automatically, and the commands appear in `unity list` and as MCP tools.
 
-Drop this at `Assets/Editor/BabylonToolkitCliCommands.cs` (it **must** live in an Editor assembly — an
-`Editor/` folder, or an asmdef referencing `Unity.Pipeline`):
+> ### The bridge ships with the toolkit — do not copy this file into `Assets/Editor/`
+>
+> Since `com.babylontoolkit.editor` **9.22.3** the bridge below is part of the exporter package itself:
+>
+> | What | Where |
+> |---|---|
+> | Source | `Packages/com.babylontoolkit.editor/Editor/CLI/BabylonToolkitCliCommands.cs` |
+> | Assembly | `Packages/com.babylontoolkit.editor/Editor/CLI/BabylonToolkit.Editor.CLI.asmdef` |
+> | Activation | The asmdef has `versionDefines` on `com.unity.pipeline` → `BT_UNITY_PIPELINE` and a matching `defineConstraints`. Without the Unity Pipeline package the assembly is **skipped** (the exporter still compiles); the moment `com.unity.pipeline` is in `Packages/manifest.json` the next domain reload compiles it and the `bt_*` commands register. No menu item, no copy step. |
+> | Commands | `bt_status`, `bt_refresh`, `bt_export_level`, `bt_export_prefab`, `bt_export_animation`, `bt_devserver_start`, `bt_devserver_status`, `bt_build_project` |
+> | Verify | `unity list --format json | grep bt_` — if empty, run `unity command recompile` + `recompile_status`, and confirm all three packages are installed (§4.1). A project in Safe Mode never registers anything. |
+>
+> **How to use it:** every command takes the global flags (`--project-path`, `--timeout`, `--format json`,
+> `--detach`). Start with `unity command bt_status` (readiness + `pro` licence + export root), export with
+> `bt_export_level --scene <path>` (Automate build, `--geometryOnly true` by default), serve with
+> `bt_devserver_start` / `bt_devserver_status`, and call `bt_refresh` after replacing a library in the
+> package (a rebuilt `CanvasTools.dll`) — that triggers a domain reload, so poll until `eval 'return true;'`
+> answers again. **Project-specific commands** (test scaffolding, one-off automation) still go in the
+> project's own `Assets/Editor/*.cs`; `Assembly-CSharp-Editor` sees `Unity.Pipeline` automatically.
+>
+> **Older toolkits (< 9.22.3):** drop the listing below at `Assets/Editor/BabylonToolkitCliCommands.cs` (it
+> **must** live in an Editor assembly — an `Editor/` folder, or an asmdef referencing `Unity.Pipeline`) and
+> remove it again when you upgrade, or the command names will collide.
+
+The shipped source, for reference:
 
 ```csharp
-#if UNITY_EDITOR
+#if UNITY_EDITOR && BT_UNITY_PIPELINE   // BT_UNITY_PIPELINE is set by the asmdef only when com.unity.pipeline is installed
 using System;
 using System.IO;
 using System.Linq;
@@ -2064,6 +2087,14 @@ public static class BabylonToolkitCliCommands
         CanvasTools.CanvasToolsExporter.Initialize();
     }
 
+    // Package version of com.babylontoolkit.editor (the CanvasTools.dll assembly version is not bumped per release).
+    private static string ToolkitPackageVersion()
+    {
+        var asm = typeof(CanvasTools.CanvasToolsExporter).Assembly;
+        var pkg = UnityEditor.PackageManager.PackageInfo.FindForAssembly(asm);
+        return pkg != null ? pkg.version : asm.GetName().Version.ToString();
+    }
+
     /// unity command bt_status
     [CliCommand("bt_status", "Report Babylon Toolkit exporter readiness and output paths")]
     public static string Status()
@@ -2071,6 +2102,7 @@ public static class BabylonToolkitCliCommands
         var info = CanvasToolsInfo.Instance;
         return string.Join("\n", new[] {
             "unity      : " + Application.unityVersion,
+            "toolkit    : " + ToolkitPackageVersion(),
             "scene      : " + EditorSceneManager.GetActiveScene().path,
             "pro        : " + ToolkitManager.IsPro(),
             "exportRoot : " + UnityTools.GetDefaultExportFolder(),
@@ -2080,7 +2112,24 @@ public static class BabylonToolkitCliCommands
             "metadata   : " + info.ExportMetadata,
             "compiling  : " + EditorApplication.isCompiling,
             "baking     : " + Lightmapping.isRunning,
+            "devserver  : " + WebServer.IsStarted,
         });
+    }
+
+    /// unity command bt_refresh [--force true]
+    /// Re-imports changed assets. Use it after replacing a library in the package (for example a
+    /// rebuilt CanvasTools.dll). A changed DLL triggers a domain reload, which drops the CLI bridge
+    /// for a while — treat a lost connection right after this call as "not yet" and poll.
+    [CliCommand("bt_refresh", "Refresh the AssetDatabase so rebuilt Babylon Toolkit libraries are reloaded",
+                MainThreadRequired = true)]
+    public static string Refresh(
+        [CliArg("force", "Force a synchronous re-import of every asset")] bool force = false)
+    {
+        if (EditorApplication.isCompiling) throw new Exception("Scripts are still compiling.");
+        AssetDatabase.Refresh(force
+            ? ImportAssetOptions.ForceSynchronousImport | ImportAssetOptions.ForceUpdate
+            : ImportAssetOptions.Default);
+        return "refreshed compiling=" + EditorApplication.isCompiling;
     }
 
     /// unity command bt_export_level --scene Assets/Scenes/Level01.unity --geometryOnly true
@@ -2255,12 +2304,13 @@ public static class BabylonToolkitCliCommands
 #endif
 ```
 
-Register it:
+Confirm registration (9.22.3+ registers on its own after the packages are installed; `recompile` only forces
+the domain reload if the Editor has not done one yet, and is required for the `< 9.22.3` drop-in file):
 
 ```bash
 unity command recompile        --project-path "$PROJ"
 unity command recompile_status --project-path "$PROJ"      # poll until "completed"
-unity list --format json | grep bt_                        # confirm registration
+unity list --format json | grep bt_                        # confirm registration — expect eight bt_* commands
 ```
 
 Then, warm or one-shot:
@@ -2647,7 +2697,7 @@ unity command eval 'return "pro=" + ToolkitManager.IsPro() + " type=" + ToolkitM
 # 6. Author the level
 unity command eval_file /tmp/build-level.cs --project-path "$PROJ" --format json
 
-# 7. Register the bridge (§11), then export
+# 7. Confirm the shipped bridge (§11) registered (toolkit 9.22.3+ needs no file; recompile just forces the reload), then export
 unity command recompile        --project-path "$PROJ"
 unity command recompile_status --project-path "$PROJ"
 
@@ -2714,6 +2764,9 @@ bt-new-unity-project.sh <Name> [--path <dir>] [--editor <ver>] \
 unity pipeline install [--project-path <p>] [--force] [--package-version <v>]   # installs ONLY com.unity.pipeline
 unity command eval 'UnityEditor.PackageManager.Client.Add("<git-url>"); return "queued";'   # packages 2 and 3
 unity pipeline upgrade | list | list-versions --format json
+
+# CLI bridge (§11) — ships in com.babylontoolkit.editor 9.22.3+, active whenever com.unity.pipeline is installed
+unity command bt_status | bt_refresh [--force true] | bt_export_level [--scene <path>] | bt_export_prefab --paths <a,b> | bt_export_animation --path <p> | bt_build_project
 
 # Development web server (§12)
 unity command bt_devserver_start [--port 8888] | bt_devserver_status
