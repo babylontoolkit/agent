@@ -1,4 +1,4 @@
-# Babylon Toolkit Image And Video MCP Servers
+# Babylon Toolkit Image, Video And Sound MCP Servers
 
 > **DEFAULT INSTALL RULE — READ FIRST:** Install the MCP package **locally in the
 > project** (`npm install --save-dev @babylonjs-toolkit/kie@latest`) and reference
@@ -24,6 +24,10 @@
     "kie-google": {
       "command": "node_modules/.bin/kie-image-mcp",
       "args": ["google"]
+    },
+    "kie-sound": {
+      "command": "node_modules/.bin/kie-image-mcp",
+      "args": ["sound"]
     }
   }
 }
@@ -64,6 +68,10 @@ npm install -g @babylonjs-toolkit/kie@latest
     "kie-google": {
       "command": "kie-image-mcp",
       "args": ["google"]
+    },
+    "kie-sound": {
+      "command": "kie-image-mcp",
+      "args": ["sound"]
     }
   }
 }
@@ -78,12 +86,16 @@ Make sure to create or update an example `.env` file called `.env.example`:
 # Rename to .env to enable
 # =========================
 KIE_KEY=your-key-goes-here
+
+# Required only for generate_sound kind=music. Use an HTTP(S) webhook you control.
+# Can also be supplied per call as callback_url. Effects and speech do not need it.
+# KIE_CALLBACK_URL=https://your-domain.com/api/kie-callback
 ```
 
 # kie-image-mcp
 
 Tiny, **zero-runtime-dependency** [MCP](https://modelcontextprotocol.io) servers for
-[kie.ai](https://kie.ai) generation — **one npm package, three servers**, selected by a
+[kie.ai](https://kie.ai) generation — **one npm package, four servers**, selected by a
 subcommand:
 
 | Subcommand | Server | Tool | Models |
@@ -91,6 +103,7 @@ subcommand:
 | `image` (default) | kie-image | `generate_image` | Nano Banana 2, Imagen 4, Seedream, Flux-2, Qwen, … |
 | `video` | kie-video | `generate_video` | Kling, Bytedance Seedance, Grok Imagine |
 | `google` | kie-google | `generate_google_video` | Google Veo 3.1 (`veo3` / `veo3_fast` / `veo3_lite`) |
+| `sound` | kie-sound | `generate_sound` | Suno effects/ambience/music, ElevenLabs speech |
 
 Because MCP is an open protocol, the same package works from **Claude Code, GitHub
 Copilot Chat (VS Code), Cursor, Windsurf, Zed**, and any other MCP client — one package,
@@ -99,12 +112,13 @@ transitive packages. Requires **Node 18+**.
 
 The command takes one subcommand to pick the server (defaults to `image`):
 ```
-kie-image-mcp image     # or: video | google   (no arg = image)
+kie-image-mcp image     # or: video | google | sound   (no arg = image)
 ```
 
 ## Get an API key
 Set your kie.ai key as `KIE_KEY` (or `KIE_AI_API_KEY`), or put `KIE_KEY=...` in a `.env`
-file in your working directory. See `.env.example`. All three servers share the one key.
+file in your working directory. See `.env.example`. All four servers share the one key.
+Only `generate_sound` with `kind: music` needs the extra `KIE_CALLBACK_URL` setting.
 
 ## Configure (any MCP client)
 
@@ -123,7 +137,8 @@ Add to your project `.mcp.json`:
   "mcpServers": {
     "kie-image":  { "command": "node_modules/.bin/kie-image-mcp", "args": ["image"] },
     "kie-video":  { "command": "node_modules/.bin/kie-image-mcp", "args": ["video"] },
-    "kie-google": { "command": "node_modules/.bin/kie-image-mcp", "args": ["google"] }
+    "kie-google": { "command": "node_modules/.bin/kie-image-mcp", "args": ["google"] },
+    "kie-sound":  { "command": "node_modules/.bin/kie-image-mcp", "args": ["sound"] }
   }
 }
 ```
@@ -294,3 +309,128 @@ Tool: `generate_google_video(prompt, out_path, image_paths?, model?, aspect_rati
 | `generation_type` | auto | `TEXT_2_VIDEO` \| `FIRST_AND_LAST_FRAMES_2_VIDEO` \| `REFERENCE_2_VIDEO`. |
 | `watermark` | — | Text to burn into the video. |
 | `enable_translation` | `true` | Translate prompt to English before generating. |
+
+## Available sound models
+
+The `sound` server exposes one tool, `generate_sound`, with three kinds. The `kind`
+selects both the provider API and which extra parameters are legal — passing a parameter
+that belongs to another kind is rejected before any paid task is submitted.
+
+| `kind` | Default model | All models | API |
+|---|---|---|---|
+| `sound_effect` (default) | `V5` | `V5`, `V5_5` | Suno `/api/v1/generate/sounds` |
+| `speech` | `elevenlabs/text-to-speech-multilingual-v2` | `elevenlabs/text-to-speech-multilingual-v2`, `elevenlabs/text-to-speech-turbo-2-5` | Market `/api/v1/jobs/createTask` |
+| `music` | `V5` | `V4`, `V4_5`, `V4_5PLUS`, `V4_5ALL`, `V5`, `V5_5` | Suno `/api/v1/generate` |
+
+> `out_path` **must end in `.mp3`** — the server downloads the provider's audio bytes
+> and never transcodes. Parent directories are created; the file is only replaced on a
+> successful download. The remote URLs expire, so always use the saved local file.
+
+### Usage
+
+Ask the assistant in plain language, e.g.:
+
+> Use generate_sound to make loopable nighttime forest ambience and save it to
+> `src/assets/audio/forest.mp3`.
+
+Tool: `generate_sound(prompt, out_path, kind?, model?, callback_url?, track_index?, …kind-specific)`.
+
+| Param (all kinds) | Default | Notes |
+|-------|---------|-------|
+| `prompt` | required | Effect description (max 500), exact spoken text (max 5000), or music description / lyrics. |
+| `out_path` | required | Local `.mp3` path. |
+| `kind` | `sound_effect` | `sound_effect` \| `speech` \| `music`. |
+| `model` | per kind | Exact slug from the table above. |
+| `callback_url` | — | HTTP(S) webhook you control. **Required for `music`** unless `KIE_CALLBACK_URL` is set; optional otherwise. |
+| `track_index` | `0` | Zero-based variation to save; other track URLs are reported in the result. |
+
+### Sound effects and ambience (`kind: sound_effect`)
+
+| Param | Default | Notes |
+|-------|---------|-------|
+| `loop` | `false` | Request a loopable sound/ambience. A generation hint, not a guaranteed sample-perfect seam. |
+| `tempo` | — | Integer BPM, 1–300. |
+| `key` | — | Musical key: `C`…`B` or minor `Cm`…`Bm` (e.g. `F#`, `Am`, `D#m`). Omit for any key. |
+
+```json
+{
+  "prompt": "Nighttime forest ambience with gentle wind, distant owls and soft crickets. No music or speech.",
+  "out_path": "src/assets/audio/forest.mp3",
+  "kind": "sound_effect",
+  "loop": true
+}
+```
+
+> The Sounds API has **no duration parameter** — `duration` is rejected for effects.
+> [KIE Sounds API](https://docs.kie.ai/suno-api/generate-sounds)
+
+### Speech (`kind: speech`)
+
+| Param | Default | Notes |
+|-------|---------|-------|
+| `voice` | James (`EkK5I93UQWFDigLMpZcX`) | Supported ElevenLabs voice name or ID. |
+| `stability` | model default | `0`–`1`. |
+| `similarity_boost` | model default | `0`–`1`. |
+| `speech_style` | model default | `0`–`1`. Maps to ElevenLabs numeric `style`; named separately from music's textual `style`. |
+| `speed` | `1` | `0.7`–`1.2`. |
+| `language_code` | — | Two-letter ISO 639-1 code. **Turbo 2.5 only.** |
+
+```json
+{
+  "prompt": "Welcome back, pilot. Your ship is ready for launch.",
+  "out_path": "src/assets/audio/welcome.mp3",
+  "kind": "speech",
+  "voice": "Rachel",
+  "stability": 0.5,
+  "speed": 1
+}
+```
+
+[Multilingual v2](https://docs.kie.ai/market/elevenlabs/text-to-speech-multilingual-v2) ·
+[Turbo 2.5](https://docs.kie.ai/market/elevenlabs/text-to-speech-turbo-2-5)
+
+### Music (`kind: music`)
+
+| Param | Default | Notes |
+|-------|---------|-------|
+| `instrumental` | `true` | `false` generates singing. |
+| `custom_mode` | `false` | Exact lyrics/style mode. Requires `style` and `title`; the `prompt` becomes the lyrics. |
+| `style` | — | Custom mode only. Max 200 for `V4`, 1000 otherwise. |
+| `title` | — | Custom mode only, required, max 80. |
+| `negative_tags` | — | Custom mode only: styles/traits to avoid. |
+| `vocal_gender` | — | Custom mode only: `m` \| `f`; requires `instrumental: false`. |
+| `duration` | — | Seconds, 10–360. **`V5_5` + `custom_mode: true` only.** |
+
+**Music requires a callback URL.** KIE's Suno music schema requires `callBackUrl` even
+though this server polls for the result. Supply `callback_url` per call or set
+`KIE_CALLBACK_URL` in the environment / `.env` — it must be a webhook endpoint you
+control. The stdio MCP server does **not** host a webhook listener, and the environment
+default is applied only to music (never to effects or speech).
+
+```json
+{
+  "prompt": "An orchestral exploration theme with warm strings, subtle percussion and a hopeful melody.",
+  "out_path": "src/assets/audio/exploration.mp3",
+  "kind": "music",
+  "instrumental": true
+}
+```
+
+Prompt limits: 3000 characters in simple mode; custom mode allows 3000 for `V4` and 5000
+for the other models. [KIE Music API](https://docs.kie.ai/suno-api/generate-music)
+
+### Sound output and limits
+
+- Every call submits a **new paid task**; `track_index` picks an output of that new task.
+  To fetch another variation of an existing result, use its reported URL — do not
+  resubmit the same prompt.
+- Waits for full completion, not streaming/first-track success. Speech polls every 6 s for
+  up to 5 minutes; Suno polls every 30 s for up to 15 minutes. Individual HTTP requests
+  and downloads time out after 60 s.
+- Errors include the task ID so the paid remote job can be queried before retrying. The
+  server never auto-resubmits, and a failed download does not overwrite the destination.
+- No local transcoding, mixing or normalization. Voice cloning, audio isolation, music
+  extension and WAV conversion are separate KIE APIs and are not parameters of this tool.
+
+> **Restart your MCP client after adding the `kie-sound` server**, and keep a single MCP
+> configuration location — do not create a duplicate `.vscode/mcp.json`.
