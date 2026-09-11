@@ -716,7 +716,7 @@ script off in the background and moved on, it must still keep saying "installing
      project is ready to open in the Hub.
    - `--mode copilot` (the default) — the Editor is left running *deliberately*, so the agent can keep
      driving it. The project is ready **for the agent**, not for the Hub. Tell the user that opening it
-     themselves means stopping that Editor first, and hand them the command: `bt-stop-editor.sh <ProjectPath>`
+     themselves means stopping that Editor first, and hand them the command: `~/.claude/toolkit/bt-stop-editor.sh <ProjectPath>`
      (§4B.3, file 4 of 4). Do **not** tell them to `kill` the pid the scaffold printed — on Windows that is the
      shell's job id, not `Unity.exe`'s, and killing it does nothing.
 
@@ -726,11 +726,27 @@ The same rule applies when an agent runs the steps by hand instead of through th
 ### 4B.3 Create the four files, then run
 
 This document is fetched remotely, so **there is nothing to clone and no script on disk**. Write these four
-files into a working directory of your choice (`./bt-unity/` below — the user's project, a scratch dir,
-anywhere), then run the shell script. They are reproduced in full so the scaffold is self-contained, and they
-run unmodified on **macOS, Linux and Windows (Git Bash)**.
+files into **`~/.claude/toolkit/`** — the per-user home for Babylon Toolkit agent tools. Use that path
+verbatim unless the user names a different one; it is not a suggestion:
 
-**File 1 of 4 — `bt-unity/bt-bootstrap.cs`** (replicates `CVPanel.OnEnable()` for headless):
+- **The scaffold is not project output.** Writing it to the working directory leaves `bt-bootstrap.cs`,
+  `bt-newscene.cs` and two `.sh` files sitting next to `src/`, `public/` and `package.json` in every project
+  it touches, where they read as deliverables and get committed.
+- **The folder has to outlive the session.** `bt-stop-editor.sh` is run whenever the user later wants to
+  open a copilot-mode project in the Hub — often days after the scaffold finished. A scratch or temp dir
+  that evaporates is not a valid choice here.
+- **One copy, every project.** These four files are identical for all projects, so they are written once
+  and reused, not regenerated per project.
+
+Create the folder once with `mkdir -p ~/.claude/toolkit`, then run the shell script. `~` expands correctly on
+macOS, Linux and Windows (Git Bash). The files are reproduced in full so the scaffold is self-contained, and
+they run unmodified on all three platforms.
+
+`bt-new-unity-project.sh` resolves the two `.cs` snippets relative to **its own location** (the `SNIPPETS`
+default, file 3 of 4), so the folder can be moved or renamed without editing anything; `--snippets <dir>`
+overrides it if the `.cs` files ever live somewhere else.
+
+**File 1 of 4 — `~/.claude/toolkit/bt-bootstrap.cs`** (replicates `CVPanel.OnEnable()` for headless):
 
 ```csharp
 // Headless replication of CVPanel.OnEnable() - the Scene Exporter bootstrap.
@@ -767,7 +783,7 @@ sb.Append(" pro=" + ToolkitManager.IsPro());
 return sb.ToString();
 ```
 
-**File 2 of 4 — `bt-unity/bt-newscene.cs`** (starter scene in the correct order):
+**File 2 of 4 — `~/.claude/toolkit/bt-newscene.cs`** (starter scene in the correct order):
 
 ```csharp
 // Create a starter scene WITH LightingSettings (order: NewScene -> build -> save -> lighting).
@@ -795,7 +811,7 @@ UnityEditor.AssetDatabase.SaveAssets();
 return "scene=Assets/Scenes/" + sceneName + ".unity lighting=ok";
 ```
 
-**File 3 of 4 — `bt-unity/bt-new-unity-project.sh`** (the scaffold itself):
+**File 3 of 4 — `~/.claude/toolkit/bt-new-unity-project.sh`** (the scaffold itself):
 
 ```bash
 #!/usr/bin/env bash
@@ -986,11 +1002,11 @@ if [ "$MODE" = "headless" ]; then
 else
   say "DONE. Editor pid $EDPID left running for copilot mode."
   say "NOTE: the project is NOT ready to open in the Hub until that Editor is stopped."
-  say "      stop it with:  ./bt-stop-editor.sh \"$PROJ\""
+  say "      stop it with:  $SNIPPETS/bt-stop-editor.sh \"$PROJ\""
 fi
 ```
 
-**File 4 of 4 — `bt-unity/bt-stop-editor.sh`** (portably release the project so the Hub can open it):
+**File 4 of 4 — `~/.claude/toolkit/bt-stop-editor.sh`** (portably release the project so the Hub can open it):
 
 ```bash
 #!/usr/bin/env bash
@@ -1036,18 +1052,20 @@ echo "lock cleared - $PROJ can now be opened from the Unity Hub"
 Then:
 
 ```bash
-chmod +x bt-unity/bt-new-unity-project.sh bt-unity/bt-stop-editor.sh
+# One time only — the four files are written here once and reused by every project.
+mkdir -p ~/.claude/toolkit
+chmod +x ~/.claude/toolkit/bt-new-unity-project.sh ~/.claude/toolkit/bt-stop-editor.sh
 
 # Copilot — leaves an Editor up for live level design
-bt-unity/bt-new-unity-project.sh MyGame \
+~/.claude/toolkit/bt-new-unity-project.sh MyGame \
   --editor 6000.5.10f1 --license ~/licenses/license.json --company "Mackey Kinard"
 
 # Fully headless / CI
-bt-unity/bt-new-unity-project.sh MyGame --mode headless \
+~/.claude/toolkit/bt-new-unity-project.sh MyGame --mode headless \
   --editor 6000.5.10f1 --license ~/licenses/license.json --company "Mackey Kinard"
 
 # Release the copilot Editor when the user wants to open the project in the Hub
-bt-unity/bt-stop-editor.sh ~/Unity/MyGame
+~/.claude/toolkit/bt-stop-editor.sh ~/Unity/MyGame
 ```
 
 Full option list:
@@ -2789,7 +2807,8 @@ unity open <project> | unity projects info <project> --format json
 # Scaffold a whole project (§4B) — packages, bootstrap, npm install, licence, starter scene
 # Takes ~2-5 min. NOT openable until VERIFY prints; copilot mode leaves an Editor holding the lock (§4B.2).
 # Runs on macOS, Linux and Windows (Git Bash). Release the copilot Editor with bt-stop-editor.sh (§4B.3).
-bt-new-unity-project.sh <Name> [--path <dir>] [--editor <ver>] \
+# Lives in ~/.claude/toolkit/ — written there once by §4B.3, reused by every project.
+~/.claude/toolkit/bt-new-unity-project.sh <Name> [--path <dir>] [--editor <ver>] \
     [--license <file>] [--company "<Licensee>"] [--mode copilot|headless]   # script is inlined in §4B.3
 
 # Packages — ALL THREE, always (§4.1). Portable: unity CLI + Client.Add, no shell scripts.
