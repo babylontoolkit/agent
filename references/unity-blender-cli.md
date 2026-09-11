@@ -14,6 +14,32 @@ geometry, procedural generation with Geometry Nodes, materials and baking, anima
 conversion, batch processing — on files anywhere on disk, in or out of a Unity project. If it can be
 expressed in `bpy`, it is in scope (**§8.4**).
 
+### YOU drive Blender. The user does not.
+
+**No GUI step in this document is ever handed back to the user.** Blender headless is the full application —
+`bpy` in `--background` is the *same* API the GUI calls — so anything a modeller could do by clicking, you do
+by scripting it:
+
+| You can, entirely headless | Where |
+|---|---|
+| **Create models from nothing** — primitives, modifiers, booleans, curves, procedural Geometry Nodes | §5, §8.4 |
+| Repair and prepare meshes — cleanup, decimate, LODs, normals, origins, scale, naming | §5 |
+| UV unwrap, pack, and bake maps (AO, normal, curvature, lighting) | §8.4 |
+| Rig, skin, re-weight, transfer weights, normalize influences, fix vertex groups | §4 |
+| Retarget, bake, trim and split animation | §5, §8.4 |
+| Author materials and node trees; bake them to textures | §8.4 |
+| Simulate cloth, rigidbodies and particles, then bake to geometry/animation | §8.4 |
+| Convert and batch-process FBX / glTF / GLB / OBJ / USD / Alembic in any direction | §3, §5, §8.4 |
+| **Render** with Cycles/EEVEE — turntables, thumbnails, look-dev frames you then open and judge | §8.4 |
+| Round-trip a model in place inside a Unity project, GUID and importer settings intact | §8 |
+
+**"There is no model for that" is not a blocker — build one.** Model it in Blender, or generate the textures
+it needs with the generation MCP servers (`web-kie-servers.md`), then bring it into Unity and compose the
+level. Placeholder geometry you authored beats a question that stops the job.
+
+**You can see your own output.** Render a frame or a turntable, open the PNG, judge it, and iterate — the same
+closed loop as `unity command screenshot` on the Unity side. Decide for yourself whether the asset is right.
+
 > **Yes, Blender is fully headless.** `blender --background --python script.py` is a first-class, long-stable
 > workflow — considerably better supported than Unity's equivalent. Everything in this document was executed
 > headless and verified; measured results are inline.

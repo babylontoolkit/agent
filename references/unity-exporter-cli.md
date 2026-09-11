@@ -20,6 +20,38 @@ WebGL/WebGPU engine, with interactive components intact rather than baked down t
   *same* Editor live through `unity command eval` (sub-second, no recompile, no domain reload).
 - **Headless mode** — the agent does everything itself with `-batchmode -nographics`, no GUI at any point.
 
+### YOU drive Unity. The user does not.
+
+**Nothing in this document is a list of instructions to hand to a human.** Every capability below is yours to
+execute from the terminal, in either mode, without asking:
+
+| You can, entirely from the CLI | How |
+|---|---|
+| Create a whole Unity project from nothing | §4B one-shot scaffold |
+| Install every package, licence, and the exporter | §4.1, §5 |
+| Build a level: GameObjects, hierarchies, transforms, prefab instances | §7.2 built-ins, §8 |
+| Set up lighting — lightmaps/GI bakes, IBL/skybox, reflection probes, fog, tonemapping, post | §8, §13, `eval` C# for anything not shipped as a command |
+| Author materials, terrain, physics bodies, colliders, navmesh | §8, `eval` |
+| Write, compile and attach C#/TypeScript script component pairs | §8.2 |
+| Run **arbitrary C# inside the live Editor** — the whole `UnityEditor` API surface | §7.3 `eval` |
+| Enter play mode, read the Editor log, check status | §7.2 |
+| **See what you made** — render Scene/Game view to a PNG and look at it | §7.2 `unity command screenshot` |
+| Export game levels and asset containers / prefabs to interactive glTF | §9, §10, §11 |
+| Run a full `EditorBuildType.Automate` build — scene + TypeScript bundle + web project | §9 |
+| Serve it and open it in a real browser | §12 |
+| Iterate against a reference image until it matches | the `bt-gauntlet` skill |
+
+**If a command for it does not exist, `eval` it (§7.3).** `eval` is a Roslyn REPL with the entire Editor API
+in scope — anything a human could do by clicking in Unity, you can do by evaluating the C# behind that click.
+"Unity has no CLI command for that" is a reason to write the C#, never a reason to stop.
+
+**The verification loop is yours too.** Author → `screenshot` → *look at the image* → judge it → fix → repeat.
+Then export → serve (§12) → open the page in a browser → screenshot **that** → read the console. You never
+need the user to tell you how it looks.
+
+**Never write "open Unity and…" in a reply.** If you are about to, you have found a step you have not yet
+looked up — it is in this document.
+
 **Start here:** *"Create a Babylon Toolkit Unity Project"* → **§4B**, a tested one-shot scaffold that produces
 a project where the first export actually succeeds. Then design levels (§8), export them (§9, §10), serve them
 (§12), and hand the result to **`bt-gauntlet`** to iterate on visual fidelity against a goal.
