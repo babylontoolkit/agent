@@ -455,8 +455,11 @@ unity command save_scene --project-path "$PROJ"
 Unity 6 renamed the Rigidbody API: `linearVelocity` / `linearDamping` / `angularDamping` (serialized
 `m_LinearDamping`, `m_AngularDamping`). The old names (`velocity`, `drag`) are obsolete — use the new ones.
 
-**Always assign a `PhysicsMaterial` to colliders** that need friction: a collider with none exports friction
-and restitution as **0**, not Unity's 0.6 default, so objects slide. Wheel colliders read the toolkit
+**Assign a `PhysicsMaterial` to colliders** whose friction matters. A collider with none exports the Scene
+Exporter's **Default Friction / Default Restitution** (0.6 / 0, matching Unity's built-in material) — but
+published toolkits up to **9.25.1** export **0** friction instead, so objects slide; on those, a
+`PhysicsMaterial` is mandatory. Separate collision-mesh children of a trigger collider are exported as trigger
+volumes (`istriggervolume`, `collisionResponse = false`); up to 9.25.1 that flag was inverted on them. Wheel colliders read the toolkit
 `RaycastWheel` component for suspension/friction — Unity's spring and friction curves are not read.
 
 **Traps (from Unity's collision diagnostics, adapted):**
