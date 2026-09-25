@@ -146,7 +146,7 @@ unity uninstall 6000.3.0f1 --yes
 | The default URP template (`com.unity.template.urp-blank`) | Any Unity 6 |
 
 Default to the latest **LTS** with a 6000.3+ version. The Toolkit exports glTF — Unity's **WebGL module is not
-needed** for Babylon Toolkit exports; install it only for a Unity WebGL player build (`unity build --target WebGL`).
+needed** — this pipeline never builds a Unity player.
 
 ---
 
@@ -279,6 +279,8 @@ Safe Mode (that is exit 7 — see §6). This is the fastest "does my C# compile?
 
 ### 7.2 Tests — `unity test`
 
+For C# Editor tooling only. Exported content is verified in the browser (`unity-authoring-recipes.md` §21).
+
 ```bash
 unity test "$PROJ" --mode EditMode --report-format junit --output ./test-results.xml --timeout 600
 case $? in 0) echo pass ;; 8) echo "tests failed — do not retry" ;; *) echo "no verdict — infra, retry" ;; esac
@@ -291,9 +293,10 @@ batch Editor and needs **no** Pipeline package. With an Editor already running, 
 
 ### 7.3 Player builds — `unity build`
 
-The Babylon Toolkit pipeline **does not use Unity player builds** — levels ship as glTF through
-`CanvasToolsExporter.BuildProject` / `bt_export_level` (`unity-exporter-cli.md` §9–§11). Use `unity build` only
-when the user explicitly wants a Unity player (e.g. a Unity WebGL build for side-by-side comparison):
+The Babylon Toolkit pipeline **never builds a Unity player** — Unity is only the editor, and every level ships
+as glTF through `CanvasToolsExporter.BuildProject` / `bt_export_level` (`unity-exporter-cli.md` §9–§11). The
+Unity-side comparison for a browser check is a Game-view capture or Play Mode in the Editor, not a player build.
+The commands are listed for reference only:
 
 ```bash
 unity build "$PROJ" --list-targets --format json

@@ -10,6 +10,11 @@ This is the **"what can I call, and how"** manual for a running Unity Editor. It
 `com.unity.pipeline` package registers (**151 in 0.7.0-exp.1**), the eight Babylon Toolkit `bt_*` commands,
 and the three code-execution paths (`run_script`, `eval`, `eval_file`).
 
+**What the Editor is for here.** Unity is the authoring tool for content that ships as glTF to BabylonJS
+(`unity-exporter-cli.md`). It never builds a Unity player, and no Unity runtime code ships. So the commands
+that matter are the authoring, baking, import, capture and export ones. Player-build and test commands are
+listed for completeness only. Play Mode is only for a Unity-side look to compare against the browser.
+
 | Read together with | For |
 |---|---|
 | `unity-exporter-cli.md` | Installing the three packages, the one-shot scaffold, getting a drivable Editor, the licence, exporting glTF, the dev server |
@@ -122,7 +127,7 @@ status command from the shell.
 | Trigger | Poll until | Notes |
 |---|---|---|
 | `bake_lighting` | `lighting_bake_status` → `completed` | `cancel_lighting_bake`; `clear_baked_lighting --confirm true` |
-| `bake_navmesh` (legacy) / `bake_navmesh_surfaces` (AI Navigation) | `navmesh_bake_status` → `completed` | `bake_navmesh_surfaces` returns `package_not_found` without `com.unity.ai.navigation` |
+| `bake_navmesh` (legacy) / `bake_navmesh_surfaces` (AI Navigation) | `navmesh_bake_status` → `completed` | **Unity-side only.** The export carries the toolkit's Recast bake (`UniRcNavMeshSurface`, `unity-authoring-recipes.md` §12), not these. `bake_navmesh_surfaces` returns `package_not_found` without `com.unity.ai.navigation` |
 | `bake_occlusion_culling` | `occlusion_bake_status` → `completed` | |
 | `package_add` / `package_remove` / `package_resolve` | `package_status` → `completed` / `failed` | then `recompile_status` (a domain reload follows) |
 | `recompile` | `recompile_status` → `completed` or `up_to_date` | or the one-shot CLI verb `unity recompile` (§8) |
@@ -320,15 +325,26 @@ exiting play mode resolves every wait as `interrupted`.
 | `capture_scene_view --save_path <png>` | The active Scene View camera | Checking layout from the editing camera |
 
 Without `save_path`, `capture_*` return the PNG **inline as base64**. `save_path` resolves under the **authoring
-root** — `Screenshots/x.png` lands in `Assets/Screenshots/` and gets imported as an asset. To keep captures out of
+root** — `Screenshots/x.png` lands in `Assets/Screenshots/` and gets imported as an asset; a path outside the
+project is rejected (`outside the project root`). To save a **named camera** anywhere, decode the inline image:
+
+```bash
+unity command capture_game_view --camera "Main Camera" --width 1920 --height 1080 \
+  --project-path "$PROJ" --result-only | jq -r .base64 | base64 -d > "$PWD/qa/main.png"   # verified
+```
+
+Hand-rolled `Camera.Render()` into a `RenderTexture` from `eval` wrote an all-black frame under URP in a batch
+Editor — use `capture_game_view`. To keep captures out of
 the project, use `screenshot --output <absolute path>`, which writes anywhere. Then open the file and look at it.
 
-> **Unity-side captures need a GUI Editor.** In a resident `-batchmode` Editor (the scaffold's default), camera
-> renders came back showing **only the skybox** — no scene geometry, at any resolution, with `screenshot`,
-> `capture_game_view` and a manual `Camera.Render` alike (Unity 6000.5.10f1, Metal, URP template; the Editor log
-> showed GPU-Resident-Drawer job exceptions). Do Unity-side visual QA in a **GUI** Editor (`unity open`, with
-> `set_autotick` on so it keeps rendering unfocused), and always judge the **exported** level in the browser —
-> that is the result that ships. `max_resolution` caps the inline image only. For
+> **Unity-side captures work in a `-batchmode` Editor once the GPU Resident Drawer is off.** With it on, camera
+> renders showed **only the skybox** — no scene geometry, with `screenshot`, `capture_game_view` and a manual
+> `Camera.Render` alike. The Editor log showed `QueryRendererInstancesJob` exceptions: a failed drawer
+> registration takes the renderers off the normal draw path, and they stay invisible until the scene reloads.
+> Turn it off with `unity command eval 'return RenderPathTools.DisableResidentDrawerReport();'` (toolkit 9.25+,
+> dialog-free; it also reloads the open scenes). The §4B bootstrap does this. *Verified: Unity 6000.5.10f1,
+> Metal, URP — a batch-mode `capture_game_view` then rendered the full lit scene.* Always also judge the
+> **exported** level in the browser at milestones — that is the result that ships. `max_resolution` caps the inline image only. For
 multi-angle shots, move the Scene View camera (`SceneView.lastActiveSceneView.pivot/rotation/size`) from
 `run_script`, then capture.
 
@@ -364,12 +380,15 @@ need it.
 unity recompile --project-path "$PROJ" --format json   # CLI verb (beta.11+): exit 0 ok, 6 compile errors, 7 no Editor reachable
                                                        # prints file:line:col diagnostics; --strict fails on warnings
 # or, command form:  unity command recompile  ->  poll  unity command recompile_status
-unity command list_tests --mode editor --project-path "$PROJ"
-unity command run_tests  --mode editor --filter MyTests --project-path "$PROJ" --timeout 300
 ```
 
-`create_script` → `recompile` → poll → `attach_script` is the path for a **persistent** component type.
+`create_script` → `recompile` → poll → `attach_script` is the path for a **persistent** component type. For
+anything that must reach BabylonJS, that type is an **`EditorScriptComponent`** paired with a TypeScript class
+(`unity-exporter-cli.md` §8.2) — `create_script`'s default `MonoBehaviour` base is Unity-only and never exports.
 `attach_script` on a not-yet-compiled type returns a *recoverable* error — recompile and retry.
+
+Unity tests (`list_tests` / `run_tests`) exist for Editor tooling; exported content is verified in the browser
+(`unity-authoring-recipes.md` §21).
 
 ---
 
@@ -519,6 +538,10 @@ disappears in a new version must be removed here, not left as a phantom.
 
 ### Baking — lighting, NavMesh, occlusion
 
+> The lighting bake is how lightmaps, light probes, reflection probes and the IBL reach BabylonJS. The **NavMesh**
+> commands bake Unity's own navmesh, which is Unity-side only. The exported navmesh is the toolkit's Recast bake
+> (`unity-authoring-recipes.md` §12). Occlusion-culling data is not carried.
+
 | Command | Parameters (`*` required, `=default`) | What it does |
 |---|---|---|
 | `bake_lighting` | `confirm`=false, `dry_run`=false | Trigger an async lightmap bake of the open scene(s) via Lightmapping.BakeAsync(). |
@@ -564,6 +587,9 @@ disappears in a new version must be removed here, not left as a phantom.
 
 ### Player build & build settings
 
+> **Not used by this pipeline** — BabylonJS content ships through `bt_export_level` / `bt_export_prefab`, never a
+> Unity player build. The scene-list commands are harmless; `build` itself is irrelevant here.
+
 | Command | Parameters (`*` required, `=default`) | What it does |
 |---|---|---|
 | `build` | `target`, `outputPath`, `profileName`, `options`, `scenes`, `confirm`=false, `dry_run`=false | Trigger an async Player build and report the full BuildReport. |
@@ -584,6 +610,9 @@ disappears in a new version must be removed here, not left as a phantom.
 | `screenshot` | `view`="game", `output`, `width`=0, `height`=0 | Capture the Scene or Game view as a PNG and return its file path |
 
 ### Editor lifecycle & play mode
+
+> Play Mode is only for seeing how a scene looks and behaves in Unity, as the comparison for the browser
+> export. Scene-mutating commands are blocked while it runs.
 
 | Command | Parameters (`*` required, `=default`) | What it does |
 |---|---|---|

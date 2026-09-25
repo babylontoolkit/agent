@@ -513,25 +513,35 @@ Project-local install (only on explicit request): drop `-g`. Inside a project th
 `unity skill install claude-code --local` also mirrors the Pipeline package's deeper `unity-pipeline` skill.
 Update later with `npx -y skills update -g -y`.
 
-### Precedence — the Babylon Toolkit reference wins
+### How to use them — authoring tools for content that exports
 
-Unity's skills are written for a **Unity-player** workflow. Several of their statements are wrong for a Babylon
-Toolkit **glTF export** (Built-in vs URP defaults, "the CLI cannot manage packages", "there is no capture
-command", Unity-runtime services). **When a Unity skill and a Babylon Toolkit reference sub-document disagree,
-the sub-document wins** (`reference.md`, rule 4). The Unity sub-documents — `unity-exporter-cli.md`,
-`unity-editor-commands.md`, `unity-authoring-recipes.md`, `unity-cli-reference.md` — already restate every
-export-relevant fact from these skills and correct the ones that do not apply.
+**In this pipeline Unity is the editor, never the engine.** Nothing builds a Unity player, and every scene
+and model is exported to glTF for a near pixel-perfect BabylonJS recreation (`unity-exporter-cli.md`).
+Unity's skills are written for Unity game development, and their **Editor authoring knowledge carries over
+directly**: how to set up Volumes, bake lighting and probes, configure colliders, upgrade materials and search
+assets. Use that knowledge to author the level. Ignore their player-build and Unity-runtime parts.
 
-| Unity skill | Relevance to a Babylon Toolkit export |
+**When a Unity skill and a Babylon Toolkit reference sub-document disagree, the sub-document wins**
+(`reference.md`, rule 4). Examples:
+- Built-in vs URP defaults;
+- "the CLI cannot manage packages" and "there is no capture command";
+- Unity's navmesh vs the toolkit's Recast bake.
+
+The sub-documents `unity-exporter-cli.md`, `unity-editor-commands.md`, `unity-authoring-recipes.md` and
+`unity-cli-reference.md` restate the relevant facts and say how each feature reaches BabylonJS.
+
+| Unity skill | How it serves a Babylon Toolkit export |
 |---|---|
 | `unity-cli`, `unity-package-management`, `new-unity-project` | ✅ Editor/CLI mechanics — but scaffold Babylon projects with `unity-exporter-cli.md` §4B, and install packages with `package_add` |
-| `urp-postprocessing`, `migrate-birp-to-urp`, `validate-urp-render-graph-renderer-feature` | ✅ Volumes, materials, probes, lighting (`unity-authoring-recipes.md` §2–§9) |
-| `physics-3d-collision`, `generate-editor-search-query`, `asset-transformer-toolkit`, `shader-graph-create-custom-node` | ✅ Authoring aids |
-| `initialize-ai-navigation` | ⚠️ Unity-side testing only — the exported navmesh is the toolkit's Recast bake (`unity-authoring-recipes.md` §12) |
-| `optimize-audio` | ⚠️ Import settings affect Unity's player only; exported audio files ship as-is |
-| `2d-pixel-perfect`, `sprite-*`, `tilemap-*`, `manage-sprite-atlas` | ⚠️ 2D Unity workflows — check the fidelity matrix before relying on them for an export |
-| `ui`, `ui-ugui`, `ui-uitk`, `ui-imgui`, `optimize-text-mesh-pro`, `localization` | ❌ for game UI — Babylon UI is DOM/React or `@babylonjs/gui` (`ui-design-system.md`) |
-| `implement-in-app-purchases`, `levelplay-unity-integration`, `build-live-game`, `setup-multiplayer-services`, `setup-vivox-voice-chat`, `optimize-web` | ❌ Unity-runtime services and Unity WebGL player tuning — not part of a glTF export (`unity-authoring-recipes.md` §21) |
+| `urp-postprocessing` | ✅ Volumes carry to BabylonJS (the whole colour grade is baked to a LUT) — `unity-authoring-recipes.md` §9 |
+| `migrate-birp-to-urp` | ✅ Materials, reflection probes, lighting bakes — and the first step for a Built-in Asset Store scene (`unity-authoring-recipes.md` §23) |
+| `validate-urp-render-graph-renderer-feature` | ⚠️ URP renderer features are Unity-side only; use a Babylon post-process in a script component (§22) |
+| `physics-3d-collision`, `generate-editor-search-query`, `asset-transformer-toolkit`, `shader-graph-create-custom-node` | ✅ Authoring aids (physics carries via Havok — §11; Shader Graphs transpile — §2) |
+| `initialize-ai-navigation` | ⚠️ Unity's navmesh is Unity-side only — the exported navmesh is the toolkit's **Recast** bake (`unity-authoring-recipes.md` §12) |
+| `optimize-audio` | ⚠️ Import settings don't touch the exported file — the source file ships as-is, so compress the source (§14) |
+| `ui`, `ui-ugui`, `ui-uitk`, `optimize-text-mesh-pro` | ⚠️ Screen-space Canvas / UIDocument and TMP text inside a Canvas **do** export to Babylon GUI (Pro, §17); world-space UI does not. For app-style UI prefer DOM/React (`ui-design-system.md`) |
+| `ui-imgui`, `2d-pixel-perfect`, `sprite-*`, `tilemap-*`, `manage-sprite-atlas` | ❌ Editor-only or 2D features with no exporter path — Babylon `SpriteManager` / quads (§22) |
+| `localization`, `implement-in-app-purchases`, `levelplay-unity-integration`, `build-live-game`, `setup-multiplayer-services`, `setup-vivox-voice-chat`, `optimize-web` | ❌ Unity-runtime services and Unity WebGL player tuning — never used; build the web-side version (`unity-authoring-recipes.md` §22) |
 
 > **Licence.** Unity's skills are © Unity Technologies under the **Unity Companion License**, which covers use in
 > Unity-dependent projects. Installing them unchanged is fine; do not copy their text into other documents.

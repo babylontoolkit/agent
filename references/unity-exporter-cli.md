@@ -14,6 +14,17 @@ This document tells an AI agent how to **completely control a Unity Editor from 
 lighting, real physics — and export near pixel-for-pixel recreations that run natively in a lightweight
 WebGL/WebGPU engine, with interactive components intact rather than baked down to geometry.
 
+> **Unity is the editor, never the engine.** This pipeline never builds a Unity game or player, and no Unity
+> runtime code ships. Play Mode is used only to see how a scene looks in Unity for comparison. Every model and
+> scene is exported to glTF + `extras.metadata`. The Babylon Toolkit runtime then recreates each Unity
+> subsystem: lightmaps, probes, IBL, fog, volumes, terrain, Animator state machines, physics, the navmesh,
+> particles, audio, UI and script components.
+>
+> **The goal is parity:** author a level as fully as a Unity game level (kept light for web and mobile), and
+> any well-made scene, including a ready-made Asset Store scene, should export and look right as it is. How
+> each feature is carried (directly, by a bake, or by a toolkit equivalent) is in
+> `unity-authoring-recipes.md` §0. All game logic is TypeScript script components.
+
 **Two operating modes, both first-class:**
 
 - **Copilot mode** — a resident Editor stays open and you design levels in the GUI while the agent drives the
@@ -31,11 +42,11 @@ execute from the terminal, in either mode, without asking:
 | Install every package, licence, and the exporter | §4.1, §5 |
 | Build a level: GameObjects, hierarchies, transforms, prefabs, components | §7, §8 + `unity-editor-commands.md` (151 typed commands) |
 | Set up lighting — lightmap/GI bakes, IBL/skybox, reflection probes, fog, tonemapping, post-processing | `unity-authoring-recipes.md` (`bake_lighting`, `set_lighting_settings`, Volumes) |
-| Author materials, terrain, physics bodies, colliders, navmesh, animator controllers, timelines | `unity-authoring-recipes.md` |
+| Author materials, terrain, physics bodies, colliders, navmesh, Animator controllers, particles, audio | `unity-authoring-recipes.md` |
 | Import textures/models/audio and set their import settings; add packages | `unity-editor-commands.md` §9, `import_asset`, `set_import_settings`, `package_add` |
 | Write, compile and attach C#/TypeScript script component pairs | §8.2 |
 | Run **arbitrary C# inside the live Editor** — the whole `UnityEditor` API surface | §7.3 — `run_script` (files) and `eval` (one-liners) |
-| Enter/exit play mode, read the console, check status, run tests | `unity-editor-commands.md` §8 |
+| Enter/exit play mode (Unity-side comparison only), read the console, check status | `unity-editor-commands.md` §8 |
 | **See what you made** — render Scene/Game view to a PNG and look at it | `screenshot`, `capture_game_view`, `capture_scene_view` |
 | Export game levels and asset containers / prefabs to interactive glTF | §9, §10, §11 |
 | Run a full `EditorBuildType.Automate` build — scene + TypeScript bundle + web project | §9, `bt_build_project` |
@@ -48,9 +59,11 @@ scenes, prefabs, materials, bakes, animation, settings, packages, capture, tests
 entire Editor API with no domain reload. Anything a human could do by clicking in Unity, you can do by running
 the C# behind that click. "Unity has no CLI command for that" is a reason to write the C#, never a reason to stop.
 
-**The verification loop is yours too.** Author → `screenshot` → *look at the image* → judge it → fix → repeat.
-Then export → serve (§12) → open the page in a browser → screenshot **that** → read the console. You never
-need the user to tell you how it looks.
+**The verification loop is yours too.** Work in large passes in Unity (terrain, blockout, light rig and bake,
+set dressing, post-processing), checking in the Editor as you go. **At milestones** — once at the start to
+prove the chain, after each major pass, and at the end — export → serve (§12) → open the page in a browser →
+screenshot the same camera → read the console. Don't export after every edit; never skip the milestones
+(`unity-authoring-recipes.md` §21). You never need the user to tell you how it looks.
 
 **Never write "open Unity and…" in a reply.** If you are about to, you have found a step you have not yet
 looked up — it is in this document.
@@ -156,8 +169,8 @@ To *view* the result in a browser, start the Toolkit development web server — 
 **This is the single most consequential thing in this document, and it fails silently.**
 
 The exporter checks `ToolkitManager.IsPro()` **per component**. Without a Pro licence the export still
-succeeds, still writes a `.gltf`, still emits all the scene-level metadata — and **silently omits almost every
-interactive component**. No error. One line in the Editor log:
+succeeds, still writes a `.gltf`, still emits all the scene-level metadata — and **silently omits the native
+Unity-system components and all physics**. No error. One line in the Editor log:
 
 ```
 Pro Tools Disabled: Exporting standard community edition content
@@ -165,11 +178,13 @@ Pro Tools Disabled: Exporting standard community edition content
 
 | | Community (no `license.json`) | Pro |
 |---|---|---|
-| Geometry, materials, textures | ✅ | ✅ |
-| Scene metadata (skybox, IBL, fog, gravity, physics, navigation) | ✅ | ✅ |
+| Geometry, materials, textures, lightmaps, probes | ✅ | ✅ |
+| Scene metadata (skybox, IBL, fog, gravity, navigation) | ✅ | ✅ |
 | `camera`, `light` components | ✅ | ✅ |
-| **Rigidbody** | ❌ dropped | ✅ |
-| **Animator** | ❌ dropped | ✅ |
+| Animation clips, skins, morph targets | ✅ | ✅ |
+| **Script components** (`EditorScriptComponent`) | ✅ | ✅ |
+| **Every `physics` and `collision` block** (Rigidbody, static colliders, CharacterController) | ❌ dropped | ✅ |
+| **Animator state machine** (`AnimationState`) | ❌ dropped | ✅ |
 | **AudioSource** | ❌ dropped | ✅ |
 | **NavMeshAgent** | ❌ dropped | ✅ |
 | **CharacterController** | ❌ dropped | ✅ |
@@ -177,10 +192,12 @@ Pro Tools Disabled: Exporting standard community edition content
 | **Canvas / UIDocument** (UI) | ❌ dropped | ✅ |
 | **Terrain** | ❌ dropped | ✅ |
 | **VideoPlayer** | ❌ dropped | ✅ |
-| **PostProcess volumes** | ❌ dropped | ✅ |
+| **PostProcess volumes** (and URP default volumes) | ❌ dropped | ✅ |
 | **LOD groups** | ❌ dropped | ✅ |
+| **Camera anti-aliasing** (FXAA / SMAA / TAA) | ❌ dropped | ✅ |
 
-*(Gates verified in `CVTools.cs` at lines 2459, 3112, 3147, 3202, 3241, 3277, 3332, 3367, 3402, 3622, 4060, 4149.)*
+*(Gates in `CVTools.cs`, toolkit source 9.27.1: 3807 LOD, 4222 camera AA, 4231 default volumes, 4518, 4553,
+4608, 4647, 4683, 4738, 4773, 4808, 5028, 5043, 5132, and 5250–5254, which nulls physics + collision.)*
 
 **Measured proof — the same scene exported both ways.** 4 crates, each with a Rigidbody and a BoxCollider:
 
@@ -702,6 +719,9 @@ UnityTools.ValidateGraphicsLibSettings();
 UnityTools.ValidateProjectRootNamespace();
 UnityTools.ValidateProjectShaderSettings();
 UnityTools.ValidateReflectionProbeSettings();
+// The GPU Resident Drawer is Unity-only batching the export never uses; left on, a failed registration makes
+// camera captures render only the sky. Toolkit 9.25+, dialog-free.
+sb.Append("residentDrawerOff=" + RenderPathTools.DisableResidentDrawer(false) + " ");
 if (System.String.IsNullOrWhiteSpace(CanvasToolsInfo.Instance.ProductShortName)
     && !System.String.IsNullOrWhiteSpace(UnityEngine.Application.productName))
     CanvasToolsInfo.Instance.ProductShortName = UnityEngine.Application.productName;
@@ -1483,7 +1503,7 @@ public static class Sun
         var go = new GameObject("Sun");
         var light = go.AddComponent<Light>();
         light.type = LightType.Directional;
-        light.lightmapBakeType = LightmapBakeType.Mixed;      // Baked lights are dropped from the export
+        light.lightmapBakeType = LightmapBakeType.Mixed;      // a sun: realtime direct light + baked GI (recipes §3)
         go.transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
         RenderSettings.sun = light;
         return go.name;
@@ -1663,7 +1683,7 @@ public static class BuildLevel
             box.AddComponent<Rigidbody>().mass = 25f;
         }
 
-        // 4. The sun must be Mixed (Baked lights are dropped from the export)
+        // 4. The sun is Mixed: realtime direct light and shadows plus baked GI. Fills can be Baked (carried by lightmaps + probes)
         var sun = Object.FindAnyObjectByType<Light>();
         sun.lightmapBakeType = LightmapBakeType.Mixed;
         RenderSettings.sun = sun;
@@ -1706,8 +1726,9 @@ unity command save_scene --project-path "$PROJ"
 unity command screenshot --view game --output "$PWD/qa/level01.png" --width 1920 --height 1080 --project-path "$PROJ"
 ```
 
-Unity-side captures need a **GUI** Editor — a `-batchmode` Editor rendered only the skybox in verification
-(`unity-editor-commands.md` §8.1). The browser check after export (§12) is the one that counts.
+Unity-side captures work in any Editor once the GPU Resident Drawer is off (the §4B bootstrap does it;
+otherwise `RenderPathTools.DisableResidentDrawerReport()`), or they show only the sky
+(`unity-editor-commands.md` §8.1). The browser check at each milestone (§12) is the one that counts.
 
 ### 8.1 A programmatically created scene needs LightingSettings — or the export throws
 
@@ -1816,7 +1837,8 @@ and is what an agent should do.
 
 **The class name has to match on both sides**, and it is `<ROOTNAMESPACE>.<ClassName>`: the C#
 `[Babylon(Class=...)]` attribute and the TypeScript `SceneManager.RegisterClass(...)` key must be the same
-string, or the exported node names a class the runtime cannot resolve and the component silently does nothing.
+string, or the exported node names a class the runtime cannot resolve and the component never runs (the
+browser console logs `Failed to locate script class`).
 
 #### The root namespace is not yours to choose
 
@@ -1868,7 +1890,8 @@ public class DemoRotator : EditorScriptComponent
 
 `Assets/Scripts/DemoRotator.ts` — UMD namespace style. **That is the one the Unity exporter compiles**; the
 ESM template is for standalone npm projects, and its `RegisterClass` key is the bare class name rather than
-the dotted one:
+the dotted one (the ESM runtime strips only the `BABYLON.`, `TOOLKIT.` and `PROJECT.` prefixes, so an exported
+`klass` of `MY.X` does not match a bare `X` key — keep one form on both sides):
 
 ```typescript
 namespace MY {
@@ -1959,8 +1982,8 @@ for n in d['nodes']:
         if c['alias'] == 'script': print(' ', n['name'], c['klass'], c['properties'])"
 ```
 
-`license` must be `professional` and every node must name your class — `community` means the components were
-silently dropped (§0). Then confirm the class reached the bundle, because an all-but-empty
+Every node must name your class. Script components export under **either** licence tier; `license` must still
+be `professional` for any physics, Animator, audio, particles, terrain or volumes on the same level (§0). Then confirm the class reached the bundle, because an all-but-empty
 `Export/scenes/<Product>.js` means the TypeScript never compiled in:
 
 ```bash
@@ -2120,7 +2143,8 @@ That single flag gates the entire scene-level metadata block.
 | Fog (incl. HDRP volumetric) | ✅ | ❌ |
 | Clear colour, tonemapping, exposure, gamma, image processing | ✅ | ❌ |
 | Scene-level gravity, physics world, CCD, world sweep, fixed timestep | ✅ | ❌ (node-level rigidbodies/colliders **are** still exported) |
-| **NavMesh** (`exporter.exportNavMesh`) | ✅ | ❌ |
+| **NavMesh** (the Recast `navigation.prebaked` block) | ✅ | ❌ |
+| **Light probes** (`LightProbeNetwork` + `<scene>.lightprobes.bin`) | ✅ | ❌ |
 | Sun position/rotation, wind zones | ✅ | ❌ |
 | User input, pointer lock, context menu, capture | ✅ | ❌ |
 | Debug colliders / collision wireframe | ✅ | ❌ |
@@ -2129,15 +2153,17 @@ That single flag gates the entire scene-level metadata block.
 | File format setting used | `ExportFileFormat` | **`PrefabFileFormat`** |
 | Output directory | `<folder>/scenes/` | `<folder>` **directly**, when `folder` is supplied |
 
-**Both still carry every node-level feature** — `extras.metadata.components`, rigidbodies and colliders,
-animations, skins, morph targets, lightmaps and probes — when `exportUnityMetadata: true`. That is what makes an
-exported prefab an *interactive* asset container rather than dumb geometry. Set it `false` only for pure
-geometry or animation-only exports.
+**Both carry every node-level feature**: lightmaps, reflection probes, animations, skins and morph targets
+always, plus `extras.metadata.components`, rigidbodies and colliders when `exportUnityMetadata: true`. That is
+what makes an exported prefab an *interactive* asset container rather than dumb geometry. Set it `false` only
+for pure geometry or animation-only exports. A container's physics bodies are created only when the host scene
+already has physics enabled.
 
 > ⚠️ **`exportUnityMetadata: true` is necessary but not sufficient.** Which components actually make it into
-> `extras.metadata.components` is gated by the **Babylon Toolkit licence** — under community edition only
-> `camera` and `light` survive; Rigidbody, Animator, AudioSource and the rest are silently dropped. See the
-> licence table in §0 before concluding a component "isn't supported".
+> `extras.metadata.components` is gated by the **Babylon Toolkit licence**. Under community edition, `camera`,
+> `light` and script components survive, while physics and collision, Animator state machines, AudioSource
+> and the other native-system components are silently dropped. See the licence table in §0 before concluding
+> a component "isn't supported".
 
 > **Where to look in the exported file.** Scene metadata lives at **`scenes[0].extras.metadata`**, and
 > per-object component metadata at **`nodes[i].extras.metadata.components`** — *not* at the document root.
@@ -2451,20 +2477,36 @@ Editor that has already cached `CanvasToolsInfo.Instance` will not see it.
 |---|---|
 | `ExportFileFormat` / `PrefabFileFormat` | `EditorExportFormat`: `GLTF` = 0, `GLB` = 1. Scene vs selection respectively (defaults 0 and 1) |
 | `ExportMetadata` | Emit `extras.metadata` — **required** for script components |
-| `HandedExportSystem` / `MeshExportSystem` | Handedness and mesh conversion; pass straight through to `BuildProject` |
+| `HandedExportSystem` / `MeshExportSystem` | Defaults `1` (LeftHanded, `CVTOOLS_left_handed`) / `1` (SubMeshes, `CVTOOLS_babylon_mesh` — LOD groups need it); pass straight through to `BuildProject` |
 | `DefaultScenePath` (default `"scenes"`) | Subfolder under the export root for scene output |
 | `DefaultScriptPath` (default `"scripts"`) | Subfolder for script assets of the web project (the compiled bundle itself is `scenes/<Product>.js`) |
 | `CompileProjectScript` | Run the TypeScript/JS bundle compile |
 | `BuildWebProject` / `ProgressiveWebApp` | Emit the web project / PWA assets |
 | `AutoDeployProject` | Deploy after a `Project` build (**ignored by `Automate`**) |
 | `ExportCaseMode` | `UseDefaultCasing` = 0 (default), `ForceLowerCasing` = 1 lowercases every output path and filename |
-| `TextureImageFormat` | `PNG` = 0 (default), `WEBP` = 2, `KTX2` = 3 — no max-size option: set `maxTextureSize` on the importer |
-| `UseSpecularMaterials` | Default `true`: metallic-roughness + `KHR_materials_specular` (`unity-authoring-recipes.md` §2) |
+| `TextureImageFormat` | `PNG` = 0 (default), `WEBP` = 2, `KTX2` = 3. There is no max size for materials: set `maxTextureSize` on the importer. `TerrainLayerMaxSize` (default 1024) caps terrain layers only. Keep lightmaps on PNG |
+| `DefaultWebpImageCommandType` | WEBP encoding — **lossless by default**; switch to lossy for real savings |
+| `DefaultKtx2RenderingQuality` / `DefaultKtx2ImageCompression` | KTX2 UASTC quality (default 3) / zstd level (default 9) |
+| `ForceHighBitDepth` | Default `false`; `true` forces 16-bit normal maps to PNG |
+| `UseSpecularMaterials` | Default `true`: selects the **Specular** export path (metallic-roughness + `KHR_materials_specular`, with URP's factor from the global settings below). `false` selects the Classic path (`Standard (Specular setup)` → `KHR_materials_pbrSpecularGlossiness`) (`unity-authoring-recipes.md` §2) |
+| `SpecularHighlights` / `GlossyReflections` / `SpecularIntensityScale` / `MetallicF0FactorScale` | Material scalars (default 1.0) |
+| `ReflectionProbePower` / `DefaultReflectionFormat` | Reflection-probe intensity for every probe (default 1.0; probe intensity is not read) / `.env` (1, default) or `.dds` |
+| `UseHDRPPhotometricLights` | Default `false`; carry HDRP physical light units |
+| `BakedLightingMode` | `0` additive (default); `1` multiplies (warned) |
 | `ExportNavigation` | Export the toolkit Recast navmesh (`unity-authoring-recipes.md` §12) |
+| `ExportMeshInstances` | Default `true`: repeated meshes become glTF mesh instances (off for lightmapped meshes) |
+| `FreezeStaticMeshes` | Default `true`: static-flagged objects get `freezeworldmatrix` |
+| `EnableAntiAliasing` | Default `true`; MSAA needs it |
+| `GpuRenderingMode` | `0` off (default), `1` / `2` WebGPU snapshot rendering |
+| `AnimBakingFrameRate` | Clip bake rate (default 30) |
+| `TerrainExportMode` | `0` heightfield (default), `1` legacy mesh |
 | `ProductShortName` | Overrides `Application.productName` for the bundle name |
 | `DebugProjectFiles` | Pretty-print the glTF JSON |
 | `ExportPhysics` / `ExportLightmaps` / `ExportBlendShapes` / `ExportLightmapUvs` | Feature toggles |
 | `GroupSceneNodes` | Controls `disposeroot` in the emitted metadata |
+
+**Fields with no effect** — don't set them expecting a change: `TextureImageQuality`, `SurfaceCompression`,
+`EnableDracoCompression` and the other `Draco*` fields (there is no mesh compression), and `CalculateBindPoses`.
 
 ### Output layout
 
@@ -2561,8 +2603,8 @@ the Editor is unreachable *because of* the errors you want to fix.
 | `There is a project compile in progress.` | `EditorApplication.isCompiling` | Poll `unity command recompile_status` until `completed` |
 | `There is a lightmap bake in progress.` | `Lightmapping.isRunning` | Wait or cancel the bake |
 | `Pro tools license expired / does not have seat` | License gate in `BuildProject` | Sign into Unity as the licensee; link the project to the licensed org |
-| `Pro Tools Disabled: Exporting standard community edition content` | No `Assets/[Config]/license.json` | **NOT harmless.** The export runs but silently drops Rigidbody, Animator, AudioSource, NavMeshAgent, CharacterController, ParticleSystem, Canvas, Terrain, VideoPlayer, PostProcess and LOD components. See §0 |
-| Exported glTF has geometry but no `components` on any node | Community edition — the Pro gate stripped them | Install `license.json`, verify `ToolkitManager.IsPro()` is true, re-export (§0) |
+| `Pro Tools Disabled: Exporting standard community edition content` | No `Assets/[Config]/license.json` | **NOT harmless.** The export runs but silently drops every physics and collision block, and the Animator, AudioSource, NavMeshAgent, CharacterController, ParticleSystem, Canvas, Terrain, VideoPlayer, PostProcess, camera-AA and LOD components. See §0 |
+| Exported glTF has geometry and scripts but no physics or native components | Community edition — the Pro gate stripped them | Install `license.json`, verify `ToolkitManager.IsPro()` is true, re-export (§0) |
 | `CanvasTools` type not found in `eval` | Toolkit package missing or not compiled | §5, then `recompile` |
 | Prefab exported with skybox/fog | `selection` was `null` | Pass a non-empty `Transform[]` (§10) |
 | Image/texture tooling fails on macOS with a FreeImage load error | Native image library vs Apple Silicon build | Install the `x86_64` Editor (`-a x86_64`) and run under Rosetta |
@@ -2570,7 +2612,9 @@ the Editor is unreachable *because of* the errors you want to fix.
 | WEBP/KTX2 textures missing or export errors | `cwebp` / `ktx` tools not installed | Install them, or use `TextureImageFormat = 0` (PNG) |
 | Prefab export produced no file / odd extension | `PrefabFileFormat` set to a non-enum value (e.g. `2`) | `GLB` is `1` (§13) |
 | Level exported but has no navigation | `NavigationMesh.bin` missing — Unity's `bake_navmesh` is not what the exporter reads | Bake the toolkit Recast surface (`unity-authoring-recipes.md` §12) |
-| Level exported but lights are missing | Lights set to **Baked** are dropped | Set them to **Mixed** (`unity-authoring-recipes.md` §3) |
+| Baked lights are not in the node list (`Baked lights` warning) | Expected — a Baked light is carried by its bake (lightmaps + light probes) | Nothing to fix. If a Baked light had children, they were skipped too — re-parent them (`unity-authoring-recipes.md` §3) |
+| Dynamic objects look unlit or flat | No light-probe network: missing `SceneController`, ambient mode not Skybox, no IBL bake, no `LightProbeGroup` / APV, or an asset-container export | Fix whichever is missing and re-bake (`unity-authoring-recipes.md` §5) |
+| Browser frame differs from the Unity frame of the same camera | A feature carried differently, or a toolkit parity gap | Find the feature's row in `unity-authoring-recipes.md` §0; if none explains it, record a parity gap with both captures (§21) |
 | Sky exported but no reflections / flat PBR | IBL source `ReflectionProbe-N.exr` never baked (`SKYBOX: You must generate the scene lighting`) | `bake_lighting` after setting the skybox (`unity-authoring-recipes.md` §7) |
 | `unity pipeline install --version` rejected | Flag collides with global `-V` | Use `--package-version` |
 | `Pipeline package requires Unity 6.0 or higher. Project version: unknown` on a 6000.x project | Project creation had not finished — `ProjectVersion.txt` is written last | Wait for `unity projects new` to exit (§3) |
@@ -2637,7 +2681,7 @@ cmd run_script --file AgentScripts/BuildLevel.cs --entry BuildLevel.Level01 --fo
 cmd bake_lighting
 until cmd lighting_bake_status --result-only 2>/dev/null | grep -q completed; do sleep 5; done
 cmd save_scene
-# (Unity-side captures need a GUI Editor — unity-editor-commands.md §8.1; the browser check in step 8 is the one that counts)
+# (Unity-side captures need the GPU Resident Drawer off — unity-editor-commands.md §8.1; the browser check in step 8 is the one that counts)
 
 # 7. Export — the level (full web build, so index.html exists) and the props as an asset container
 cmd bt_status
