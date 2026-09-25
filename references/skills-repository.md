@@ -494,6 +494,58 @@ without it.
 > user to restart their agent session (Claude Code, Codex, Copilot, etc.) so the new
 > skills are picked up.
 
+## Vendor skills — Unity (`Unity-Technologies/skills`)
+
+Unity publishes its own agent skills — 32 of them, including `unity-cli` (the `unity` binary),
+`unity-package-management`, `urp-postprocessing`, `migrate-birp-to-urp`, `initialize-ai-navigation` and
+`physics-3d-collision`. **Install them alongside the `bt-*` skills** whenever the Babylon Toolkit skills are
+installed. Like every skill, they trigger **automatically from their descriptions** — no slash command is needed.
+
+```bash
+# Both skill locations, whole folders copied (not symlinked), all 32 skills, no prompts.
+npx -y skills add Unity-Technologies/skills -g -a claude-code -s '*' -y --copy     # -> ~/.claude/skills/
+npx -y skills add Unity-Technologies/skills -g -a universal   -s '*' -y --copy     # -> ~/.agents/skills/
+# Keep the unity-cli skill in step with the installed binary after every CLI update:
+unity self-update --channel beta && unity skill refresh
+```
+
+Project-local install (only on explicit request): drop `-g`. Inside a project that has `com.unity.pipeline`,
+`unity skill install claude-code --local` also mirrors the Pipeline package's deeper `unity-pipeline` skill.
+Update later with `npx -y skills update -g -y`.
+
+### Precedence — the Babylon Toolkit reference wins
+
+Unity's skills are written for a **Unity-player** workflow. Several of their statements are wrong for a Babylon
+Toolkit **glTF export** (Built-in vs URP defaults, "the CLI cannot manage packages", "there is no capture
+command", Unity-runtime services). **When a Unity skill and a Babylon Toolkit reference sub-document disagree,
+the sub-document wins** (`reference.md`, rule 4). The Unity sub-documents — `unity-exporter-cli.md`,
+`unity-editor-commands.md`, `unity-authoring-recipes.md`, `unity-cli-reference.md` — already restate every
+export-relevant fact from these skills and correct the ones that do not apply.
+
+| Unity skill | Relevance to a Babylon Toolkit export |
+|---|---|
+| `unity-cli`, `unity-package-management`, `new-unity-project` | ✅ Editor/CLI mechanics — but scaffold Babylon projects with `unity-exporter-cli.md` §4B, and install packages with `package_add` |
+| `urp-postprocessing`, `migrate-birp-to-urp`, `validate-urp-render-graph-renderer-feature` | ✅ Volumes, materials, probes, lighting (`unity-authoring-recipes.md` §2–§9) |
+| `physics-3d-collision`, `generate-editor-search-query`, `asset-transformer-toolkit`, `shader-graph-create-custom-node` | ✅ Authoring aids |
+| `initialize-ai-navigation` | ⚠️ Unity-side testing only — the exported navmesh is the toolkit's Recast bake (`unity-authoring-recipes.md` §12) |
+| `optimize-audio` | ⚠️ Import settings affect Unity's player only; exported audio files ship as-is |
+| `2d-pixel-perfect`, `sprite-*`, `tilemap-*`, `manage-sprite-atlas` | ⚠️ 2D Unity workflows — check the fidelity matrix before relying on them for an export |
+| `ui`, `ui-ugui`, `ui-uitk`, `ui-imgui`, `optimize-text-mesh-pro`, `localization` | ❌ for game UI — Babylon UI is DOM/React or `@babylonjs/gui` (`ui-design-system.md`) |
+| `implement-in-app-purchases`, `levelplay-unity-integration`, `build-live-game`, `setup-multiplayer-services`, `setup-vivox-voice-chat`, `optimize-web` | ❌ Unity-runtime services and Unity WebGL player tuning — not part of a glTF export (`unity-authoring-recipes.md` §21) |
+
+> **Licence.** Unity's skills are © Unity Technologies under the **Unity Companion License**, which covers use in
+> Unity-dependent projects. Installing them unchanged is fine; do not copy their text into other documents.
+
+**Verify** (append to the Post-Install Verification when Unity's skills were installed):
+
+```bash
+for dir in ~/.claude/skills ~/.agents/skills; do
+  for skill in unity-cli unity-package-management urp-postprocessing new-unity-project; do
+    [ -f "$dir/$skill/SKILL.md" ] || echo "MISSING $dir/$skill/SKILL.md"
+  done
+done
+```
+
 ## Universal Installations
 
 Where each tool looks for GLOBAL skills (**Default Installation** — `~` = your home directory):
