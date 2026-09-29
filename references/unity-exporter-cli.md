@@ -256,11 +256,11 @@ not `companyName`:
 > record, not a check. (A community export shows whatever `companyName` happens to be, e.g. `DefaultCompany`.)
 
 > **Worked example (verified).** An `EnterprisePartner` licence with `org = "*"`:
-> `pro=True type=EnterprisePartner name='Mackey Kinard' org=* expires=never isLicensee=False isOrganization=False
+> `pro=True type=EnterprisePartner name='<Licensee Name>' org=* expires=never isLicensee=False isOrganization=False
 > hasDeveloperSeat=True`. It passes headless for two independent reasons — the wildcard org skips the
 > `projectId`/`organizationName` gate entirely, and the developer holds a seat. Note `isLicensee` and
 > `isOrganization` are both **False** and it still works: those are not required when a seat or wildcard covers
-> you. Making it validate required setting Project Settings ▸ **Company Name** to `Mackey Kinard` — the
+> you. Making it validate required setting Project Settings ▸ **Company Name** to the licence's `name` (`<Licensee Name>`) — the
 > EnterprisePartner seed — exactly as the seed table above requires.
 
 #### Headless licensing — what works and what does not
@@ -268,7 +268,7 @@ not `companyName`:
 **Verified in a resident `-batchmode` Editor:**
 
 ```
-CloudProjectSettings.userName         : 'mackeyk24@gmail.com'   <- POPULATED
+CloudProjectSettings.userName         : 'you@example.com'       <- POPULATED
 CloudProjectSettings.organizationName : ''                      <- EMPTY
 CloudProjectSettings.projectId        : ''                      <- EMPTY
 ```
@@ -1032,12 +1032,13 @@ mkdir -p ~/.claude/toolkit
 chmod +x ~/.claude/toolkit/bt-new-unity-project.sh ~/.claude/toolkit/bt-stop-editor.sh
 
 # Copilot — leaves an Editor up for live level design
+# (--company only with an EnterprisePartner licence — its value is the licence's name, see 4B.5)
 ~/.claude/toolkit/bt-new-unity-project.sh MyGame \
-  --editor 6000.5.10f1 --license ~/licenses/license.json --company "Mackey Kinard"
+  --editor 6000.5.10f1 --license ~/licenses/license.json --company "<Licensee Name>"
 
 # Fully headless / CI
 ~/.claude/toolkit/bt-new-unity-project.sh MyGame --mode headless \
-  --editor 6000.5.10f1 --license ~/licenses/license.json --company "Mackey Kinard"
+  --editor 6000.5.10f1 --license ~/licenses/license.json --company "<Licensee Name>"
 
 # Release the copilot Editor when the user wants to open the project in the Hub
 ~/.claude/toolkit/bt-stop-editor.sh ~/Unity/MyGame
@@ -2672,7 +2673,8 @@ until cmd eval 'foreach (var a in System.AppDomain.CurrentDomain.GetAssemblies()
 
 # 5. Licence (§0) + bootstrap (§5.1) + npm install (§5.2)
 mkdir -p "$PROJ/Assets/[Config]" && cp ~/licenses/license.json "$PROJ/Assets/[Config]/license.json"
-cmd eval 'UnityEditor.PlayerSettings.companyName = "Mackey Kinard"; UnityEditor.AssetDatabase.Refresh(); return ToolkitManager.IsPro();'   # EnterprisePartner seed
+# EnterprisePartner licences ONLY — set the seed to the licence's name; skip this line for every other plan
+cmd eval 'UnityEditor.PlayerSettings.companyName = "<Licensee Name>"; UnityEditor.AssetDatabase.Refresh(); return ToolkitManager.IsPro();'
 cmd eval_file ~/.claude/toolkit/bt-bootstrap.cs --format json
 ( cd "$PROJ" && npm install )
 
