@@ -35,8 +35,7 @@ listed for completeness only. Play Mode is only for a Unity-side look to compare
    `.cs` file — `using` directives, classes, LINQ, `async` — in memory with **no domain reload**.
 3. **Discover, never guess.** The catalog changes between Pipeline versions. Before using a command you have not
    used in this session, confirm it: `unity command --query <word>` (§1).
-4. **Destructive and settings commands need `confirm=true`** — and accept `dry_run=true` to preview. Always
-   dry-run a settings or bake command once before applying it.
+4. **Many destructive and settings commands take `confirm=true` — not all do.** `set_import_settings`, `move_asset`, `rename_asset`, `delete_gameobject` and `package_resolve` apply immediately. Read the command's schema (`unity command --query <name> --detail full`) and dry-run with `dry_run=true` wherever it exists, always once before a settings or bake command.
 5. **Branch on `success`, never on `data`.** A failed command still prints a full JSON envelope to **stdout**.
 
 ---
@@ -53,7 +52,7 @@ unity command <name> [--<param> <value> ...] [--project-path <proj>] [--timeout 
 | `--timeout <s>` | Default **30 s**. Raise it for exports, bakes-with-`wait`, big `run_script` builders. |
 | `--format json` | Envelope `{ success, command, data, errors[], warnings[] }`. The command's own return value is at **`data.result`**. |
 | `--result-only` | Print only the command's result JSON (no envelope). Handy for piping to `jq`/`python3`; do not combine with `--detach`. |
-| `--detach` | Submit as a background job; prints a job id. Then `unity job wait <id>` / `unity job status <id>` / `unity job cancel <id>`. |
+| `--detach` | Submit as a background job; prints a job id. Then `unity job wait <id> --timeout <seconds>` (without `--timeout` it waits forever) / `unity job status <id>` / `unity job cancel <id>`. |
 
 **Parameter values.** Scalars are plain (`--count 8`, `--confirm true`). Objects and arrays are **JSON strings**
 in single quotes: `--position '[0,5,0]'`, `--settings '{"bounces":3}'`, `--target '{"hierarchyPath":"/Ground"}'`.
@@ -110,7 +109,7 @@ for assets `assetPath` + `guid`). Feed it straight into the next call — that i
 
 | Convention | Rule |
 |---|---|
-| **`confirm` / `dry_run`** | Destructive, overwriting, and all project-settings / package / build commands refuse without `confirm=true`. `dry_run=true` validates and previews — it wins even if `confirm` is also set. Set-style commands report `{ applied[], unknown[] }`, so a dry run also catches misspelled keys. |
+| **`confirm` / `dry_run`** | Commands that declare `confirm` refuse without `confirm=true`; several destructive ones do not declare it (see §0 rule 4) — check the schema. `dry_run=true` validates and previews — it wins even if `confirm` is also set. Set-style commands report `{ applied[], unknown[] }`, so a dry run also catches misspelled keys. |
 | **Authoring root** | Every path parameter resolves against the authoring root (default **`Assets`** — full access) and cannot escape it (`..` is rejected). `get_authoring_root` / `set_authoring_root --root Assets/AgentWork` narrows it to sandbox yourself. |
 | **Undo** | Scene/object mutations (GameObjects, components, serialized fields, scene-side prefab ops) are one Undo step per command. **AssetDatabase writes, settings, packages, bakes, scene saves, and file writes are *not* undoable** — validate first. |
 | **Play mode** | Scene-mutating commands are **blocked in Play mode**; read-only ones still work. `editor_stop` first. |
@@ -130,7 +129,7 @@ status command from the shell.
 | `bake_navmesh` (legacy) / `bake_navmesh_surfaces` (AI Navigation) | `navmesh_bake_status` → `completed` | **Unity-side only.** The export carries the toolkit's Recast bake (`UniRcNavMeshSurface`, `unity-authoring-recipes.md` §12), not these. `bake_navmesh_surfaces` returns `package_not_found` without `com.unity.ai.navigation` |
 | `bake_occlusion_culling` | `occlusion_bake_status` → `completed` | |
 | `package_add` / `package_remove` / `package_resolve` | `package_status` → `completed` / `failed` | then `recompile_status` (a domain reload follows) |
-| `recompile` | `recompile_status` → `completed` or `up_to_date` | or the one-shot CLI verb `unity recompile` (§8) |
+| `recompile` | `recompile_status` → `completed` or `up_to_date` | or the one-shot CLI verb `unity recompile` (`unity-cli-reference.md` §7.1) |
 | `build` | `build_status` → `completed` | needs `confirm=true`; one build at a time |
 | `switch_build_target` | `switch_build_target_status` | full reimport + domain reload |
 | `run_tests --async_tests true` | `test_status` | `cancel_tests` |
@@ -140,13 +139,24 @@ status command from the shell.
 **Match status words unquoted.** Under `--result-only` some status commands (`lighting_bake_status`,
 `navmesh_bake_status`, `package_status`, …) print their result as a **JSON-encoded string**
 (`"{\"status\":\"completed\"}"`), others (`recompile_status`, `editor_status`) as plain JSON — so
-`grep '"completed"'` never matches the first kind. Use `grep -q completed`, or parse `data.result` properly.
+`grep '"completed"'` never matches the first kind. Match `completed` / `failed` in a bounded loop (below) — never an unbounded `until`.
 
 **A domain reload takes the Pipeline server down for ~15–25 s.** Every poll loop must treat *cannot connect* as
 *not yet*, never as failure:
 
 ```bash
-until unity command lighting_bake_status --project-path "$PROJ" --result-only 2>/dev/null | grep -q completed; do sleep 5; done
+deadline=$((SECONDS+900)); seen=""
+while :; do
+  s=$(unity command lighting_bake_status --project-path "$PROJ" --result-only 2>/dev/null)
+  case "$s" in
+    *completed*) break;;
+    *failed*) echo "failed: $s"; exit 1;;
+    *baking*|*running*|*in_progress*) seen=1;;
+    *idle*) [ -n "$seen" ] && { echo "stopped without completing"; exit 1; };;
+  esac
+  [ $SECONDS -ge $deadline ] && { echo "timed out after 15 min"; exit 1; }
+  sleep 5
+done
 ```
 
 ---
@@ -238,7 +248,9 @@ A C# exception or compile error surfaces as outer `success:false` with the messa
 absolute path.
 
 **`eval` is for quick calls.** Its main-thread dispatch times out after about **5 s** (`Main thread operation timed
-out after 5000ms`) regardless of `--timeout` — the work may still finish, but you lose the result. Anything
+out after 5000ms`). `eval`/`eval_file` have their OWN `timeout` parameter (milliseconds, default 5000). The CLI's
+`--timeout` (seconds) shares the name but only raises how long the CLI waits, so it cannot lift the 5 s
+limit — the work may still finish, but you lose the result. Anything
 slower (a bake, a big import, a builder) goes through `run_script` with `--timeout_ms` and a matching `--timeout`.
 
 **Undo from code.** `Undo.RecordObject` alone registers nothing useful when called from eval. For an undoable
@@ -342,17 +354,20 @@ the project, use `screenshot --output <absolute path>`, which writes anywhere. T
 > `Camera.Render` alike. The Editor log showed `QueryRendererInstancesJob` exceptions: a failed drawer
 > registration takes the renderers off the normal draw path, and they stay invisible until the scene reloads.
 > Turn it off with `unity command eval 'return RenderPathTools.DisableResidentDrawerReport();'` (toolkit 9.25+,
-> dialog-free; it also reloads the open scenes). The §4B bootstrap does this. *Verified: Unity 6000.5.10f1,
+> dialog-free; it also reloads the open scenes) — **save first** (`unity command save_all`), or unsaved edits
+> are lost to the reload. The `unity-exporter-cli.md` §4B bootstrap does this (with `DisableResidentDrawer(false)`, which does not reload). *Verified: Unity 6000.5.10f1,
 > Metal, URP — a batch-mode `capture_game_view` then rendered the full lit scene.* Always also judge the
 > **exported** level in the browser at milestones — that is the result that ships. `max_resolution` caps the inline image only. For
 multi-angle shots, move the Scene View camera (`SceneView.lastActiveSceneView.pivot/rotation/size`) from
 `run_script`, then capture.
 
+`capture_*` with a relative `save_path` writes the PNG into `Assets/` (and imports it); for a file you only want to look at, use `screenshot --output <absolute path>`.
+
 ### 8.2 Reading the Editor
 
 | Command | Returns |
 |---|---|
-| `editor_status` | `status` — `ready`, `settling` (cold import/compile still running: wait), or **`blocked_by_dialog`** with a `dialog` payload (title, buttons) — plus `compiling`, `domainReloadInProgress`, `playMode`, version. A modal dialog blocks every main-thread command: stop retrying, and avoid the code path that opened it (`Automate` exports, no `menu`). Headless Editors cancel dialogs instead. |
+| `editor_status` | `status` — `ready`, `settling` (cold import/compile still running: wait), or **`blocked_by_dialog`** with a `dialog` payload (title, buttons) — plus `compiling`, `domainReloadInProgress`, `playMode`, version. A modal dialog blocks every main-thread command: stop retrying, and avoid the code path that opened it (`Automate` exports, no `menu`). Report the dialog's title and buttons to the user and wait; if they agree, `unity close <project> --force` (unsaved changes are lost). Headless Editors cancel dialogs instead. |
 | `console --tail 50 --level warn` | Captured console entries plus a `cursor` + `session`. Follow with `--since <cursor> --since_session <session>`; a stale pair returns the tail with `reset=true`. |
 | `console_status` | Cheap: `groundTruth.compilationFailed`, `compiling`, console error/warning counts. Poll this while a compile runs. |
 | `clear_console` | Clears buffer + Console (sticky compile errors stay until the next compile) |
@@ -397,7 +412,18 @@ Unity tests (`list_tests` / `run_tests`) exist for Editor tooling; exported cont
 ```bash
 unity command package_add --identifier com.unity.ai.navigation --dry_run true --project-path "$PROJ"   # preview
 unity command package_add --identifier com.unity.ai.navigation --confirm true --project-path "$PROJ"   # async
-until unity command package_status --project-path "$PROJ" --result-only 2>/dev/null | grep -qE 'completed|failed'; do sleep 5; done
+deadline=$((SECONDS+900)); seen=""
+while :; do
+  s=$(unity command package_status --project-path "$PROJ" --result-only 2>/dev/null)
+  case "$s" in
+    *completed*) break;;
+    *failed*) echo "failed: $s"; exit 1;;
+    *baking*|*running*|*in_progress*) seen=1;;
+    *idle*) [ -n "$seen" ] && { echo "stopped without completing"; exit 1; };;
+  esac
+  [ $SECONDS -ge $deadline ] && { echo "timed out after 15 min"; exit 1; }
+  sleep 5
+done
 unity command package_list --project-path "$PROJ" --format json          # installed (default) | available | all
 unity command package_search --query com.unity.timeline --project-path "$PROJ"
 ```
@@ -653,7 +679,7 @@ disappears in a new version must be removed here, not left as a phantom.
 |---|---|---|
 | `cancel_tests` | — | Cancel running test execution |
 | `list_tests` | `mode`="all" | List all available tests (EditMode and/or PlayMode) without running them |
-| `run_tests` | `mode`="all", `filter`, `filter_type`="testName", `include_explicit`=false, `async_tests`=false, `timeout`=300 | Execute Unity tests with filtering options |
+| `run_tests` | `mode`="all", `filter`, `filter_type`="testName", `include_explicit`=false, `async_tests`=false, `timeout`=300 | Execute Unity tests with filtering options (its own `timeout` parameter has the same name clash as `eval`'s) |
 | `test_status` | — | Get status of running async test execution |
 
 ### Scripts — eval, run_script, compile, code reload

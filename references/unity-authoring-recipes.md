@@ -317,7 +317,18 @@ unity command set_lighting_settings --project-path "$PROJ" --dry_run true \
   --settings '{"bakedGI":true,"realtimeGI":false,"lightmapper":"ProgressiveGPU","bounces":2,"lightmapResolution":20,"directionalMode":"NonDirectional","maxLightmapSize":2048}'
 # review applied[] / unknown[], then run again without --dry_run
 unity command bake_lighting --project-path "$PROJ"
-until unity command lighting_bake_status --project-path "$PROJ" --result-only 2>/dev/null | grep -q completed; do sleep 5; done
+deadline=$((SECONDS+900)); seen=""
+while :; do
+  s=$(unity command lighting_bake_status --project-path "$PROJ" --result-only 2>/dev/null)
+  case "$s" in
+    *completed*) break;;
+    *failed*) echo "failed: $s"; exit 1;;
+    *baking*|*running*|*in_progress*) seen=1;;
+    *idle*) [ -n "$seen" ] && { echo "stopped without completing"; exit 1; };;
+  esac
+  [ $SECONDS -ge $deadline ] && { echo "timed out after 15 min"; exit 1; }
+  sleep 5
+done
 unity command save_scene --project-path "$PROJ"
 ```
 
@@ -570,8 +581,8 @@ public static class Post
         var vol = go.AddComponent<Volume>();
         vol.isGlobal = true; vol.priority = 0; vol.sharedProfile = profile;   // sharedProfile, not profile (which clones)
 
-        var cam = Camera.main;
-        var data = cam.GetComponent<UniversalAdditionalCameraData>() ?? cam.gameObject.AddComponent<UniversalAdditionalCameraData>();
+        var cam = Camera.main; if (cam == null) throw new System.Exception("No Main Camera");
+        var data = cam.GetComponent<UniversalAdditionalCameraData>(); if (data == null) data = cam.gameObject.AddComponent<UniversalAdditionalCameraData>();   // not ??: it misses Unity's fake null
         data.renderPostProcessing = true;
         data.volumeLayerMask |= 1 << go.layer;
 
@@ -1019,7 +1030,7 @@ unity command console --level warn --tail 50 --project-path "$PROJ"     # export
 # Browser side — the milestone check
 unity command bt_export_level --scene Assets/Scenes/Level01.unity --geometryOnly false --project-path "$PROJ" --timeout 900
 unity command bt_devserver_start --project-path "$PROJ"
-# load http://localhost:<port>/index.html?scene=level01.gltf in a real browser, screenshot the same camera, read the console
+# load http://localhost:<port>/index.html?scene=Level01.gltf in a real browser, screenshot the same camera, read the console
 ```
 
 **How to compare.**

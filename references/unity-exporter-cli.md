@@ -1,6 +1,6 @@
 ## Unity Exporter — Command Line Interface
 
-**IMPORTANT. THIS DOCUMENT PROVIDES CRUCIAL UNITY EDITOR INSTRUCTIONS. ALWAYS READ THIS ENTIRE DOCUMENT TO THE END OF FILE**
+**IMPORTANT. THIS DOCUMENT PROVIDES CRUCIAL UNITY EDITOR INSTRUCTIONS. READ §0, §4B, §11 AND §12 BEFORE TOUCHING A PROJECT; READ THE REST WHEN THE TASK NEEDS IT**
 
 This document tells an AI agent how to **completely control a Unity Editor from the terminal** and drive the
 **Babylon Toolkit Unity Exporter** to produce the interactive glTF content that BabylonJS web games consume:
@@ -27,8 +27,10 @@ WebGL/WebGPU engine, with interactive components intact rather than baked down t
 
 **Two operating modes, both first-class:**
 
-- **Copilot mode** — a resident Editor stays open and you design levels in the GUI while the agent drives the
-  *same* Editor live through `unity command eval` (sub-second, no recompile, no domain reload).
+- **Copilot mode** — the scaffold leaves a **batch** Editor running for the agent; when the user wants to design
+  by hand, the agent runs `bt-stop-editor.sh <project>` and then `unity open <project>` to hand them a GUI
+  Editor, which the Pipeline reaches the same way (`unity command eval` — sub-second, no recompile, no domain
+  reload).
 - **Headless mode** — the agent does everything itself with `-batchmode -nographics`, no GUI at any point.
 
 ### YOU drive Unity. The user does not.
@@ -40,7 +42,7 @@ execute from the terminal, in either mode, without asking:
 |---|---|
 | Create a whole Unity project from nothing | §4B one-shot scaffold |
 | Install every package, licence, and the exporter | §4.1, §5 |
-| Build a level: GameObjects, hierarchies, transforms, prefabs, components | §7, §8 + `unity-editor-commands.md` (151 typed commands) |
+| Build a level: GameObjects, hierarchies, transforms, prefabs, components | §7, §8 + `unity-editor-commands.md` (the typed command catalog) |
 | Set up lighting — lightmap/GI bakes, IBL/skybox, reflection probes, fog, tonemapping, post-processing | `unity-authoring-recipes.md` (`bake_lighting`, `set_lighting_settings`, Volumes) |
 | Author materials, terrain, physics bodies, colliders, navmesh, Animator controllers, particles, audio | `unity-authoring-recipes.md` |
 | Import textures/models/audio and set their import settings; add packages | `unity-editor-commands.md` §9, `import_asset`, `set_import_settings`, `package_add` |
@@ -48,12 +50,12 @@ execute from the terminal, in either mode, without asking:
 | Run **arbitrary C# inside the live Editor** — the whole `UnityEditor` API surface | §7.3 — `run_script` (files) and `eval` (one-liners) |
 | Enter/exit play mode (Unity-side comparison only), read the console, check status | `unity-editor-commands.md` §8 |
 | **See what you made** — render Scene/Game view to a PNG and look at it | `screenshot`, `capture_game_view`, `capture_scene_view` |
-| Export game levels and asset containers / prefabs to interactive glTF | §9, §10, §11 |
-| Run a full `EditorBuildType.Automate` build — scene + TypeScript bundle + web project | §9, `bt_build_project` |
+| Export game levels and asset containers / prefabs to interactive glTF | §11 (internals doc §9, §10) |
+| Run a full `EditorBuildType.Automate` build — scene + TypeScript bundle + web project | internals doc §9, `bt_build_project` |
 | Serve it and open it in a real browser | §12 |
 | Iterate against a reference image until it matches | the `bt-gauntlet` skill |
 
-**Prefer a typed command; if none exists, write C# (§7.3).** `com.unity.pipeline` ships 151 typed commands —
+**Prefer a typed command; if none exists, write C# (§7.3).** `com.unity.pipeline` ships a catalog of typed commands —
 scenes, prefabs, materials, bakes, animation, settings, packages, capture, tests — listed in
 `unity-editor-commands.md`. For anything they do not cover, `run_script` compiles a real `.cs` file against the
 entire Editor API with no domain reload. Anything a human could do by clicking in Unity, you can do by running
@@ -69,7 +71,7 @@ screenshot the same camera → read the console. Don't export after every edit; 
 looked up — it is in this document.
 
 **Start here:** *"Create a Babylon Toolkit Unity Project"* → **§4B**, a tested one-shot scaffold that produces
-a project where the first export actually succeeds. Then design levels (§8), export them (§9, §10), serve them
+a project where the first export actually succeeds. Then design levels (§8), export them (internals doc §9, §10), serve them
 (§12), and hand the result to **`bt-gauntlet`** to iterate on visual fidelity against a goal.
 
 > **The scaffold takes minutes, and the project is unusable until it finishes.** Packages resolve, the exporter
@@ -115,27 +117,28 @@ biggest source of wasted turns.
 |---|---|---|---|
 | **1. Unity CLI** (`unity`) | A standalone binary. Manages editors, projects, licenses, builds. | `install.sh` / `install.ps1` (§1) | `unity install`, `unity open`, `unity build`, `unity run`, `unity test` |
 | **2. Unity Pipeline package** (`com.unity.pipeline`) | A UPM package **inside a project**. Runs a local HTTP server in the Editor so the CLI can talk to a **live** Editor. | `unity pipeline install` (§4) | `unity status`, `unity command`, `unity list`, `unity command eval` |
-| **3. Babylon Toolkit Exporter** | **Two** UPM packages **inside a project** — `org.khronos.unitygltf` + `com.babylontoolkit.editor`. Adds `CanvasTools.CanvasToolsExporter` and the `Tools ▸ Babylon Toolkit` menu. | UPM git URL / tarball (§5) | `CanvasToolsExporter.BuildProject(...)` — the actual glTF export, the dev web server (§12), and (9.22.3+) the shipped `bt_*` CLI bridge (§11) |
+| **3. Babylon Toolkit Exporter** | **Two** UPM packages **inside a project** — `org.khronos.unitygltf` + `com.babylontoolkit.editor`. Adds `CanvasTools.CanvasToolsExporter` and the `Tools ▸ Babylon Toolkit` menu. | UPM git URL / tarball (§5) | `CanvasToolsExporter.BuildProject(...)` — the actual glTF export, the dev web server (§12), and (9.25.1+) the shipped `bt_*` CLI bridge (§11) |
 
 > **"Install the Unity Pipeline" always means all three packages** — `com.unity.pipeline`,
 > `org.khronos.unitygltf`, and `com.babylontoolkit.editor`. One operation: **§4.1**.
 
 The agent workflow is: **CLI → live Editor → `eval` C# → `BuildProject(...)` → `.gltf` / `.glb` on disk**.
 
-### The prerequisite chain — all five, in order
+### The prerequisite chain — all six, in order
 
 Nothing exports until **every** one of these holds. Skipping any of them fails quietly or confusingly:
 
 1. **A running Editor instance** for the project (GUI, or resident headless) — §6.
-2. **All three packages installed** in that project — `com.unity.pipeline` (CLI reach),
+2. **git on PATH** — UPM git-URL packages need it (`git --version`).
+3. **All three packages installed** in that project — `com.unity.pipeline` (CLI reach),
    `org.khronos.unitygltf` and `com.babylontoolkit.editor` (the exporter). One command: **§4.1**.
-3. **The Scene Exporter panel activated, and preferably docked** — §5.1. Opening
+4. **The Scene Exporter panel activated, and preferably docked** — §5.1. Opening
    `Tools ▸ Babylon Toolkit ▸ Scene Exporter` *is* the toolkit's project bootstrap; docking makes it survive
    the domain reloads an agent constantly triggers, and (because Unity layouts are per-user) makes every
    future project self-bootstrap.
-4. **`npm install` in the project root** — §5.2. The panel writes `package.json`; npm turns it into the
+5. **`npm install` in the project root** — §5.2. The panel writes `package.json`; npm turns it into the
    local `tsc` every script-compiling build needs.
-5. **A valid `Assets/[Config]/license.json`** — §0. Without it the build still succeeds but silently drops
+6. **A valid `Assets/[Config]/license.json`** — §0 Licensing. Without it the build still succeeds but silently drops
    every interactive component.
 
 ### The three things that most often make a build fail
@@ -160,226 +163,13 @@ return "pro="   + ToolkitManager.IsPro()
 ```
 
 Only then does `CanvasTools.CanvasToolsExporter.BuildProject(...)` work — for a **whole scene** (game level)
-or for **selected items** (prefabs / asset containers). See §9 and §10.
+or for **selected items** (prefabs / asset containers). See internals doc §9 and §10.
 
 To *view* the result in a browser, start the Toolkit development web server — **§12**.
 
-### ⚠️ The Babylon Toolkit licence decides whether your export is interactive at all
+### Licensing
 
-**This is the single most consequential thing in this document, and it fails silently.**
-
-The exporter checks `ToolkitManager.IsPro()` **per component**. Without a Pro licence the export still
-succeeds, still writes a `.gltf`, still emits all the scene-level metadata — and **silently omits the native
-Unity-system components and all physics**. No error. One line in the Editor log:
-
-```
-Pro Tools Disabled: Exporting standard community edition content
-```
-
-| | Community (no `license.json`) | Pro |
-|---|---|---|
-| Geometry, materials, textures, lightmaps, probes | ✅ | ✅ |
-| Scene metadata (skybox, IBL, fog, gravity, navigation) | ✅ | ✅ |
-| `camera`, `light` components | ✅ | ✅ |
-| Animation clips, skins, morph targets | ✅ | ✅ |
-| **Script components** (`EditorScriptComponent`) | ✅ | ✅ |
-| **Every `physics` and `collision` block** (Rigidbody, static colliders, CharacterController) | ❌ dropped | ✅ |
-| **Animator state machine** (`AnimationState`) | ❌ dropped | ✅ |
-| **AudioSource** | ❌ dropped | ✅ |
-| **NavMeshAgent** | ❌ dropped | ✅ |
-| **CharacterController** | ❌ dropped | ✅ |
-| **ParticleSystem** | ❌ dropped | ✅ |
-| **Canvas / UIDocument** (UI) | ❌ dropped | ✅ |
-| **Terrain** | ❌ dropped | ✅ |
-| **VideoPlayer** | ❌ dropped | ✅ |
-| **PostProcess volumes** (and URP default volumes) | ❌ dropped | ✅ |
-| **LOD groups** | ❌ dropped | ✅ |
-| **Camera anti-aliasing** (FXAA / SMAA / TAA) | ❌ dropped | ✅ |
-
-*(Gates in `CVTools.cs`, toolkit source 9.27.1: 3807 LOD, 4222 camera AA, 4231 default volumes, 4518, 4553,
-4608, 4647, 4683, 4738, 4773, 4808, 5028, 5043, 5132, and 5250–5254, which nulls physics + collision.)*
-
-**Measured proof — the same scene exported both ways.** 4 crates, each with a Rigidbody and a BoxCollider:
-
-| | Community (no `license.json`) | Pro (`EnterprisePartner`) |
-|---|---|---|
-| `metadata.license` | `"community"` | `"professional"` |
-| `Main Camera` / `Directional Light` | `['camera']` / `['light']` | `['camera']` / `['light']` |
-| `Crate_0` … `Crate_3` | **`NONE`** | `['script']` **+ full `physics` + `collision` blocks** |
-
-Under Pro each crate carries `extras.metadata.physics` (`type: "rigidbody"`, `mass`, `ldrag`, `adrag`,
-`freeze` constraints, `gravity`, `kinematic`, …) and `extras.metadata.collision` (`BoxCollider`, `boxsize`,
-`restitution`, `dynamicfriction`, `staticfriction`, …). Under community **none of it is written** — the Unity
-scene file had 4 `Rigidbody` entries and the community glTF contained zero. Same scene, same command, same
-exporter; only the licence differed.
-
-#### Always check the licence BEFORE trusting an export
-
-```bash
-unity command eval 'return "pro=" + ToolkitManager.IsPro() + " type=" + ToolkitManager.GetLicenseType() + " name=" + ToolkitManager.GetLicenseName();' --project-path "$PROJ"
-```
-
-Or read it back out of the exported file — the tier is baked in as `scenes[0].extras.metadata.license`:
-
-```bash
-python3 -c "import json;print(json.load(open('Export/scenes/level01.gltf'))['scenes'][0]['extras']['metadata']['license'])"
-# -> "community"  or  "professional"
-```
-
-**If it says `community` and you expected interactive content, the export is incomplete — stop and fix the
-licence rather than shipping it.**
-
-#### How `license.json` is validated — the exact rules
-
-`Assets/[Config]/license.json` holds `{ secret, key, s1, s2 }`. `secret` decrypts to a pipe-delimited
-`plan|licensee|organization|product|project|expires`. The file is then accepted only if `key` matches
-`hash(plan + "-" + seed)` — and **the seed is what binds a licence to a machine or project**:
-
-| Plan | Decryption seed | Consequence |
-|---|---|---|
-| `EnterprisePartner` | **`PlayerSettings.companyName`** | Project Settings ▸ **Company Name** must match the licence exactly, character for character |
-| `Indie`, `SmallBusiness`, `PremiumContent` | **`PlayerSettings.productGUID`** | Bound to **that one Unity project**. A `license.json` copied into a different project will not validate |
-
-If the hash fails you get `Invalid Pro Tools License Hash Key` and fall back to community.
-
-Once decrypted, `BuildProject` applies a **second, per-plan** gate — and these read Unity **sign-in** state,
-not `companyName`:
-
-| Plan | Additional requirement | Field actually compared |
-|---|---|---|
-| `Indie` | Signed into Unity, and the licensee is you | `CloudProjectSettings.userName` (your Unity **email**) == licence `licensee` |
-| `SmallBusiness`, `PremiumContent` | Signed in, and you are the licensee **or** hold a seat | `userName` == `licensee`, or == seat 1 / seat 2 |
-| `EnterprisePartner` (org ≠ `*`) | Project linked to the cloud org | `CloudProjectSettings.projectId` non-empty **and** `CloudProjectSettings.organizationName` == licence `organization` |
-
-> **`PlayerSettings.companyName` is only a *seed*, and only for EnterprisePartner.** It is never compared for
-> the other plans. It *is* written into every export as `scenes[0].extras.metadata.licensee` — which is a
-> record, not a check. (A community export shows whatever `companyName` happens to be, e.g. `DefaultCompany`.)
-
-> **Worked example (verified).** An `EnterprisePartner` licence with `org = "*"`:
-> `pro=True type=EnterprisePartner name='<Licensee Name>' org=* expires=never isLicensee=False isOrganization=False
-> hasDeveloperSeat=True`. It passes headless for two independent reasons — the wildcard org skips the
-> `projectId`/`organizationName` gate entirely, and the developer holds a seat. Note `isLicensee` and
-> `isOrganization` are both **False** and it still works: those are not required when a seat or wildcard covers
-> you. Making it validate required setting Project Settings ▸ **Company Name** to the licence's `name` (`<Licensee Name>`) — the
-> EnterprisePartner seed — exactly as the seed table above requires.
-
-#### Headless licensing — what works and what does not
-
-**Verified in a resident `-batchmode` Editor:**
-
-```
-CloudProjectSettings.userName         : 'you@example.com'       <- POPULATED
-CloudProjectSettings.organizationName : ''                      <- EMPTY
-CloudProjectSettings.projectId        : ''                      <- EMPTY
-```
-
-| Plan | Headless verdict |
-|---|---|
-| `Indie`, `SmallBusiness`, `PremiumContent` | ✅ **Works** — `userName` is available, so the email gate passes |
-| `EnterprisePartner` with a specific org | ❌ **Blocked** — `projectId` and `organizationName` are both empty, so the org gate fails |
-| `EnterprisePartner` with org `"*"` | ✅ Works — a wildcard org is never org-checked |
-
-So for headless CI, prefer a seat-based plan, or a wildcard-org Enterprise licence. Note also that
-`HasDeveloperSeat()` short-circuits on `IsPro()`, so the built-in owners list only helps **after** a valid
-licence file is already loading.
-
-#### The subscription path — coming, and much simpler (NOT LIVE YET)
-
-> ⚠️ **Not usable today.** The App Builder endpoint is not deployed and `SUBSCRIPTION_API_KEY` ships empty.
-> **Until it is live, `license.json` is the only way to get Pro.** This subsection describes the intended
-> behaviour so agent tooling can be written to prefer it once it ships.
-
-When the service is up the check becomes a single question — **does the signed-in Unity user's email have an
-active subscription?** If yes, that developer has full access. There is:
-
-- **no `license.json`** — a subscriber legitimately has no licence file at all;
-- **no Project Settings ▸ Company Name match** — the EnterprisePartner `companyName` seed is irrelevant;
-- **no `productGUID` binding** — so nothing ties access to one specific Unity project;
-- **no expiry date check** — entitlement is checked live.
-
-That removes every seed/binding rule in the table above, and with it the main reason a licence cannot be moved
-between projects or machines. For CI it means: sign in, and export.
-
-**How it behaves in code** (already implemented in `ToolkitManager`, just waiting on the endpoint):
-
-```csharp
-// Blocking HTTP. Defaults to CloudProjectSettings.userName — the signed-in Unity account email.
-bool ok = ToolkitManager.HasActiveSubscription();          // or (email), or (email, force: true)
-```
-
-A success registers the caller as the **authorized developer for the Editor session**, after which
-`IsPro()` → `true`, `GetLicenseType()` → `"PremiumContent"`, `GetLicenseOrg()` → `"*"`,
-`GetExpirationDate()` → `"never"`, and both `IsLicensee()` and `HasDeveloperSeat()` → `true`. Those values are
-chosen so every per-plan gate in `BuildProject` passes cleanly.
-
-Two properties worth building around:
-
-- **It only ever GRANTS — it can never revoke.** A failed check (no network, service down, key unset) leaves
-  any local `license.json` working exactly as before. Calling it is therefore always safe.
-- **It is never called from `IsPro()`.** `IsPro()` runs *per component* during an export, so a lazy check
-  inside it would fire HTTP inside the export loop. **Your pipeline must call `HasActiveSubscription()`
-  explicitly, once, before exporting.** The result is cached for the session; pass `force: true` to re-ask.
-
-**Recommended agent pattern once the service is live** — try the subscription, fall back to the licence file:
-
-```bash
-unity command eval 'bool sub = ToolkitManager.HasActiveSubscription();
-return "subscription=" + sub + " pro=" + ToolkitManager.IsPro() + " as=" + ToolkitManager.GetAuthorizedDeveloper();' \
-  --project-path "$PROJ"
-# then gate the export on IsPro() being true, whichever path granted it
-```
-
-#### `GenerateDeveloperLicense()` — the one-call request path (ALSO NOT LIVE YET)
-
-Alongside `HasActiveSubscription()`, the exporter exposes a method that *asks the service to issue a licence*
-for the signed-in Unity user, rather than checking an existing entitlement:
-
-```csharp
-// CanvasTools.CanvasToolsExporter - Professional Edition
-public static int GenerateDeveloperLicense()
-{
-    string devid = "3D-APP-BUILDER";
-    string email = CloudProjectSettings.userName;   // the signed-in Unity account email
-    return ExporterLicenser.PostLicenseWebRequest(devid, email);
-}
-```
-
-> ⚠️ **Present in the API, but it does not work yet** — it posts to the same undeployed App Builder endpoint
-> as `HasActiveSubscription()`. **Do not build a pipeline that depends on it.** `license.json` remains the
-> only working way to get Pro today. It is documented here so tooling can prefer it once the service ships.
-
-What to know when it does go live:
-
-- **No arguments, no seeds, no file.** The developer id is the fixed constant `"3D-APP-BUILDER"` and the
-  identity is `CloudProjectSettings.userName`, so there is nothing to configure — none of the
-  `companyName` / `productGUID` seed rules above apply.
-- **The Editor must be signed in.** `CloudProjectSettings.userName` is the one cloud field that *is*
-  populated in `-batchmode` (see the table above), which is what makes this viable headless — but it is
-  empty if the seat is not signed in, and the request will then carry no identity.
-- **It returns an `int`** — the web-request result, not a bool and not the licence itself. Never treat a
-  return value as proof of anything: re-check `ToolkitManager.IsPro()` afterwards to find out whether the
-  Editor session actually gained Pro.
-
-Probe before calling, exactly as with the dev server in §12.4 — older Toolkit builds do not have it:
-
-```bash
-unity command eval 'var mi = typeof(CanvasTools.CanvasToolsExporter).GetMethod("GenerateDeveloperLicense",
-  System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-return mi != null ? "present" : "absent";' --project-path "$PROJ"
-```
-
-#### Where the licence lives
-
-`Assets/[Config]/license.json` — an encrypted file, generated in-Editor by
-`Tools ▸ Babylon Toolkit ▸ Developer Options ▸ Generate Project License`. It is **per project**, so a newly
-created project has none and defaults to community. There are also two session-level `App Builder` paths
-that can *grant* Pro without a file — `ToolkitManager.HasActiveSubscription()` (check an entitlement) and
-`CanvasToolsExporter.GenerateDeveloperLicense()` (request one for the signed-in user). Both must be invoked
-explicitly, neither is called from `IsPro()`, neither ever revokes — and **neither works yet**: the endpoint
-they share is not deployed.
-
-**For agent and CI work:** copy a valid `license.json` into `Assets/[Config]/` as part of project setup, and
-gate the pipeline on `IsPro()` returning true before exporting anything you intend to ship.
+Whether an export is interactive depends on the Babylon Toolkit licence. Read [unity-exporter-licensing.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-exporter-licensing.md) before your first export, or when components are missing from an export.
 
 ### Version requirements — check these FIRST
 
@@ -503,12 +293,34 @@ Then add each toolkit package with the Pipeline's typed **`package_add`** comman
 ```bash
 # --- 2/3 --- Khronos glTF FIRST (the toolkit editor package builds on it)
 unity command package_add --identifier https://github.com/babylontoolkit/unitygltf.git --confirm true --project-path "$PROJ"
-until unity command package_status --project-path "$PROJ" --result-only 2>/dev/null | grep -qE 'completed|failed'; do sleep 5; done
+deadline=$((SECONDS+900)); seen=""
+while :; do
+  s=$(unity command package_status --project-path "$PROJ" --result-only 2>/dev/null)
+  case "$s" in
+    *completed*) break;;
+    *failed*) echo "failed: $s"; exit 1;;
+    *baking*|*running*|*in_progress*) seen=1;;
+    *idle*) [ -n "$seen" ] && { echo "stopped without completing"; exit 1; };;
+  esac
+  [ $SECONDS -ge $deadline ] && { echo "timed out after 15 min"; exit 1; }
+  sleep 5
+done
 unity command package_status --project-path "$PROJ" --format json      # read status + error — "failed" must stop you
 
 # --- 3/3 --- the Babylon Toolkit editor package
 unity command package_add --identifier https://github.com/babylontoolkit/professionaledition.git --confirm true --project-path "$PROJ"
-until unity command package_status --project-path "$PROJ" --result-only 2>/dev/null | grep -qE 'completed|failed'; do sleep 5; done
+deadline=$((SECONDS+900)); seen=""
+while :; do
+  s=$(unity command package_status --project-path "$PROJ" --result-only 2>/dev/null)
+  case "$s" in
+    *completed*) break;;
+    *failed*) echo "failed: $s"; exit 1;;
+    *baking*|*running*|*in_progress*) seen=1;;
+    *idle*) [ -n "$seen" ] && { echo "stopped without completing"; exit 1; };;
+  esac
+  [ $SECONDS -ge $deadline ] && { echo "timed out after 15 min"; exit 1; }
+  sleep 5
+done
 ```
 
 A successful add triggers a recompile and **domain reload, which takes the Pipeline server down for ~15–25 s**,
@@ -518,8 +330,13 @@ file that survives the reload, so the outcome is never lost.
 Then poll on the thing you actually care about — that the exporter type compiled into the domain:
 
 ```bash
-until unity command eval 'foreach (var a in System.AppDomain.CurrentDomain.GetAssemblies()) if (a.GetType("CanvasTools.CanvasToolsExporter") != null) return true; return false;' \
-        --project-path "$PROJ" --format json 2>/dev/null | grep -q true; do sleep 5; done
+deadline=$((SECONDS+900))
+while :; do
+  s=$(unity command eval 'foreach (var a in System.AppDomain.CurrentDomain.GetAssemblies()) if (a.GetType("CanvasTools.CanvasToolsExporter") != null) return "READY"; return "no";' --project-path "$PROJ" --result-only 2>/dev/null)
+  case "$s" in *READY*) break;; esac          # "cannot connect" during a domain reload is just "not yet"
+  [ $SECONDS -ge $deadline ] && { echo "exporter compile timed out after 15 min"; exit 1; }
+  sleep 5
+done
 ```
 
 That last check is the real success condition: it proves the Toolkit both installed **and** compiled.
@@ -531,8 +348,13 @@ deadlocks; poll with repeated separate calls:
 
 ```bash
 unity command eval 'UnityEditor.PackageManager.Client.Add("https://github.com/babylontoolkit/unitygltf.git"); return "queued";' --project-path "$PROJ"
-until unity command eval 'return UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/org.khronos.unitygltf/package.json") != null;' \
-        --project-path "$PROJ" --format json 2>/dev/null | grep -q true; do sleep 5; done
+deadline=$((SECONDS+900))
+while :; do
+  s=$(unity command eval 'return UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/org.khronos.unitygltf/package.json") != null ? "READY" : "no";' --project-path "$PROJ" --result-only 2>/dev/null)
+  case "$s" in *READY*) break;; esac          # "cannot connect" during a domain reload is just "not yet"
+  [ $SECONDS -ge $deadline ] && { echo "org.khronos.unitygltf resolve timed out after 15 min"; exit 1; }
+  sleep 5
+done
 ```
 
 > **Windows note.** The `unity` commands above are identical in PowerShell. Only the shell glue differs —
@@ -599,14 +421,14 @@ manifest but the Editor has not built it — check Safe Mode (§15).
 unity auth login                                     # required
 unity pipeline install --project-path ~/UnityProjects/MyGame
 unity pipeline list --format json                    # verify: installed, server reachable
-unity pipeline list-versions --format json           # registry versions (e.g. 0.7.0-exp.1)
+unity pipeline list-versions --format json           # registry versions — install the latest
 ```
 
 | Command | Does |
 |---|---|
 | `unity pipeline install` | Add `com.unity.pipeline` (auto-detects the project if `--project-path` is omitted) |
 | `unity pipeline install --force` | Always rewrite the manifest to the latest version |
-| `unity pipeline install --package-version 0.7.0-exp.1` | Pin a specific version |
+| `unity pipeline install --package-version <version>` | Pin a specific version (default: the latest Pipeline, `unity pipeline list-versions`) |
 | `unity pipeline upgrade` | Upgrade **only** if the registry has something newer |
 | `unity pipeline list` | Every running Editor + its Pipeline status, PID, port, **Safe Mode flag** |
 | `unity pipeline list-versions` | All published versions, newest first |
@@ -637,7 +459,7 @@ Two ways to run it, and the reference supports both:
 
 | Mode | `--mode` | What it does | Use when |
 |---|---|---|---|
-| **Copilot** | `copilot` (default) | Leaves a resident Editor running. You open the project in the GUI and design levels while the agent drives the same Editor live via `eval` — sub-second round trips, no recompile. | Vibe-coding level design together; iterating on look and feel |
+| **Copilot** | `copilot` (default) | The scaffold leaves a **batch** Editor running for the agent; when the user wants to design by hand, the agent runs `bt-stop-editor.sh <project>` and then `unity open <project>` to hand them a GUI Editor, which the Pipeline reaches the same way — sub-second `eval` round trips, no recompile. | Vibe-coding level design together; iterating on look and feel |
 | **Headless** | `headless` | Adds `-nographics`, does everything itself, then stops the Editor and releases the licence seat. | CI, batch level generation, fully autonomous runs |
 
 Once a level exists, hand it to **`bt-gauntlet`** to iterate on visual fidelity against a goal — build,
@@ -663,8 +485,8 @@ script off in the background and moved on, it must still keep saying "installing
 2. **Give the user the current step, not silence.** "Still installing — resolving `org.khronos.unitygltf`
    (package 2 of 3), ~2 min in" is a status; four silent minutes is not, and "your project is ready" at step 4
    is simply wrong. The step names in §4B.4 are the vocabulary for this.
-3. **Read `VERIFY`, do not assume it.** Every poll loop in the script is bounded and *falls through* on
-   timeout instead of aborting, so a package that never resolved still reaches `VERIFY`. `pro=False` after a
+3. **Read `VERIFY`, do not assume it.** Every poll loop in the script is bounded and stops the scaffold with an
+   `ERROR: … timed out` line when it runs out, but a project that reaches `VERIFY` can still be unusable. `pro=False` after a
    `--license` was passed, `tsc=False`, or an empty `exportRoot` each mean the project is **not** usable —
    name the one that failed rather than reporting success.
 4. **Say what the exit mode means for opening it**, because the two modes end in genuinely different states:
@@ -678,6 +500,13 @@ script off in the background and moved on, it must still keep saying "installing
 
 The same rule applies when an agent runs the steps by hand instead of through the script: the project is
 "installing" until the toolkit type compiles in, `package.json` exists, and `npm install` has finished.
+
+Handing a copilot-mode project to the user for hand design:
+
+```bash
+~/.claude/toolkit/bt-stop-editor.sh <project>      # stop the scaffold's batch Editor and release the lock
+unity open <project>                               # a GUI Editor the Pipeline reaches the same way
+```
 
 ### 4B.3 Create the four files, then run
 
@@ -695,8 +524,8 @@ verbatim unless the user names a different one; it is not a suggestion:
   and reused, not regenerated per project.
 
 Create the folder once with `mkdir -p ~/.claude/toolkit`, then run the shell script. `~` expands correctly on
-macOS, Linux and Windows (Git Bash). The files are reproduced in full so the scaffold is self-contained, and
-they run unmodified on all three platforms.
+macOS, Linux and Windows (Git Bash). Each file is downloaded with the `curl` line under its
+name below, and they run unmodified on all three platforms.
 
 `bt-new-unity-project.sh` resolves the two `.cs` snippets relative to **its own location** (the `SNIPPETS`
 default, file 3 of 4), so the folder can be moved or renamed without editing anything; `--snippets <dir>`
@@ -704,324 +533,26 @@ overrides it if the `.cs` files ever live somewhere else.
 
 **File 1 of 4 — `~/.claude/toolkit/bt-bootstrap.cs`** (replicates `CVPanel.OnEnable()` for headless):
 
-```csharp
-// Headless replication of CVPanel.OnEnable() - the Scene Exporter bootstrap.
-// Safe to run in a GUI Editor too (it is idempotent).
-var sb = new System.Text.StringBuilder();
-CanvasTools.CanvasToolsExporter.Initialize();
-CanvasToolsInfo.DefaultProjectFolder = UnityTools.GetDefaultExportFolder();
-UnityTools.ValidateRequirements();
-UnityTools.ValidateImageLibrary();
-UnityTools.ValidateProjectScript();
-UnityTools.ValidateProjectLayers();
-UnityTools.ValidateColorSpaceSettings();
-UnityTools.ValidateGraphicsLibSettings();
-UnityTools.ValidateProjectRootNamespace();
-UnityTools.ValidateProjectShaderSettings();
-UnityTools.ValidateReflectionProbeSettings();
-// The GPU Resident Drawer is Unity-only batching the export never uses; left on, a failed registration makes
-// camera captures render only the sky. Toolkit 9.25+, dialog-free.
-sb.Append("residentDrawerOff=" + RenderPathTools.DisableResidentDrawer(false) + " ");
-if (System.String.IsNullOrWhiteSpace(CanvasToolsInfo.Instance.ProductShortName)
-    && !System.String.IsNullOrWhiteSpace(UnityEngine.Application.productName))
-    CanvasToolsInfo.Instance.ProductShortName = UnityEngine.Application.productName;
-if (CanvasToolsInfo.Instance.InlineNonceHash == null) CanvasToolsInfo.Instance.InlineNonceHash = "";
-string root = UnityTools.GetRootPath();
-string pj = System.IO.Path.Combine(root, "package.json");
-if (!System.IO.File.Exists(pj)) {
-    string j = "{\r\n\t\"name\": \"" + BabylonCore.Info.NAME + "\",\r\n\t\"version\": \"" + BabylonCore.Info.VERSION
-      + "\",\r\n\t\"description\": \"Babylon Toolkit Project\",\r\n\t\"license\": \"MIT\",\r\n\t\"devDependencies\": {\r\n\t\t\"typescript\": \"^"
-      + BabylonCore.Info.TYPESCRIPT + "\"\r\n\t}\r\n}\r\n";
-    System.IO.File.WriteAllText(pj, j);
-    sb.Append("packageJson=written ");
-} else sb.Append("packageJson=present ");
-CanvasToolsInfo.SaveSettings();
-UnityEditor.AssetDatabase.Refresh();
-sb.Append("exportRoot=" + CanvasToolsInfo.DefaultProjectFolder);
-sb.Append(" pro=" + ToolkitManager.IsPro());
-return sb.ToString();
+```bash
+curl -fsSL https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/bt-bootstrap.cs -o ~/.claude/toolkit/bt-bootstrap.cs
 ```
 
 **File 2 of 4 — `~/.claude/toolkit/bt-newscene.cs`** (starter scene in the correct order):
 
-```csharp
-// Create a starter scene WITH LightingSettings (order: NewScene -> build -> save -> lighting).
-string sceneName = "Level01";
-var scene = UnityEditor.SceneManagement.EditorSceneManager.NewScene(
-    UnityEditor.SceneManagement.NewSceneSetup.DefaultGameObjects,
-    UnityEditor.SceneManagement.NewSceneMode.Single);
-var ground = UnityEngine.GameObject.CreatePrimitive(UnityEngine.PrimitiveType.Plane);
-ground.name = "Ground"; ground.transform.localScale = new UnityEngine.Vector3(5f,1f,5f);
-UnityEngine.RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Skybox;
-System.IO.Directory.CreateDirectory(UnityEngine.Application.dataPath + "/Scenes");
-UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene, "Assets/Scenes/" + sceneName + ".unity");
-UnityEngine.LightingSettings ls = null;
-if (!UnityEditor.Lightmapping.TryGetLightingSettings(out ls) || ls == null) {
-    var nls = new UnityEngine.LightingSettings(); nls.name = "BtLightingSettings";
-    System.IO.Directory.CreateDirectory(UnityEngine.Application.dataPath + "/Settings");
-    UnityEditor.AssetDatabase.CreateAsset(nls, "Assets/Settings/BtLightingSettings.lighting");
-    UnityEditor.Lightmapping.lightingSettings = nls;
-}
-// Assigning lightingSettings does NOT mark the scene dirty, so SaveOpenScenes() skips it
-// and the reference is lost the next time the scene is loaded (sec 8.1).
-UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
-UnityEditor.SceneManagement.EditorSceneManager.SaveOpenScenes();
-UnityEditor.AssetDatabase.SaveAssets();
-return "scene=Assets/Scenes/" + sceneName + ".unity lighting=ok";
+```bash
+curl -fsSL https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/bt-newscene.cs -o ~/.claude/toolkit/bt-newscene.cs
 ```
 
 **File 3 of 4 — `~/.claude/toolkit/bt-new-unity-project.sh`** (the scaffold itself):
 
 ```bash
-#!/usr/bin/env bash
-# ============================================================================
-# bt-new-unity-project.sh - Create a Babylon Toolkit Unity Exporter project.
-#
-#   ./bt-new-unity-project.sh <ProjectName> [--path <dir>] [--editor <ver>]
-#                             [--template <id>] [--license <file>] [--company <name>]
-#                             [--mode copilot|headless] [--snippets <dir>]
-#
-# Runs on macOS, Linux and Windows (Git Bash). Requires the unity CLI, python3,
-# npm and a POSIX shell. Every platform difference is isolated in the four
-# helpers under "portable helpers" - the rest of the script is plain POSIX.
-#
-# Does everything needed for a build to actually succeed:
-#   1. resolve the Hub's default project directory (override with --path)
-#   2. unity projects new            (waits for it to EXIT - ProjectVersion.txt is last)
-#   3. unity pipeline install        (package 1/3)
-#   4. launch a resident Editor      (-nographics only in headless mode)
-#   5. Client.Add x2                 (packages 2/3, one at a time, polled)
-#   6. install license.json          (optional but required for interactive components)
-#   7. headless bootstrap            (replicates CVPanel.OnEnable -> writes package.json)
-#   8. npm install                   (AFTER package.json, BEFORE any TypeScript build)
-#   9. starter scene + LightingSettings
-#  10. verify pro / tsc / scene
-# ============================================================================
-set -uo pipefail
-export PATH="$HOME/.unity/bin:$PATH"
-
-NAME="${1:?usage: bt-new-unity-project.sh <ProjectName> [--path dir] [--editor ver] [--license file] [--company name] [--mode copilot|headless]}"; shift
-PARENT=""; EDITOR_VER="lts"; TEMPLATE="com.unity.template.urp-blank"; LICENSE=""; COMPANY=""; MODE="copilot"
-SNIPPETS="$(cd "$(dirname "$0")" && pwd)"
-while [ $# -gt 0 ]; do case "$1" in
-  --path) PARENT="$2"; shift 2;; --editor) EDITOR_VER="$2"; shift 2;;
-  --template) TEMPLATE="$2"; shift 2;; --license) LICENSE="$2"; shift 2;;
-  --company) COMPANY="$2"; shift 2;;
-  --mode) MODE="$2"; shift 2;; --snippets) SNIPPETS="$2"; shift 2;;
-  *) echo "unknown arg: $1" >&2; exit 2;; esac; done
-say(){ echo "[$(date +%T)] $*"; }
-
-# --- portable helpers -------------------------------------------------------
-# 1. Paths passed to the Editor BINARY must be native Windows under Git Bash.
-#    (Paths passed to the `unity` CLI accept either form on every platform.)
-nat(){ if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
-
-# 2. The Editor executable. "location" from the CLI is the executable itself on
-#    Windows and Linux but a .app bundle on macOS, so probe the known shapes
-#    rather than hard-code /Applications/... .
-editor_exe(){
-  loc=$(unity editors --installed --format json 2>/dev/null | BT_VER="$1" python3 -c "
-import json, os, sys
-want = os.environ['BT_VER']
-try: d = json.load(sys.stdin)['data']
-except Exception: sys.exit(0)
-print(next((e['location'] for e in d if e['version'] == want), ''))")
-  [ -z "$loc" ] && return 1
-  loc=$(printf '%s' "$loc" | tr '\\' '/')
-  for c in "$loc" \
-           "$loc/Contents/MacOS/Unity" \
-           "$loc/Unity.app/Contents/MacOS/Unity" \
-           "$loc/Editor/Unity.app/Contents/MacOS/Unity" \
-           "$loc/Editor/Unity.exe" \
-           "$loc/Editor/Unity"; do
-    [ -f "$c" ] && { printf '%s' "$c"; return 0; }
-  done
-  return 1
-}
-
-# 3. The Editor's REAL pid, from the CLI. "$!" is the shell's job id, which under
-#    Git Bash is NOT a Windows pid - stopping the Editor with it silently fails.
-editor_pid(){
-  unity pipeline list --format json 2>/dev/null | BT_PROJ="$PROJ" python3 -c "
-import json, os, sys
-want = os.path.normcase(os.path.abspath(os.environ['BT_PROJ']))
-try: inst = json.load(sys.stdin)['data']['instances']
-except Exception: sys.exit(0)
-for i in inst:
-    if i.get('isRunning') and os.path.normcase(os.path.abspath(i.get('projectPath', ''))) == want:
-        print(i['pid']); break"
-}
-
-# 4. kill(1) cannot signal a native Windows process from Git Bash.
-stop_pid(){
-  [ -z "${1:-}" ] && return 0
-  if command -v taskkill >/dev/null 2>&1; then taskkill //PID "$1" //F >/dev/null 2>&1
-  else kill "$1" 2>/dev/null; fi
-}
-
-J(){ python3 -c "
-import json,sys
-try:
-    d=json.load(sys.stdin)
-    print(d.get('data',{}).get('result',{}).get('result') if d.get('success') else 'ERR: '+(d.get('errors') or [{'message':'?'}])[0]['message'][:300])
-except Exception: print('unreachable')"; }
-ev(){  unity command eval_file "$1" --project-path "$PROJ" --timeout 900 --format json 2>/dev/null | J; }
-evs(){ unity command eval      "$1" --project-path "$PROJ" --timeout 900 --format json 2>/dev/null | J; }
-# Add a UPM package by git URL: the Pipeline's typed package_add when this Pipeline version has it,
-# otherwise Unity's own PackageManager.Client.Add through eval. Either way the caller polls the outcome.
-padd(){
-  if unity command --query package_add --detail compact --project-path "$PROJ" 2>/dev/null | grep -q package_add; then
-    unity command package_add --identifier "$1" --confirm true --project-path "$PROJ" --format json >/dev/null 2>&1
-  else
-    evs "UnityEditor.PackageManager.Client.Add(\"$1\"); return \"q\";" >/dev/null
-  fi
-}
-
-# 1. default project dir from the Hub (portable: userDataPath/projectDir.json)
-if [ -z "$PARENT" ]; then
-  UDP=$(unity env --format json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['userDataPath'])" 2>/dev/null)
-  PARENT=$(BT_UDP="${UDP:-}" python3 -c "
-import json, os
-try: print(json.load(open(os.path.join(os.environ['BT_UDP'], 'projectDir.json')))['directoryPath'])
-except Exception: print('')" 2>/dev/null)
-  [ -z "$PARENT" ] && PARENT="$HOME/Unity"
-fi
-# Windows writes this value with backslashes; normalise before joining onto it.
-PARENT=$(printf '%s' "$PARENT" | tr '\\' '/')
-PROJ="$PARENT/$NAME"
-say "project : $PROJ"; say "editor  : $EDITOR_VER"; say "mode    : $MODE"
-[ -e "$PROJ" ] && { echo "refusing to overwrite existing path: $PROJ" >&2; exit 1; }
-mkdir -p "$PARENT"
-
-unity auth status --format json >/dev/null 2>&1 || { echo "not signed in - run: unity auth login" >&2; exit 3; }
-
-say "1/9 creating project"
-unity projects new "$NAME" --path "$PARENT" --editor-version "$EDITOR_VER" --template "$TEMPLATE" --format json >/dev/null 2>&1
-[ -f "$PROJ/ProjectSettings/ProjectVersion.txt" ] || { echo "project creation failed" >&2; exit 1; }
-ED=$(awk -F': ' '/m_EditorVersion:/{print $2; exit}' "$PROJ/ProjectSettings/ProjectVersion.txt" | tr -d '\r')
-say "    created on $ED"
-
-say "2/9 com.unity.pipeline (1/3)"
-unity pipeline install --project-path "$PROJ" --format json >/dev/null 2>&1
-grep -q '"com.unity.pipeline"' "$PROJ/Packages/manifest.json" || { echo "pipeline install failed" >&2; exit 1; }
-
-say "3/9 launching Editor ($MODE)"
-GFX=""; [ "$MODE" = "headless" ] && GFX="-nographics"
-EXE=$(editor_exe "$ED") || { echo "no Editor binary for $ED - check: unity editors --installed" >&2; exit 1; }
-mkdir -p "$PROJ/Logs"
-nohup "$EXE" -batchmode $GFX -projectPath "$(nat "$PROJ")" -logFile "$(nat "$PROJ/Logs/agent-editor.log")" >/dev/null 2>&1 &
-JOBPID=$!
-for i in $(seq 1 120); do unity command --project-path "$PROJ" >/dev/null 2>&1 && break; sleep 5; done
-EDPID=$(editor_pid); [ -z "$EDPID" ] && EDPID="$JOBPID"
-say "    editor pid=$EDPID ready"
-
-say "4/9 org.khronos.unitygltf (2/3)"
-padd https://github.com/babylontoolkit/unitygltf.git
-R=""
-for i in $(seq 1 120); do
-  R=$(evs 'return UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/org.khronos.unitygltf/package.json") != null;')
-  [ "$R" = "True" ] && break; sleep 5; done
-say "    resolved ($R)"
-
-say "5/9 com.babylontoolkit.editor (3/3)"
-padd https://github.com/babylontoolkit/professionaledition.git
-R=""
-for i in $(seq 1 180); do
-  R=$(evs 'foreach (var a in System.AppDomain.CurrentDomain.GetAssemblies()) if (a.GetType("CanvasTools.CanvasToolsExporter") != null) return "READY"; return "no";')
-  [ "$R" = "READY" ] && break; sleep 5; done
-say "    toolkit compiled in ($R)"
-
-if [ -n "$LICENSE" ] && [ -f "$LICENSE" ]; then
-  say "6/9 installing license.json"
-  mkdir -p "$PROJ/Assets/[Config]"; cp "$LICENSE" "$PROJ/Assets/[Config]/license.json"
-  # An EnterprisePartner licence is keyed on PlayerSettings.companyName. A NEW project is
-  # "DefaultCompany", so copying the file alone leaves IsPro() false. Set it before validating.
-  if [ -n "$COMPANY" ]; then
-    evs "UnityEditor.PlayerSettings.companyName = \"$COMPANY\"; UnityEditor.AssetDatabase.SaveAssets(); return UnityEditor.PlayerSettings.companyName;" >/dev/null
-    say "    companyName set to '$COMPANY' (EnterprisePartner seed)"
-  fi
-  evs 'UnityEditor.AssetDatabase.Refresh(); return "ok";' >/dev/null
-  PRO=$(evs 'return ToolkitManager.IsPro();')
-  [ "$PRO" = "True" ] && say "    licence ACTIVE" || say "    WARNING: licence did NOT validate (pro=$PRO). For EnterprisePartner pass --company '<Licensee Name>'; other plans are bound to the original productGUID and cannot be copied."
-else
-  say "6/9 no --license given -> COMMUNITY (interactive components will be stripped)"
-fi
-
-say "7/9 bootstrap (replicates CVPanel.OnEnable, writes package.json)"
-say "    $(ev "$SNIPPETS/bt-bootstrap.cs")"
-
-say "8/9 npm install in project root (AFTER package.json, BEFORE any TS build)"
-( cd "$PROJ" && npm install >/dev/null 2>&1 ) && say "    tsc installed" || say "    npm install FAILED"
-
-say "9/9 starter scene + LightingSettings"
-say "    $(ev "$SNIPPETS/bt-newscene.cs")"
-
-say "VERIFY"
-say "    $(evs 'string r = UnityTools.GetRootPath();
-return "pro=" + ToolkitManager.IsPro()
-     + " tsc=" + System.IO.File.Exists(System.IO.Path.Combine(r, CanvasTools.CVPanel.TscLocalPath))
-     + " exportRoot=" + CanvasToolsInfo.DefaultProjectFolder
-     + " scene=" + UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene().path;')"
-
-if [ "$MODE" = "headless" ]; then
-  say "headless mode -> stopping Editor (pid $EDPID) and releasing the licence seat"
-  evs 'UnityEditor.SceneManagement.EditorSceneManager.SaveOpenScenes(); UnityEditor.AssetDatabase.SaveAssets(); return "saved";' >/dev/null
-  # `unity close` quits the Editor gracefully on every platform; the pid kill is the fallback.
-  unity close "$PROJ" --force --timeout 30 >/dev/null 2>&1 || stop_pid "$EDPID"
-  sleep 3; rm -f "$PROJ/Temp/UnityLockfile" 2>/dev/null
-  say "DONE. Project ready at $PROJ (no Editor running - the Hub can open it)"
-else
-  say "DONE. Editor pid $EDPID left running for copilot mode."
-  say "NOTE: the project is NOT ready to open in the Hub until that Editor is stopped."
-  say "      stop it with:  $SNIPPETS/bt-stop-editor.sh \"$PROJ\""
-fi
+curl -fsSL https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/bt-new-unity-project.sh -o ~/.claude/toolkit/bt-new-unity-project.sh
 ```
 
 **File 4 of 4 — `~/.claude/toolkit/bt-stop-editor.sh`** (portably release the project so the Hub can open it):
 
 ```bash
-#!/usr/bin/env bash
-# ============================================================================
-# bt-stop-editor.sh - Stop the resident Editor holding a project, on any platform.
-#
-#   ./bt-stop-editor.sh <ProjectPath>
-#
-# Copilot mode leaves an Editor running on purpose. Until it is stopped the
-# project is locked and the Unity Hub cannot open it. Use this rather than
-# `kill $!`: the pid the scaffold prints is the shell's job id, which is not a
-# Windows pid, and kill(1) cannot signal a native Windows process from Git Bash.
-# ============================================================================
-set -uo pipefail
-export PATH="$HOME/.unity/bin:$PATH"
-
-PROJ="${1:?usage: bt-stop-editor.sh <ProjectPath>}"
-PROJ=$(printf '%s' "$PROJ" | tr '\\' '/')
-
-PID=$(unity pipeline list --format json 2>/dev/null | BT_PROJ="$PROJ" python3 -c "
-import json, os, sys
-want = os.path.normcase(os.path.abspath(os.environ['BT_PROJ']))
-try: inst = json.load(sys.stdin)['data']['instances']
-except Exception: sys.exit(0)
-for i in inst:
-    if i.get('isRunning') and os.path.normcase(os.path.abspath(i.get('projectPath', ''))) == want:
-        print(i['pid']); break")
-
-if [ -z "$PID" ]; then
-  echo "no running Editor registered for $PROJ"
-else
-  echo "stopping Editor pid $PID"
-  # Save first - `unity close` quits WITHOUT saving. Then quit gracefully; kill the pid only as a fallback.
-  unity command save_all --project-path "$PROJ" >/dev/null 2>&1
-  if ! unity close "$PROJ" --force --timeout 30 >/dev/null 2>&1; then
-    if command -v taskkill >/dev/null 2>&1; then taskkill //PID "$PID" //F >/dev/null 2>&1
-    else kill "$PID" 2>/dev/null; fi
-    sleep 6
-  fi
-fi
-
-# The lockfile is what actually blocks the Hub; clear it even if no pid was found.
-rm -f "$PROJ/Temp/UnityLockfile" 2>/dev/null
-echo "lock cleared - $PROJ can now be opened from the Unity Hub"
+curl -fsSL https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/bt-stop-editor.sh -o ~/.claude/toolkit/bt-stop-editor.sh
 ```
 
 Then:
@@ -1150,7 +681,7 @@ VERIFY  pro=True tsc=True exportRoot=<proj>/Export scene=Assets/Scenes/Level01.u
 DONE in 1m48s
 ```
 
-From that point, exporting is one call — §9 for the API, §10 for level vs asset container.
+From that point, exporting is one call — internals doc §9 for the API, §10 for level vs asset container.
 
 ---
 
@@ -1381,11 +912,11 @@ unity command --project-path "$PROJ"        # list what it exposes — this is t
 
 **Measured start-up:** the Editor answered `unity command` **11 s** after launch on a fresh 3D-template project.
 
-Headless has a second benefit for this workflow: **modal dialogs cannot block it** (§9.1).
+Headless has a second benefit for this workflow: **modal dialogs cannot block it** (internals doc §9.1).
 
 > **Bootstrap a headless Editor yourself.** With no window layout the Scene Exporter panel never opens and
 > `CVPanel.OnEnable()` never runs. Run `bt-bootstrap.cs` (§5.1) once the toolkit has compiled in; the `bt_*`
-> commands then re-set `DefaultProjectFolder` on every export (§9.2).
+> commands then re-set `DefaultProjectFolder` on every export (internals doc §9.2).
 
 ### 6.2 Warm GUI Editor
 
@@ -1400,7 +931,7 @@ A GUI Editor **does** register with `unity status`. Pass `--project-path` when s
 ### 6.3 One-shot batch (CI)
 
 ```bash
-unity run ~/UnityProjects/MyGame --command bt_export_level --format ndjson --log-file ./export.log \
+unity run ~/UnityProjects/MyGame --command bt_export_level --format ndjson --log-file ./export.log --timeout 3600 \
   -- --scene Assets/Scenes/Level01.unity
 ```
 
@@ -1453,7 +984,7 @@ unity command --query export --group_by tag --format json
 
 ### 7.2 Built-in commands — the ones this workflow uses most
 
-`com.unity.pipeline` 0.7.0-exp.1 ships **151** typed commands. The complete catalog, with every parameter, is
+The latest Pipeline (`unity pipeline list-versions`) ships the typed command catalog. The complete catalog, with every parameter, is
 **`unity-editor-commands.md`** — read it before reaching for code. The ones a level-export workflow leans on:
 
 | Job | Commands |
@@ -1522,7 +1053,7 @@ unity command eval 'return UnityEngine.Application.unityVersion;' --project-path
 ```
 
 `eval_file` runs a snippet file through the **same** compiler as `eval` — it is *not* a real source file, so the
-rules below apply to it too. `eval` also gives up after ~5 s on the main thread, so bakes and builders belong in
+rules below apply to it too. `eval` also gives up after ~5 s on the main thread. `eval`/`eval_file` have their OWN `timeout` parameter (milliseconds, default 5000). The CLI's `--timeout` (seconds) shares the name but only raises how long the CLI waits, so it cannot lift the 5 s limit — the work may still finish, but you lose the result. So bakes and builders belong in
 `run_script` (`--timeout_ms`). A `run_script` compile error comes back as outer `success: true` with
 `data.result.success: false` — always check the inner flag. Full details of all three:
 `unity-editor-commands.md` §5.
@@ -1569,8 +1100,12 @@ Pipeline server down for **roughly 15–25 s**. During that window `unity comman
 must treat *"cannot connect"* as **"not ready yet"**, never as a fatal error:
 
 ```bash
-# right: connection failure is just another "not yet"
-until unity command eval '<probe>' --project-path "$PROJ" --format json 2>/dev/null | grep -q true; do
+# right: connection failure is just another "not yet" - and the wait is bounded
+deadline=$((SECONDS+900))
+while :; do
+  s=$(unity command eval '<probe that returns "READY">' --project-path "$PROJ" --result-only 2>/dev/null)
+  case "$s" in *READY*) break;; esac          # "cannot connect" during a domain reload is just "not yet"
+  [ $SECONDS -ge $deadline ] && { echo "probe timed out after 15 min"; exit 1; }
   sleep 5
 done
 ```
@@ -1609,7 +1144,7 @@ public static class BtExport
         if (i >= 0 && i + 1 < args.Length) EditorSceneManager.OpenScene(args[i + 1], OpenSceneMode.Single);
 
         CanvasTools.CanvasToolsExporter.Initialize();
-        CanvasToolsInfo.DefaultProjectFolder = UnityTools.GetDefaultExportFolder();   // no panel in batch mode (§9.2)
+        CanvasToolsInfo.DefaultProjectFolder = UnityTools.GetDefaultExportFolder();   // no panel in batch mode (internals doc §9.2)
         var info = CanvasToolsInfo.Instance;
         CanvasTools.CanvasToolsExporter.BuildProject(EditorBuildType.Automate, null, null, null, false,
             info.HandedExportSystem, info.MeshExportSystem, info.ExportMetadata);
@@ -1722,7 +1257,18 @@ Then bake and look before exporting:
 
 ```bash
 unity command bake_lighting --project-path "$PROJ"
-until unity command lighting_bake_status --project-path "$PROJ" --result-only 2>/dev/null | grep -q completed; do sleep 5; done
+deadline=$((SECONDS+900)); seen=""
+while :; do
+  s=$(unity command lighting_bake_status --project-path "$PROJ" --result-only 2>/dev/null)
+  case "$s" in
+    *completed*) break;;
+    *failed*) echo "failed: $s"; exit 1;;
+    *baking*|*running*|*in_progress*) seen=1;;
+    *idle*) [ -n "$seen" ] && { echo "stopped without completing"; exit 1; };;
+  esac
+  [ $SECONDS -ge $deadline ] && { echo "timed out after 15 min"; exit 1; }
+  sleep 5
+done
 unity command save_scene --project-path "$PROJ"
 unity command screenshot --view game --output "$PWD/qa/level01.png" --width 1920 --height 1080 --project-path "$PROJ"
 ```
@@ -1976,7 +1522,7 @@ this.world = this.getProperty<boolean>("worldSpace", false);
 ```bash
 python3 -c "
 import json
-d = json.load(open('Export/scenes/SampleScene.gltf'))
+d = json.load(open('Export/scenes/Level01.gltf'))
 print('license:', d['scenes'][0]['extras']['metadata']['license'])
 for n in d['nodes']:
     for c in n.get('extras', {}).get('metadata', {}).get('components', []):
@@ -1993,218 +1539,13 @@ grep -c "RegisterClass" Export/scenes/<Product>.js
 
 ---
 
-## 9. The export API — `CanvasToolsExporter.BuildProject`
+## 9. The export API
 
-The single entry point for **all** Babylon Toolkit exports. Verified signature:
+`CanvasToolsExporter.BuildProject`, `EditorBuildType`, the dialog problem and the `DefaultProjectFolder` trap are in the [internals doc](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-exporter-internals.md) §9 — the `bt_*` commands (§11) handle all of it for you.
 
-```csharp
-namespace CanvasTools
-{
-    [InitializeOnLoad]
-    public static class CanvasToolsExporter
-    {
-        public static void BuildProject(
-            EditorBuildType mode,                  // what to build
-            Transform[]     selection      = null, // null = whole scene; non-null = prefab / asset container
-            string          filename       = null, // output name, no extension (null = PascalCase scene name)
-            string          folder         = null, // output folder (null = <Project>/Export)
-            bool            animationMode  = false,// true = animation-only export, forces .glb
-            int             exportHandSystem  = 1, // handedness conversion
-            int             exportMeshSystem  = 1, // mesh conversion
-            bool            exportUnityMetadata = true);  // emit extras.metadata (components!)
-    }
-}
-```
+## 10. Game levels vs. asset containers
 
-### `EditorBuildType`
-
-| Value | # | Compiles scripts | Exports scene | Builds web project | PWA | Auto-deploy | Shows dialogs |
-|---|---|---|---|---|---|---|---|
-| `Launch` | 0 | — | — | — | — | — | opens preview and returns immediately |
-| `Script` | 1 | ✅ | — | — | — | — | ✅ confirm + completion |
-| `Scene` | 2 | — | ✅ | — | — | — | ✅ confirm¹ + completion |
-| `Project` | 3 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ confirm + completion |
-| **`Automate`** | **4** | ✅ | ✅ | ✅ | ✅ | — | **❌ none** |
-
-¹ The confirm dialog is **skipped whenever `selection != null`**, so prefab exports never prompt.
-
-> **`Automate` is `Project` minus every dialog (and minus auto-deploy). It is the mode for all agent and CI
-> work.** See §9.1 for why this is not optional.
-
-### Every observed call form
-
-| Intent | Call |
-|---|---|
-| Export **selected transforms** as a prefab / asset container | `BuildProject(EditorBuildType.Scene, transforms, "Crate", "/abs/out/dir", false, info.HandedExportSystem, info.MeshExportSystem, info.ExportMetadata)` |
-| Export the **whole active scene** as a game level | `BuildProject(EditorBuildType.Scene, null, null, null, false, info.HandedExportSystem, info.MeshExportSystem, info.ExportMetadata)` |
-| **Full project build** (scripts + scene + web + PWA + deploy) | `BuildProject(EditorBuildType.Project, null, null, null, false, …)` |
-| **Compile TypeScript/JS only** | `BuildProject(EditorBuildType.Script, null, null, null, false, …)` |
-| **Open the browser preview**, build nothing | `BuildProject(EditorBuildType.Launch, null, null, null, false, …)` |
-| **Animation-only** `.glb` for one transform | `BuildProject(EditorBuildType.Scene, new Transform[]{ t }, "Run", "/abs/out/dir", true, (int)hand, 0, false)` |
-| **Headless everything, no dialogs** | `BuildProject(EditorBuildType.Automate, null, null, null, false, …)` |
-
-### 9.1 The dialog problem — why `Automate` is mandatory
-
-`UnityTools.ShowMessage` is a thin wrapper over `EditorUtility.DisplayDialog`, and `UnityTools.ReportProgress`
-wraps `EditorUtility.DisplayProgressBar`. `BuildProject` calls both. That produces two distinct failures:
-
-- **In a live GUI Editor** (`unity command eval`), the completion dialog is **modal on the main thread**. Your
-  `eval` call blocks until a human clicks it, and the CLI hits its 30 s timeout. The export may well have
-  succeeded — but you get an error and no result.
-- **In batch mode**, Unity refuses to show dialogs, logging `Cancelling DisplayDialog: …`. The pre-build
-  confirm is `if (!UnityTools.ShowMessage(...)) return;` — a cancelled dialog is **not** an OK, so
-  `BuildProject(EditorBuildType.Scene, null, …)` **returns immediately having exported nothing**, while
-  reporting no error.
-
-`Automate` is the only mode that takes neither path. **Always use `EditorBuildType.Automate` for a full-scene
-export from an agent.** Prefab exports (`selection != null`) skip the confirm regardless, but still hit the
-completion dialog.
-
-**`SuppressDialogs` (toolkit 9.25+).** `CanvasTools.CanvasToolsExporter.SuppressDialogs = true` makes every
-`UnityTools.ShowMessage` log instead of opening a modal, and answer *OK* — so `Scene`-mode prefab exports and
-failure paths cannot wedge a GUI Editor. The `bt_*` commands set it **around each call and restore it in a
-`finally`**. Do the same in your own code — it is **not** a mode: the Editor you drive is the one a person may be
-clicking in, and leaving it set silences their dialogs (a domain reload resets it to `false`):
-
-```csharp
-bool prev = CanvasTools.CanvasToolsExporter.SuppressDialogs;
-CanvasTools.CanvasToolsExporter.SuppressDialogs = true;
-try { CanvasTools.CanvasToolsExporter.BuildProject(EditorBuildType.Scene, transforms, "Crates", outDir, false, info.HandedExportSystem, info.MeshExportSystem, info.ExportMetadata); }
-finally { CanvasTools.CanvasToolsExporter.SuppressDialogs = prev; }
-```
-
-**Use the `bt_*` commands (§11)** rather than calling `BuildProject` yourself — they already do all of this.
-
-### 9.2 The `DefaultProjectFolder` trap — read this before your first export
-
-`CanvasToolsInfo.DefaultProjectFolder` is a **`static string` initialised to `String.Empty`**, and it is
-assigned in exactly one place: `CVPanel.OnEnable()` — the **Scene Exporter window**. It is *not* part of the
-serialised settings, so it never comes back from `settings.json`, and being a static it is **wiped by every
-domain reload** (recompile, enter/exit play mode).
-
-Every export against an empty value fails with:
-
-```
-No default project folder specified.
-```
-
-**The fix is the §5.1 bootstrap** — a docked Scene Exporter panel in a GUI Editor (re-`OnEnable()`d after every
-domain reload, so the static repopulates itself), or `bt-bootstrap.cs` in a headless one. Either also performs
-the rest of the bootstrap (layers, FreeImage, shader list, namespace) that `BuildProject` alone does not.
-
-Setting the static by hand is what every `bt_*` command does before exporting, and what your own code must do
-wherever no panel exists:
-
-```csharp
-CanvasToolsInfo.DefaultProjectFolder = UnityTools.GetDefaultExportFolder();
-```
-
-`GetDefaultExportFolder()` returns `<ProjectRoot>/Export` (`Application.dataPath` with `/Assets` swapped for
-`/Export`), or `CVPanel.AlternateExport` when configured, creating the directory if needed.
-
-> This one line makes the *current* export find its output folder. It does **not** substitute for the
-> bootstrap — run `bt-bootstrap.cs` once per project on a headless machine (§5.1).
-
-### 9.3 Other guards that abort an export
-
-`BuildProject` returns early — logging a warning, not throwing — when:
-
-| Guard | Fix |
-|---|---|
-| TypeScript compile failed (9.25+: `LastBuildResult != 0`, `Debug/tsc-errors.txt`) — the scene stage is **skipped** | Fix the `.ts` error (§8.2) and re-export |
-| `EditorApplication.isCompiling` | `unity command recompile_status` until `completed` |
-| `Lightmapping.isRunning` | Wait for the bake, or cancel it |
-| `Lightmapping.lightingSettings is null` (throws, does not warn) | Create and assign a LightingSettings asset — §8.1 |
-| `DefaultProjectFolder` empty / uncreatable | §9.2 |
-| Pro license expired, wrong licensee, wrong org, or no seat | Sign into Unity as the licensee; link the project to the licensed org |
-
-Community edition is **not** blocked — it logs `Pro Tools Disabled: Exporting standard community edition
-content` and continues.
-
-Before exporting, `BuildProject` calls `EditorSceneManager.SaveOpenScenes()` and `CanvasToolsInfo.SaveSettings()`
-— **any settings you mutate in-memory are persisted to disk**. Save and restore them (§11).
-
----
-
-## 10. Game levels vs. asset containers — the critical distinction
-
-This is decided by **one argument**: whether `selection` is `null`.
-
-```csharp
-CanvasToolsExporter.ExportSelectionOnly = (selection != null);
-```
-
-That single flag gates the entire scene-level metadata block.
-
-| | **Game level** (`selection == null`) | **Asset container / prefab** (`selection != null`) |
-|---|---|---|
-| Scene-level metadata | ✅ emitted | ❌ omitted — `sceneMetaData["properties"] = false` |
-| Skybox | ✅ | ❌ |
-| Ambient / global IBL, spherical harmonics, reflection probe intensity | ✅ | ❌ |
-| Fog (incl. HDRP volumetric) | ✅ | ❌ |
-| Clear colour, tonemapping, exposure, gamma, image processing | ✅ | ❌ |
-| Scene-level gravity, physics world, CCD, world sweep, fixed timestep | ✅ | ❌ (node-level rigidbodies/colliders **are** still exported) |
-| **NavMesh** (the Recast `navigation.prebaked` block) | ✅ | ❌ |
-| **Light probes** (`LightProbeNetwork` + `<scene>.probe.bin` beside the scene file) | ✅ | ❌ |
-| Sun position/rotation, wind zones | ✅ | ❌ |
-| User input, pointer lock, context menu, capture | ✅ | ❌ |
-| Debug colliders / collision wireframe | ✅ | ❌ |
-| TypeScript/JS bundle compile | ✅ (Script/Project/Automate) | ❌ always skipped |
-| Web project + PWA emit | ✅ (Project/Automate) | ❌ always skipped |
-| File format setting used | `ExportFileFormat` | **`PrefabFileFormat`** |
-| Output directory | `<folder>/scenes/` | `<folder>` **directly**, when `folder` is supplied |
-
-**Both carry every node-level feature**: lightmaps, reflection probes, animations, skins and morph targets
-always, plus `extras.metadata.components`, rigidbodies and colliders when `exportUnityMetadata: true`. That is
-what makes an exported prefab an *interactive* asset container rather than dumb geometry. Set it `false` only
-for pure geometry or animation-only exports. A container's physics bodies are created only when the host scene
-already has physics enabled.
-
-> ⚠️ **`exportUnityMetadata: true` is necessary but not sufficient.** Which components actually make it into
-> `extras.metadata.components` is gated by the **Babylon Toolkit licence**. Under community edition, `camera`,
-> `light` and script components survive, while physics and collision, Animator state machines, AudioSource
-> and the other native-system components are silently dropped. See the licence table in §0 before concluding
-> a component "isn't supported".
-
-> **Where to look in the exported file.** Scene metadata lives at **`scenes[0].extras.metadata`**, and
-> per-object component metadata at **`nodes[i].extras.metadata.components`** — *not* at the document root.
-> The file declares `extensionsUsed: ["CVTOOLS_babylon_mesh", "CVTOOLS_left_handed", "CVTOOLS_unity_metadata", …]`.
-
-#### Measured on a real export (Unity 6000.5.10f1, toolkit 9.22.2)
-
-Same scene, exported both ways:
-
-| | `Level01.gltf` (level) | `Crates.glb` (container) |
-|---|---|---|
-| `scenes[0].extras.metadata` key count | **73** | **23** |
-| `properties` | `true` | `false` |
-| `skybox`, `ambientlighting`, `fogmode`, `defaultgravity`, `enablephysics`, `navigation`, `clearcolor`, `sunposition`, `tonemapping` | all present | **none present** |
-| Extension | `.gltf` (`ExportFileFormat`) | `.glb` (`PrefabFileFormat`) |
-| Written to | `Export/scenes/` | `Export/containers/` — the `folder` given, no `scenes/` subfolder |
-
-Skybox cubemap faces (`Default-Skybox_px.png` …) are emitted beside the level and **not** beside the container.
-
-**File names.** With the default `ExportCaseMode = UseDefaultCasing` (0), a level keeps its scene's name
-(`Level01.gltf`); with `ForceLowerCasing` (1) every output path and file name is lowercased (`level01.gltf`).
-URLs are case-sensitive on the dev server and on Linux hosts — **always use the path `bt_export_level` /
-`bt_export_prefab` returns** rather than assuming a case.
-
-The full scene-level key set emitted for a level (for reference when reading exported glTF):
-`skybox`, `skyreflections`, `createpolynomials`, `sunposition`, `sunrotation`, `windzones`,
-`ambientlighting`, `ambientcoloring`, `ambientskycolor`, `ambientgroundcolor`, `ambientspecularcolor`,
-`ambientoverride`, `ambientlightintensity`, `ambientskymode`, `ambientskysource`, `ambientlightmap`,
-`lightmaplevel`, `reflectionprobeintensity`, `clearcolor`, `autoclear`, `exposure`, `tonemapping`,
-`gammacorrection`, `imageprocessing`, `fogtype`, `fogmode`, `fogcolor`, `fogdensity`, `fogstart`, `fogend`,
-`fogalbedo`, `foganisotropy`, `fogvolumetric`, `fogbaseheight`, `fogmaximumheight`, `fogmeanfreepath`,
-`enablephysics`, `defaultgravity`, `ccdenabled`, `ccdpenetration`, `maxworldsweep`, `deltaworldstep`,
-`subtimestep`, `navigation`, `enableinput`, `userinput`, `usecapture`, `pointerlock`, `contextmenu`,
-`preventdefault`, `trianglenormals`, `freezeactivemeshes`, `performancepriority`, `prewarmup`, `hideloader`,
-`showdebugcolliders`, `collidervisibility`, `collisionwireframe`, `colliderrendergroup`.
-
-Keys emitted for **both** levels and containers: `gltf`, `license`, `licensee`, `filename`, `script`,
-`project`, `intensity`, `debugging`, `properties`, `disposeroot`, `webptextures`, `webplightmaps`,
-`ktxtextures`, `ktxlightmaps`, `rendergroups`, `rawmaterials`, `enablelegacyaudio`, `snapshotrendering`,
-`colliderinstances`, `reparentcolliders`, `defaultrendergroup`, `globalillumination`.
+A game level (`bt_export_level`) carries scene + components; an asset container (`bt_export_prefab`) carries instantiable content without a scene. The full distinction is in the [internals doc](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-exporter-internals.md) §10.
 
 ---
 
@@ -2216,7 +1557,7 @@ and errors surface to the CLI automatically, and the commands appear in `unity l
 
 > ### The bridge ships with the toolkit — do not copy this file into `Assets/Editor/`
 >
-> Since `com.babylontoolkit.editor` **9.22.3** the bridge below is part of the exporter package itself:
+> In `com.babylontoolkit.editor` **9.25.1**+ the bridge below is part of the exporter package itself:
 >
 > | What | Where |
 > |---|---|
@@ -2235,7 +1576,7 @@ and errors surface to the CLI automatically, and the commands appear in `unity l
 > answers again. **Project-specific commands** (test scaffolding, one-off automation) still go in the
 > project's own `Assets/Editor/*.cs`; `Assembly-CSharp-Editor` sees `Unity.Pipeline` automatically.
 >
-> **Older toolkits (< 9.22.3): upgrade the package** (`package_add --identifier
+> **Older toolkits (< 9.25.1): upgrade the package** (`package_add --identifier
 > https://github.com/babylontoolkit/professionaledition.git --confirm true`) rather than copying the bridge file
 > out of a newer package — it uses `SuppressDialogs` and `LastBuildResult`, which exist only from 9.25. If you must
 > drop a copy into `Assets/Editor/`, remove those two uses (and delete the copy when you upgrade, or the command
@@ -2261,17 +1602,17 @@ Behaviours every command shares:
 
 - **Dialogs are suppressed per call.** `PrepareExporter` (`CanvasToolsExporter.Initialize()` + `DefaultProjectFolder`)
   and `BuildProjectHeadless` set `SuppressDialogs` for that call only and restore it in `finally`, so the
-  user's own Build button in the same Editor still asks (§9.1). A modal on the command thread would hang the Editor.
+  user's own Build button in the same Editor still asks (internals doc §9.1). A modal on the command thread would hang the Editor.
 - **TypeScript failures throw.** `bt_export_level` and `bt_build_project` call `ThrowIfBuildFailed`, which turns a
   non-zero `LastBuildResult` into `TypeScript compile failed (exit N) - see Debug/tsc-errors.txt` (§8.2).
   Without it a failed stage 01 would skip the scene write and still return a path.
 - **`PrepareExporter` is not the panel bootstrap.** Layers, FreeImage, the shader list and the root namespace come
   from `CVPanel.OnEnable`; headless projects run `bt-bootstrap.cs` instead (§5.1). Published 9.25.1 still says
-  "GUI session" in that comment and `2 = GLB` next to `sceneFmt`. Both are stale: `GLB` is `1` (§13).
+  "GUI session" in that comment and `2 = GLB` next to `sceneFmt`. Both are stale: `GLB` is `1` (internals doc §13).
 - **Errors are exceptions** → `success: false` with a populated `errors` array.
 
-Confirm registration (9.22.3+ registers on its own after the packages are installed; `recompile` only forces
-the domain reload if the Editor has not done one yet, and is required for the `< 9.22.3` drop-in file):
+Confirm registration (9.25.1+ registers on its own after the packages are installed; `recompile` only forces
+the domain reload if the Editor has not done one yet, and is required for the `< 9.25.1` drop-in file):
 
 ```bash
 unity command recompile        --project-path "$PROJ"
@@ -2337,7 +1678,7 @@ On success it logs `Web server running on port: 8888`.
 1. `WebServer.IsStarted == false` — it is start-once per Editor session; calling again does nothing.
 2. `CanvasToolsInfo.Instance.HostPreviewType == 0` (`EditorHostingType.InternalWebServer`). Set to `1`
    (`RemoteWebServer`) the internal server is intentionally skipped.
-3. `CanvasToolsInfo.DefaultProjectFolder` is non-empty — the **same §5.1 / §9.2 dependency as exporting**.
+3. `CanvasToolsInfo.DefaultProjectFolder` is non-empty — the **same §5.1 / internals doc §9.2 dependency as exporting**.
 4. `HttpListener.IsSupported`.
 
 > **There is no stop/deactivate API.** `WebServer` exposes only `Activate`; the listener lives for the
@@ -2397,7 +1738,7 @@ Confirmed live on the test project:
 ### 12.6 The preview URLs
 
 The document root is the **export folder** (`WebServer.Root`, normally `<ProjectRoot>/Export`), so the URLs
-mirror the on-disk layout in §13. Three shapes matter:
+mirror the on-disk layout in internals doc §13. Three shapes matter:
 
 | URL | Serves |
 |---|---|
@@ -2441,111 +1782,26 @@ return CanvasToolsInfo.Instance.DefaultServerPort;
 > `OpenProjectPreview` — but it additionally opens a browser. Use the explicit calls above when you only
 > want the server.
 
+### 12.8 One server per port — several Editors
+
+- Each Editor defaults to port **8888**.
+- A second start on a port that is already taken fails, naming the port.
+- With several Editors open, start with `bt_devserver_start --auto true`, which picks a free port.
+- Confirm with `bt_devserver_status` that its `project` is **yours** before loading a URL — otherwise you are
+  looking at another project's export.
+- The server is loopback-only unless "Serve To Local Network" is on.
+
 ---
 
 ## 13. Exporter settings
 
-Settings live in **`Assets/[Config]/settings.json`** (`CanvasToolsStatics.CANVAS_TOOLS_CONFIG` is the literal
-string `[Config]`), alongside `build.json`, `project.json`, `deploy.json`, `cache.json` and the custom
-`index.html` / `engine.html` / CSS overrides. `CanvasToolsInfo.CreateSettings()` reads it; `SaveSettings()`
-writes it — and **`BuildProject` calls `SaveSettings()` on every run**.
-
-Prefer setting fields through `eval` on a live Editor (the in-memory singleton is what the export reads):
-
-```bash
-unity command eval_file "$PROJ/AgentScripts/settings.cs" --project-path "$PROJ"
-```
-```csharp
-var info = CanvasToolsInfo.Instance;
-info.ExportFileFormat   = 0;     // scene:  EditorExportFormat  0 = GLTF, 1 = GLB   (default 0)
-info.PrefabFileFormat   = 1;     // prefab: EditorExportFormat  0 = GLTF, 1 = GLB   (default 1)
-info.ExportMetadata     = true;  // MUST stay true for interactive components
-info.DefaultScenePath   = "scenes";
-info.TextureImageFormat = 2;     // EditorImageFormat  0 = PNG (default), 2 = WEBP (needs cwebp), 3 = KTX2 (needs ktx)
-CanvasToolsInfo.SaveSettings();
-return "ok";
-```
-
-> **`GLB` is `1`, not `2`.** A value outside the enum matches neither the GLTF nor the GLB branch of the exporter,
-> so the file extension is never chosen. Always write the enum: `(int)EditorExportFormat.GLB`.
-
-Editing `settings.json` on disk works too, but only takes effect on the next `CreateSettings()` — a live
-Editor that has already cached `CanvasToolsInfo.Instance` will not see it.
-
-### Fields that matter most for agent exports
-
-| Field | Meaning |
-|---|---|
-| `ExportFileFormat` / `PrefabFileFormat` | `EditorExportFormat`: `GLTF` = 0, `GLB` = 1. Scene vs selection respectively (defaults 0 and 1) |
-| `ExportMetadata` | Emit `extras.metadata` — **required** for script components |
-| `HandedExportSystem` / `MeshExportSystem` | Defaults `1` (LeftHanded, `CVTOOLS_left_handed`) / `1` (SubMeshes, `CVTOOLS_babylon_mesh` — LOD groups need it); pass straight through to `BuildProject` |
-| `DefaultScenePath` (default `"scenes"`) | Subfolder under the export root for scene output |
-| `DefaultScriptPath` (default `"scripts"`) | Subfolder for script assets of the web project (the compiled bundle itself is `scenes/<Product>.js`) |
-| `CompileProjectScript` | Run the TypeScript/JS bundle compile |
-| `BuildWebProject` / `ProgressiveWebApp` | Emit the web project / PWA assets |
-| `AutoDeployProject` | Deploy after a `Project` build (**ignored by `Automate`**) |
-| `ExportCaseMode` | `UseDefaultCasing` = 0 (default), `ForceLowerCasing` = 1 lowercases every output path and filename |
-| `TextureImageFormat` | `PNG` = 0 (default), `WEBP` = 2, `KTX2` = 3. There is no max size for materials: set `maxTextureSize` on the importer. `TerrainLayerMaxSize` (default 1024) caps terrain layers only. Keep lightmaps on PNG |
-| `DefaultWebpImageCommandType` | WEBP encoding — **lossless by default**; switch to lossy for real savings |
-| `DefaultKtx2RenderingQuality` / `DefaultKtx2ImageCompression` | KTX2 UASTC quality (default 3) / zstd level (default 9) |
-| `ForceHighBitDepth` | Default `false`; `true` forces 16-bit normal maps to PNG |
-| `UseSpecularMaterials` | Default `true`: selects the **Specular** export path (metallic-roughness + `KHR_materials_specular`, with URP's factor from the global settings below). `false` selects the Classic path (`Standard (Specular setup)` → `KHR_materials_pbrSpecularGlossiness`) (`unity-authoring-recipes.md` §2) |
-| `SpecularHighlights` / `GlossyReflections` / `SpecularIntensityScale` / `MetallicF0FactorScale` | Material scalars (default 1.0) |
-| `ReflectionProbePower` / `DefaultReflectionFormat` | Reflection-probe intensity for every probe (default 1.0; probe intensity is not read) / `.env` (1, default) or `.dds` |
-| `UseHDRPPhotometricLights` | Default `false`; carry HDRP physical light units |
-| `BakedLightingMode` | `0` additive (default); `1` multiplies (warned) |
-| `ExportNavigation` | Export the toolkit Recast navmesh (`unity-authoring-recipes.md` §12) |
-| `ExportMeshInstances` | Default `true`: repeated meshes become glTF mesh instances (off for lightmapped meshes) |
-| `FreezeStaticMeshes` | Default `true`: static-flagged objects get `freezeworldmatrix` |
-| `EnableAntiAliasing` | Default `true`; MSAA needs it |
-| `GpuRenderingMode` | `0` off (default), `1` / `2` WebGPU snapshot rendering |
-| `AnimBakingFrameRate` | Clip bake rate (default 30) |
-| `TerrainExportMode` | `0` heightfield (default), `1` legacy mesh |
-| `ProductShortName` | Overrides `Application.productName` for the bundle name |
-| `DebugProjectFiles` | Pretty-print the glTF JSON |
-| `ExportPhysics` / `ExportLightmaps` / `ExportBlendShapes` / `ExportLightmapUvs` | Feature toggles |
-| `GroupSceneNodes` | Controls `disposeroot` in the emitted metadata |
-
-**Fields with no effect** — don't set them expecting a change: `TextureImageQuality`, `SurfaceCompression`,
-`EnableDracoCompression` and the other `Draco*` fields (there is no mesh compression), and `CalculateBindPoses`.
-
-### Output layout
-
-```
-<ProjectRoot>/
-  Assets/[Config]/settings.json      # exporter settings
-  Export/                            # GetDefaultExportFolder() — or CVPanel.AlternateExport
-    scenes/                          # DefaultScenePath — levels land here
-      Level01.gltf
-      MyGame.js                      # compiled bundle (Script/Project/Automate)
-    scripts/                         # DefaultScriptPath
-    css/  fonts/  images/  icons/    # created when BuildWebProject / ProgressiveWebApp are on
-  Debug/                             # GetDefaultDebugFolder() — .d.ts declarations
-```
-
-A **prefab export with an explicit `folder`** writes straight into that folder — no `scenes/` subfolder.
+`Assets/[Config]/settings.json`, the fields that matter for agent exports, and the output layout are in the [internals doc](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-exporter-internals.md) §13.
 
 ---
 
-## 14. Menu items (for reference and `ExecuteMenuItem`)
+## 14. Menu items
 
-`CanvasToolsStatics.CANVAS_TOOLS_MENU` is `"Babylon Toolkit"`.
-
-| Menu path | Does |
-|---|---|
-| `Tools/Babylon Toolkit/Scene Exporter` | Opens the exporter window — the **only** thing that sets `DefaultProjectFolder` from the UI |
-| `Tools/Babylon Toolkit/Export Selection` | Prefab export — **opens a modal Save panel** |
-| `GameObject/Export Selection`, `Assets/Export Selection` | Same, from the context menus |
-| `Tools/Babylon Toolkit/Export Animation` | Opens the animation export utility window |
-| `Tools/Babylon Toolkit/Geometry Tools`, `Cubemap Baker`, `Mesh Colliders`, `Height Mapping`, `Disable Blending`, `Copy Mesh Asset` | Art tools |
-| `Tools/Babylon Toolkit/Project Deployment/…` | Local file system, FTP, AWS S3 |
-| `Tools/Babylon Toolkit/Developer Options/Generate Project License` | Writes a `license.json` bound to **this** project (`Indie` / `SmallBusiness` / `PremiumContent`, §0) — needs the signed-in licensee |
-| `Window/Browser Preview/…` | Preview, graphics report, gamepad tester |
-| `Assets/Create/Babylon Toolkit/…` | New TypeScript / JavaScript / shader / script-component assets |
-
-> **Do not drive exports with `EditorApplication.ExecuteMenuItem`.** `Export Selection` opens an
-> `EditorUtility.SaveFilePanel` and the Scene Exporter opens a window — both block an agent. Call
-> `BuildProject` directly, or use the §11 bridge.
+The `Tools ▸ Babylon Toolkit` menu paths (for `ExecuteMenuItem`) are in the [internals doc](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-exporter-internals.md) §14.
 
 ---
 
@@ -2560,7 +1816,7 @@ the Editor is unreachable *because of* the errors you want to fix.
 **Do not treat "can't connect" as "no Editor, so hand-edit files blindly."**
 
 1. **Confirm:** `unity pipeline list` (human output says `Editor is in Safe Mode - Pipeline server disabled`).
-   With `--format json`, read `data.summary.instancesInSafeMode > 0` or `data.instances[].safeMode.detected`.
+   With `--format json`, read `data.summary.instancesInSafeMode > 0` or `data.instances[].safeMode` (it is `null` when the Editor is not in Safe Mode — check it before reading `.detected`).
 2. **Read the compile errors from the narrowest log available**, in this order: the `-logFile` you launched
    with → `<project>/Logs/Editor.log` → the per-user global log:
 
@@ -2592,49 +1848,7 @@ the Editor is unreachable *because of* the errors you want to fix.
 
 ### Symptom table
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| `No default project folder specified.` | Bootstrap never ran, or a domain reload wiped the static | Use the `bt_*` commands (they set it); otherwise dock the panel or run `bt-bootstrap.cs` (§5.1, §9.2) |
-| Export worked, then broke after a recompile / play-mode toggle | Domain reload wiped `DefaultProjectFolder`; the panel is closed or floating, so nothing re-ran `OnEnable()` | **Dock** the panel so `OnEnable()` re-runs on every reload (§5.1) |
-| Missing toolkit layers, shaders, or texture export fails on macOS | `CVPanel.OnEnable()` bootstrap never ran — `BuildProject` does not perform it | Run `bt-bootstrap.cs` (headless) or dock the panel (GUI) — §5.1 |
-| Export "succeeds" in batch but writes nothing | `Scene`/`Project` pre-build dialog was cancelled by batch mode | Use `EditorBuildType.Automate` (§9.1) |
-| `eval` times out but the file appears | A modal completion dialog is blocking the GUI Editor (`editor_status` → `blocked_by_dialog`) | Use the `bt_*` commands or wrap the call in `SuppressDialogs` (§9.1) |
-| `unity command` finds no Editor, one is open | Safe Mode, a sandboxed agent shell blocking loopback, or several Editors (`AMBIGUOUS_EDITOR`) | `unity pipeline list`; pass `--project-path`; gate on `unity command`, not `unity status` (`unity-cli-reference.md` §6) |
-| `Cannot connect to Pipeline server` | Package missing, or Unity < 6000.3 (CS0246 `IPreprocessBuildWithContext` in `Editor.log`) | `unity pipeline install`; on older Unity use `-executeMethod` (§7.4) |
-| `There is a project compile in progress.` | `EditorApplication.isCompiling` | Poll `unity command recompile_status` until `completed` |
-| `There is a lightmap bake in progress.` | `Lightmapping.isRunning` | Wait or cancel the bake |
-| `Pro tools license expired / does not have seat` | License gate in `BuildProject` | Sign into Unity as the licensee; link the project to the licensed org |
-| `Pro Tools Disabled: Exporting standard community edition content` | No `Assets/[Config]/license.json` | **NOT harmless.** The export runs but silently drops every physics and collision block, and the Animator, AudioSource, NavMeshAgent, CharacterController, ParticleSystem, Canvas, Terrain, VideoPlayer, PostProcess, camera-AA and LOD components. See §0 |
-| Exported glTF has geometry and scripts but no physics or native components | Community edition — the Pro gate stripped them | Install `license.json`, verify `ToolkitManager.IsPro()` is true, re-export (§0) |
-| `CanvasTools` type not found in `eval` | Toolkit package missing or not compiled | §5, then `recompile` |
-| Prefab exported with skybox/fog | `selection` was `null` | Pass a non-empty `Transform[]` (§10) |
-| Image/texture tooling fails on macOS with a FreeImage load error | Native image library vs Apple Silicon build | Install the `x86_64` Editor (`-a x86_64`) and run under Rosetta |
-| `bt_export_level` fails: `TypeScript compile failed (exit N)` | A `.ts` error; the scene stage was skipped | Read `Debug/tsc-errors.txt`, fix, re-export (§8.2) |
-| WEBP/KTX2 textures missing or export errors | `cwebp` / `ktx` tools not installed | Install them, or use `TextureImageFormat = 0` (PNG) |
-| Prefab export produced no file / odd extension | `PrefabFileFormat` set to a non-enum value (e.g. `2`) | `GLB` is `1` (§13) |
-| Level exported but has no navigation | `NavigationMesh.bin` missing — Unity's `bake_navmesh` is not what the exporter reads | Bake the toolkit Recast surface (`unity-authoring-recipes.md` §12) |
-| Baked lights are not in the node list (`Baked lights` warning) | Expected — a Baked light is carried by its bake (lightmaps + light probes) | Nothing to fix. If a Baked light had children, they were skipped too — re-parent them (`unity-authoring-recipes.md` §3) |
-| Dynamic objects look unlit or flat | No light-probe network: missing `SceneController`, ambient mode not Skybox, no IBL bake, no `LightProbeGroup` / APV, or an asset-container export | Fix whichever is missing and re-bake (`unity-authoring-recipes.md` §5) |
-| Browser frame differs from the Unity frame of the same camera | A feature carried differently, or a toolkit parity gap | Find the feature's row in `unity-authoring-recipes.md` §0; if none explains it, record a parity gap with both captures (§21) |
-| Sky exported but no reflections / flat PBR | IBL source `ReflectionProbe-N.exr` never baked (`SKYBOX: You must generate the scene lighting`) | `bake_lighting` after setting the skybox (`unity-authoring-recipes.md` §7) |
-| `unity pipeline install --version` rejected | Flag collides with global `-V` | Use `--package-version` |
-| `Pipeline package requires Unity 6.0 or higher. Project version: unknown` on a 6000.x project | Project creation had not finished — `ProjectVersion.txt` is written last | Wait for `unity projects new` to exit (§3) |
-| `PIPELINE_MANIFEST_WRITE_FAILED` | `unity pipeline install` into a project an Editor already has open | Install before opening, or `unity close` first |
-| `Lightmapping.lightingSettings is null` on export | Scene was created programmatically and has no LightingSettings asset | Create and assign one — §8.1 |
-| A null-check on `Lightmapping.lightingSettings` throws | The getter itself throws when unset | Probe with `TryGetLightingSettings` (§8.1) |
-| Build fails compiling scripts / `tsc` not found | `npm install` never run in the project root | §5.2 — run it after `package.json` appears |
-| `package.json` missing from the project root | Only the bootstrap writes it — it has never run | Run `bt-bootstrap.cs` or dock the Exporter panel (§5.1) |
-| Export silently used the wrong scene | A fresh Editor session opens the template's default scene | `OpenScene` explicitly first (§8.1) |
-| `Invalid Pro Tools License Hash Key` | Seed mismatch — `companyName` (EnterprisePartner) or `productGUID` (all other plans) does not match the licence | §0 — a licence cannot be copied between projects unless it is EnterprisePartner and the Company Name matches |
-| Pro licence valid on desktop, community in CI | `EnterprisePartner` needs `projectId` + `organizationName`, both empty headless | Use a seat-based plan or a wildcard-org licence (§0) |
-| Poll loop dies with "cannot connect" mid-package-add | Domain reload takes the Pipeline server down ~15–25 s | Treat connection failure as "not ready yet" (§7.3) |
-| `eval` returned but the value looks empty | The value is nested at `data.result.result` (other commands: `data.result`) | Parse that path (§7.3), or use `--result-only` |
-| `eval` fails with `Identifier expected` / `is a namespace but is used like a type` | A `using` directive in an `eval` / `eval_file` snippet | Fully qualify, or use `run_script` (§7.3) |
-| Editor is drivable but `CanvasTools` does not exist | Only `com.unity.pipeline` was installed — the two Toolkit packages were skipped | Install **all three** (§4.1) |
-| UPM rejects the manifest / package not found | Wrong package key — it is `org.khronos.unitygltf` and `com.babylontoolkit.editor`, not `com.khronos.*` or `com.babylontoolkit.professionaledition` | Fix the keys (§4) |
-| Dev server "starts" but nothing is served | `WebServer.IsStarted` was already true, `HostPreviewType` is `RemoteWebServer`, or `DefaultProjectFolder` is empty | Check all four guards (§12.2); the server starts **once per Editor session** |
-| Cannot free the dev server port | `WebServer` has no stop API — the listener lives for the session | Quit the Editor (§12.2) |
-| `StartDevelopmentServer` not found | Toolkit older than 9.25 | Use `bt_devserver_start`, which probes and falls back (§12.4) — or upgrade the package |
+The full symptom → cause → fix table is in the [internals doc](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-exporter-internals.md) §15.
 
 ---
 
@@ -2661,15 +1875,35 @@ unity pipeline install --project-path "$PROJ"
 # 3. One resident headless Editor (§6.1) — never a second Editor on the same project
 ED_DIR=$(unity editors path "$ED" --format json | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['path'])")
 "$ED_DIR/Unity.app/Contents/MacOS/Unity" -batchmode -projectPath "$PROJ" -logFile "$PROJ/Logs/agent-editor.log" &   # macOS path
-until cmd >/dev/null 2>&1; do sleep 5; done
+deadline=$((SECONDS+900))
+while ! cmd >/dev/null 2>&1; do
+  [ $SECONDS -ge $deadline ] && { echo "Editor did not answer within 15 min"; exit 1; }
+  sleep 5
+done
 
 # 4. Packages 2/3 and 3/3 (§4.1), then wait for the exporter type to compile in
 for url in https://github.com/babylontoolkit/unitygltf.git https://github.com/babylontoolkit/professionaledition.git; do
   cmd package_add --identifier "$url" --confirm true >/dev/null
-  until cmd package_status --result-only 2>/dev/null | grep -qE 'completed|failed'; do sleep 5; done
+  deadline=$((SECONDS+900)); seen=""
+  while :; do
+    s=$(cmd package_status --result-only 2>/dev/null)
+    case "$s" in
+      *completed*) break;;
+      *failed*) echo "failed: $s"; exit 1;;
+      *baking*|*running*|*in_progress*) seen=1;;
+      *idle*) [ -n "$seen" ] && { echo "stopped without completing"; exit 1; };;
+    esac
+    [ $SECONDS -ge $deadline ] && { echo "timed out after 15 min"; exit 1; }
+    sleep 5
+  done
 done
-until cmd eval 'foreach (var a in System.AppDomain.CurrentDomain.GetAssemblies()) if (a.GetType("CanvasTools.CanvasToolsExporter") != null) return true; return false;' \
-      --format json 2>/dev/null | grep -q true; do sleep 5; done
+deadline=$((SECONDS+900))
+while :; do
+  s=$(cmd eval 'foreach (var a in System.AppDomain.CurrentDomain.GetAssemblies()) if (a.GetType("CanvasTools.CanvasToolsExporter") != null) return "READY"; return "no";' --result-only 2>/dev/null)
+  case "$s" in *READY*) break;; esac          # "cannot connect" during a domain reload is just "not yet"
+  [ $SECONDS -ge $deadline ] && { echo "exporter compile timed out after 15 min"; exit 1; }
+  sleep 5
+done
 
 # 5. Licence (§0) + bootstrap (§5.1) + npm install (§5.2)
 mkdir -p "$PROJ/Assets/[Config]" && cp ~/licenses/license.json "$PROJ/Assets/[Config]/license.json"
@@ -2681,7 +1915,18 @@ cmd eval_file ~/.claude/toolkit/bt-bootstrap.cs --format json
 # 6. Author the level (§8 builder), bake, look
 cmd run_script --file AgentScripts/BuildLevel.cs --entry BuildLevel.Level01 --format json
 cmd bake_lighting
-until cmd lighting_bake_status --result-only 2>/dev/null | grep -q completed; do sleep 5; done
+deadline=$((SECONDS+900)); seen=""
+while :; do
+  s=$(cmd lighting_bake_status --result-only 2>/dev/null)
+  case "$s" in
+    *completed*) break;;
+    *failed*) echo "failed: $s"; exit 1;;
+    *baking*|*running*|*in_progress*) seen=1;;
+    *idle*) [ -n "$seen" ] && { echo "stopped without completing"; exit 1; };;
+  esac
+  [ $SECONDS -ge $deadline ] && { echo "timed out after 15 min"; exit 1; }
+  sleep 5
+done
 cmd save_scene
 # (Unity-side captures need the GPU Resident Drawer off — unity-editor-commands.md §8.1; the browser check in step 8 is the one that counts)
 
@@ -2751,7 +1996,7 @@ unity command package_add --identifier <git-url> --confirm true                #
 unity command package_status                                                    # poll until completed | failed
 unity pipeline upgrade | list | list-versions --format json
 
-# CLI bridge (§11) — ships in com.babylontoolkit.editor 9.22.3+, active whenever com.unity.pipeline is installed
+# CLI bridge (§11) — ships in com.babylontoolkit.editor 9.25.1+, active whenever com.unity.pipeline is installed
 unity command bt_status | bt_refresh [--force true] | bt_export_level [--scene <asset path>] [--geometryOnly false] [--compileScripts true]
 unity command bt_export_prefab --paths <a,b> [--folder <abs>] | bt_export_animation --path <p> | bt_build_project
 
@@ -2759,7 +2004,7 @@ unity command bt_export_prefab --paths <a,b> [--folder <abs>] | bt_export_animat
 unity command bt_devserver_start [--port <n>] | bt_devserver_status     # port 0/omitted keeps the current setting (8888)
 http://localhost:8888/index.html                      # default scene   (needs the web project build)
 http://localhost:8888/index.html?scene=Level01.gltf   # a specific scene, by file name
-http://localhost:8888/scenes/Level01.gltf             # the raw exported asset (case as exported — §10)
+http://localhost:8888/scenes/Level01.gltf             # the raw exported asset (case as exported — internals doc §10)
 
 # Licence (§0) - check BEFORE trusting any export; community silently drops components
 unity command eval 'return "pro=" + ToolkitManager.IsPro() + " type=" + ToolkitManager.GetLicenseType();'

@@ -41,8 +41,8 @@ level. Placeholder geometry you authored beats a question that stops the job.
 closed loop as `unity command screenshot` on the Unity side. Decide for yourself whether the asset is right.
 
 > **Yes, Blender is fully headless.** `blender --background --python script.py` is a first-class, long-stable
-> workflow — considerably better supported than Unity's equivalent. Everything in this document was executed
-> headless and verified; measured results are inline.
+> workflow — considerably better supported than Unity's equivalent. Every command and operator in §2–§7 was
+> executed headless against Blender 5.1.2; measured results are inline.
 
 **Verified against:** Blender **5.1.2** (macOS arm64, build `ec6e62d40fa9`, 2026-05-19). Headless startup
 measured at **~1.0 s**.
@@ -83,7 +83,7 @@ Two important properties:
 # macOS
 /Applications/Blender.app/Contents/MacOS/Blender --version
 # Linux / Windows (if on PATH)
-blender --version
+"$BLENDER" --version
 ```
 
 ### Where the executable lives
@@ -96,11 +96,9 @@ blender --version
 | Linux (snap/apt/flatpak) | `blender` on `PATH` |
 
 > **macOS: the `.app` is not the binary.** `open -a Blender` will not accept `--background`. You must call the
-> executable inside the bundle. Put it on `PATH` for convenience:
+> executable inside the bundle. Name it once and use `"$BLENDER"` in every command:
 > ```bash
-> export PATH="/Applications/Blender.app/Contents/MacOS:$PATH"   # provides `Blender` (capital B)
-> # or symlink a lowercase name:
-> ln -s "/Applications/Blender.app/Contents/MacOS/Blender" /usr/local/bin/blender
+> BLENDER=/Applications/Blender.app/Contents/MacOS/Blender   # macOS; Windows/Linux keep their install path
 > ```
 
 ### Install methods
@@ -120,7 +118,7 @@ major versions (§7 has a real example). Pin the version in CI.
 Blender publishes itself to PyPI as a Python module — ideal for CI containers:
 
 ```bash
-python3 -m pip install bpy        # currently 5.2.1; requires CPython 3.13.x exactly
+python3 -m pip install "bpy==5.1.*"   # the line this document was verified on; each bpy wheel needs one exact CPython version
 python3 -c "import bpy; print(bpy.app.version_string)"
 ```
 
@@ -166,7 +164,7 @@ blender [blender-args] [file.blend] [more-args] -- [your script's argv]
 ### The canonical invocation
 
 ```bash
-blender --background --factory-startup --python-exit-code 1 \
+"$BLENDER" --background --factory-startup --python-exit-code 1 \
         --python /path/to/script.py -- arg1 arg2
 ```
 
@@ -188,17 +186,18 @@ argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 Always pass `--python-exit-code`:
 
 ```bash
-blender -b --factory-startup --python-exit-code 1 --python fix.py -- in.fbx out.fbx
+"$BLENDER" -b --factory-startup --python-exit-code 1 --python fix.py -- in.fbx out.fbx
 echo "exit=$?"      # non-zero only because of --python-exit-code
 ```
 
 ### Opening a file
 
 ```bash
-blender -b asset.blend --factory-startup --python-exit-code 1 --python script.py
+"$BLENDER" -b asset.blend --factory-startup --python-exit-code 1 --python script.py
 ```
 
-…or open it *inside* the script, which is more explicit and works for any format:
+…or open it *inside* the script, which is more explicit. `open_mainfile` opens `.blend` files only; use the
+import operators for FBX/glTF (§3):
 
 ```python
 bpy.ops.wm.open_mainfile(filepath="asset.blend")
@@ -267,6 +266,7 @@ import bpy, sys, os
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 src, dst = argv[0], argv[1]
+only = argv[2] if len(argv) > 2 else None      # optional: re-paint just this mesh name
 
 # --- load (any supported format) ---
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -276,53 +276,60 @@ elif ext == ".fbx":   bpy.ops.import_scene.fbx(filepath=src)
 elif ext in (".glb", ".gltf"): bpy.ops.import_scene.gltf(filepath=src)
 else: raise SystemExit("unsupported input: " + ext)
 
-mesh = next(o for o in bpy.data.objects if o.type == 'MESH')
-arm  = next((o for o in bpy.data.objects if o.type == 'ARMATURE'), None)
+arm = next((o for o in bpy.data.objects if o.type == 'ARMATURE'), None)
 if arm is None: raise SystemExit("no armature found - nothing to skin to")
-print("groups before:", [g.name for g in mesh.vertex_groups])
+meshes = [o for o in bpy.data.objects if o.type == 'MESH' and (only is None or o.name == only)]
+if not meshes: raise SystemExit("no mesh to re-paint" + (f" named {only}" if only else ""))
 
-# --- RE-PAINT: drop existing weights, rebuild from the armature ---
-for g in list(mesh.vertex_groups):
-    mesh.vertex_groups.remove(g)
+def world_bounds(o):
+    pts = [o.matrix_world @ v.co for v in o.data.vertices]
+    if not pts: return [0.0] * 6
+    return [min(p[i] for p in pts) for i in range(3)] + [max(p[i] for p in pts) for i in range(3)]
 
-bpy.ops.object.select_all(action='DESELECT')
-mesh.select_set(True)
-arm.select_set(True)
-bpy.context.view_layer.objects.active = arm          # armature must be ACTIVE
-bpy.ops.object.parent_set(type='ARMATURE_AUTO')
-print("groups after :", [g.name for g in mesh.vertex_groups])
+def run(op, obj, **kw):
+    # Operators never raise when cancelled - they return {'CANCELLED'}. Check every one.
+    with bpy.context.temp_override(active_object=obj, object=obj, selected_objects=[obj], selected_editable_objects=[obj]):
+        result = op(**kw)
+    if 'FINISHED' not in result: raise SystemExit(f"{op.idname()} was cancelled on {obj.name}")
 
-# --- make them engine-legal ---
-bpy.ops.object.select_all(action='DESELECT')
-mesh.select_set(True)
-bpy.context.view_layer.objects.active = mesh
-bpy.ops.object.vertex_group_clean(limit=0.01, group_select_mode='ALL')
-bpy.ops.object.vertex_group_limit_total(limit=4, group_select_mode='ALL')
-bpy.ops.object.vertex_group_normalize_all(lock_active=False)
+for mesh in meshes:
+    before = world_bounds(mesh)
+    # --- RE-PAINT: drop weights AND the old skin, detach keeping the world transform ---
+    for g in list(mesh.vertex_groups): mesh.vertex_groups.remove(g)
+    for m in [m for m in mesh.modifiers if m.type == 'ARMATURE']: mesh.modifiers.remove(m)
+    run(bpy.ops.object.parent_clear, mesh, type='CLEAR_KEEP_TRANSFORM')
+    bpy.ops.object.select_all(action='DESELECT')
+    mesh.select_set(True); arm.select_set(True)
+    bpy.context.view_layer.objects.active = arm      # armature must be ACTIVE
+    if 'FINISHED' not in bpy.ops.object.parent_set(type='ARMATURE_AUTO', keep_transform=True):
+        raise SystemExit(f"parent_set was cancelled on {mesh.name}")
+    # --- make them engine-legal ---
+    run(bpy.ops.object.vertex_group_clean, mesh, limit=0.01, group_select_mode='ALL')
+    run(bpy.ops.object.vertex_group_limit_total, mesh, limit=4, group_select_mode='ALL')
+    run(bpy.ops.object.vertex_group_normalize_all, mesh, lock_active=False)
+    # --- verify BEFORE writing ---
+    bad = sum(1 for v in mesh.data.vertices if abs(sum(g.weight for g in v.groups) - 1.0) > 1e-4)
+    moved = max(abs(x - y) for x, y in zip(before, world_bounds(mesh)))
+    print(f"{mesh.name}: groups={len(mesh.vertex_groups)} not-normalised={bad} bounds-shift={moved:.6f}")
+    if bad: raise SystemExit(f"weights failed to normalise on {mesh.name}")
+    if moved > 1e-4: raise SystemExit(f"world bounds changed on {mesh.name} - refusing to write")
 
-# --- verify BEFORE writing ---
-bad = sum(1 for v in mesh.data.vertices
-          if abs(sum(g.weight for g in v.groups) - 1.0) > 1e-4)
-over = max((len(v.groups) for v in mesh.data.vertices), default=0)
-print(f"verts not normalised: {bad}   max influences: {over}")
-if bad: raise SystemExit("weights failed to normalise")
-
-# --- save ---
+# --- save (an unknown extension is an error, never a silent no-op) ---
 e = os.path.splitext(dst)[1].lower()
 if   e == ".blend": bpy.ops.wm.save_as_mainfile(filepath=dst)
 elif e == ".fbx":   bpy.ops.export_scene.fbx(filepath=dst, add_leaf_bones=False)
 elif e == ".glb":   bpy.ops.export_scene.gltf(filepath=dst, export_format='GLB')
+elif e == ".gltf":  bpy.ops.export_scene.gltf(filepath=dst, export_format='GLTF_SEPARATE')
+else: raise SystemExit("unsupported output: " + e)
+if not os.path.exists(dst): raise SystemExit("nothing was written to " + dst)
 print("wrote", dst)
 ```
 
 ```bash
-blender -b --factory-startup --python-exit-code 1 --python reweight.py -- in.fbx out.glb
+"$BLENDER" -b --factory-startup --python-exit-code 1 --python reweight.py -- in.fbx out.glb
 ```
 
-*Verified run:* imported an FBX (`[('Limb','MESH'), ('Limb_Retopo','MESH'), ('Rig','ARMATURE')]`), cleared
-groups to `[]`, re-painted to `['Bone_Lower','Bone_Upper']`, all three cleanup operators returned OK,
-**0 vertices failed to normalise**, saved `.blend` + `.glb`, and reopening the `.blend` showed the groups
-intact.
+*Verified run (Blender 5.1.2):* the KayKit Adventurers `Knight.fbx` (9 meshes, 1 rig) — every mesh re-painted, every `bounds-shift=0.000000`, 0 vertices failed to normalise. The previous version of this script re-painted only the first mesh and rotated it 90° by re-parenting it without clearing the old parent; the `parent_clear(CLEAR_KEEP_TRANSFORM)` + removed Armature modifier + bounds check are what prevent that.
 
 ### 4.3 Direct weight editing — no operator, no context
 
@@ -429,7 +436,8 @@ report(mesh)
 ```python
 # --- Transform / scale fixes (FBX unit mismatches) ---
 obj.scale = (0.01, 0.01, 0.01)
-bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+with bpy.context.temp_override(object=obj, active_object=obj, selected_objects=[obj]):
+    assert 'FINISHED' in bpy.ops.object.transform_apply(location=False, rotation=True, scale=True), 'transform_apply was cancelled'
 
 # --- Mesh cleanup ---
 import bmesh
@@ -440,17 +448,18 @@ mesh.data.update()
 
 # --- Decimate for an LOD ---
 m = mesh.modifiers.new("Decimate", 'DECIMATE'); m.ratio = 0.5
-bpy.ops.object.modifier_apply(modifier=m.name)
+with bpy.context.temp_override(object=mesh, active_object=mesh, selected_objects=[mesh]):
+    assert 'FINISHED' in bpy.ops.object.modifier_apply(modifier=m.name), 'modifier_apply was cancelled'
 
 # --- Recalculate normals ---
-bpy.ops.object.select_all(action='DESELECT')
-mesh.select_set(True); bpy.context.view_layer.objects.active = mesh
-bpy.ops.object.mode_set(mode='EDIT')
-bpy.ops.mesh.select_all(action='SELECT')
-bpy.ops.mesh.normals_make_consistent(inside=False)
-bpy.ops.object.mode_set(mode='OBJECT')
+bpy.context.view_layer.objects.active = mesh
+with bpy.context.temp_override(object=mesh, active_object=mesh, selected_objects=[mesh]):
+    assert 'FINISHED' in bpy.ops.object.mode_set(mode='EDIT'), 'mode_set was cancelled'
+    assert 'FINISHED' in bpy.ops.mesh.select_all(action='SELECT'), 'select_all was cancelled'
+    assert 'FINISHED' in bpy.ops.mesh.normals_make_consistent(inside=False), 'normals_make_consistent was cancelled'
+    assert 'FINISHED' in bpy.ops.object.mode_set(mode='OBJECT'), 'mode_set was cancelled'
 
-# --- Animation: list and trim actions ---
+# --- Animation: list actions ---
 for a in bpy.data.actions:
     print(a.name, a.frame_range)
 
@@ -462,7 +471,7 @@ for a in bpy.data.actions:
 
 ```bash
 for f in assets/*.fbx; do
-  blender -b --factory-startup --python-exit-code 1 --python reweight.py \
+  "$BLENDER" -b --factory-startup --python-exit-code 1 --python reweight.py \
     -- "$f" "out/$(basename "${f%.fbx}").glb" || echo "FAILED: $f"
 done
 ```
@@ -483,6 +492,8 @@ done
 | **Modes are global** | `bpy.ops.object.mode_set(mode='OBJECT')` before switching objects, or operators fail confusingly |
 | **No viewport-dependent ops** | Brush painting, viewport render, screen operators are unavailable. Every *result* is reachable through data or non-viewport operators |
 | **`bpy.context.active_object` can be `None`** | After `read_factory_settings(use_empty=True)` nothing is active |
+
+Operators do not raise when they are cancelled — they return {'CANCELLED'} and the script carries on. Check the return value of every bpy.ops call.
 
 **Context override pattern** for an operator that insists on one:
 
@@ -555,20 +566,22 @@ Unity may stay running throughout — it re-imports on refresh.
 PROJ=/path/to/UnityProject
 FBX="$PROJ/Assets/Models/character.fbx"
 
-cp "$FBX" "$FBX.bak"                  # ALWAYS - the write is destructive
+cp "$FBX" "$FBX~"                     # ALWAYS - the write is destructive
 
-blender -b --factory-startup --python-exit-code 1         --python reweight.py -- "$FBX" "$FBX"      # same path in and out
+"$BLENDER" -b --factory-startup --python-exit-code 1         --python reweight.py -- "$FBX" "$FBX"      # same path in and out
 
-unity command eval 'UnityEditor.AssetDatabase.Refresh(UnityEditor.ImportAssetOptions.ForceSynchronousImport); return "ok";'   --project-path "$PROJ"
+unity command bt_refresh --project-path "$PROJ"
 ```
+
+(Unity ignores files whose names end in `~`; a backup with any other name inside `Assets/` is imported and ends up committed.)
 
 **Look at the result in a browser.** Re-export the level, then load it off the Toolkit development web server
 (`unity-exporter-cli.md` §12) — that is how you verify a Blender edit actually survived the round trip:
 
 ```bash
 open "http://localhost:8888/index.html"                      # the default scene
-open "http://localhost:8888/index.html?scene=level01.gltf"    # one specific scene, by file name
-curl -sS -o /dev/null -w "%{http_code}\n" "http://localhost:8888/scenes/level01.gltf"   # the raw asset
+open "http://localhost:8888/index.html?scene=Level01.gltf"    # one specific scene, by file name
+curl -sS -o /dev/null -w "%{http_code}\n" "http://localhost:8888/scenes/Level01.gltf"   # the raw asset
 ```
 
 Confirm the GUID really did survive:
@@ -582,13 +595,35 @@ return UnityEditor.AssetDatabase.AssetPathToGUID(p) + " rig=" + i.animationType 
 > **Never delete-then-recreate the FBX.** Removing the file removes its `.meta`, which destroys the GUID and
 > breaks every scene and prefab that referenced it. Overwrite the bytes; leave the `.meta` alone.
 
+### 8.2a Unity axis and scale
+
+Unity is Y-up, left-handed and metre-scaled; Blender is Z-up. Export every FBX that goes back into a Unity
+project with this preset:
+
+```python
+bpy.ops.export_scene.fbx(filepath=dst, axis_forward='-Z', axis_up='Y',
+                         apply_scale_options='FBX_SCALE_UNITS', bake_space_transform=True,
+                         add_leaf_bones=False)
+```
+
+| Symptom in Unity | Cause |
+|---|---|
+| Model rotated −90° on X | Axis settings (`axis_forward` / `axis_up` / `bake_space_transform`) |
+| Model 100× too big or too small | Scale settings (`apply_scale_options`) |
+
+Import with `bpy.ops.import_scene.fbx(filepath=src, ignore_leaf_bones=True)` so Unity's leaf bones do not
+come back as extra bones on the next export.
+
+The §8.1 "identical" check also compares **world transforms** and **sub-asset names**: a mesh or clip renamed
+to `….001` by Blender breaks Unity references even though the GUID is the same.
+
 ### 8.3 Creating a new model — and carrying settings across
 
 Write to a new path, then **copy the importer settings you care about**, because Unity will not:
 
 ```bash
-blender -b --factory-startup --python-exit-code 1         --python variant.py -- "$PROJ/Assets/Models/character.fbx"                               "$PROJ/Assets/Models/character_LOD1.fbx"
-unity command eval 'UnityEditor.AssetDatabase.Refresh(UnityEditor.ImportAssetOptions.ForceSynchronousImport); return "ok";' --project-path "$PROJ"
+"$BLENDER" -b --factory-startup --python-exit-code 1         --python variant.py -- "$PROJ/Assets/Models/character.fbx"                               "$PROJ/Assets/Models/character_LOD1.fbx"
+unity command bt_refresh --project-path "$PROJ"
 ```
 
 ```csharp
@@ -635,6 +670,14 @@ or straight to `.glb` for BabylonJS.
 The method is always the same: **introspect the API (§7), write a script, run it with the four canonical flags
 (§2), verify before writing.**
 
+### 8.4a Rendering and baking — the four traps
+
+- `-o` must come before `-f` (arguments run in order), or the frame renders to `/tmp`.
+- Valid `-E` values are `BLENDER_EEVEE`, `BLENDER_WORKBENCH` and `CYCLES` (`BLENDER_EEVEE_NEXT` is silently
+  ignored on the CLI).
+- Baking requires `CYCLES`, an active Image Texture node on the material, and `img.save()` afterwards.
+- `-- --cycles-device CPU` for a headless Mac.
+
 ### 8.5 What Blender cannot do for the Toolkit
 
 Blender produces geometry, skinning, materials and animation. It **cannot** add Babylon Toolkit
@@ -658,19 +701,19 @@ matching the Unity Avatar/Animator rig, and `add_leaf_bones=False` on FBX export
 ```bash
 # Executable
 /Applications/Blender.app/Contents/MacOS/Blender      # macOS - the .app is NOT the binary
-blender --version
+"$BLENDER" --version
 
 # Canonical headless invocation - use all four flags
-blender --background --factory-startup --python-exit-code 1 --python script.py -- arg1 arg2
+"$BLENDER" --background --factory-startup --python-exit-code 1 --python script.py -- arg1 arg2
 
 # Inline, no file
-blender -b --factory-startup --python-expr "import bpy; print(bpy.app.version_string)"
+"$BLENDER" -b --factory-startup --python-exit-code 1 --python-expr "import bpy; print(bpy.app.version_string)"
 
 # Open a file first
-blender -b asset.blend --factory-startup --python-exit-code 1 --python script.py
+"$BLENDER" -b asset.blend --factory-startup --python-exit-code 1 --python script.py
 
 # Blender as a pip module instead of an app
-python3 -m pip install bpy        # 5.2.1, needs CPython 3.13.x
+python3 -m pip install "bpy==5.1.*"   # the verified line; one exact CPython per wheel
 ```
 
 ```python
@@ -681,17 +724,22 @@ bpy.ops.wm.open_mainfile(filepath="a.blend")          # .blend
 bpy.ops.import_scene.fbx(filepath="a.fbx")            # FBX  (or bpy.ops.wm.fbx_import)
 bpy.ops.import_scene.gltf(filepath="a.glb")           # glTF
 
-# re-paint skinning
+# re-paint skinning — full, verified version is §4.2 reweight.py; never re-parent without clearing first
+ctx = dict(active_object=mesh, object=mesh, selected_objects=[mesh], selected_editable_objects=[mesh])
 for g in list(mesh.vertex_groups): mesh.vertex_groups.remove(g)
+for m in [m for m in mesh.modifiers if m.type == 'ARMATURE']: mesh.modifiers.remove(m)
+with bpy.context.temp_override(**ctx):
+    assert 'FINISHED' in bpy.ops.object.parent_clear(type='CLEAR_KEEP_TRANSFORM')
 bpy.ops.object.select_all(action='DESELECT')
 mesh.select_set(True); arm.select_set(True)
 bpy.context.view_layer.objects.active = arm           # armature ACTIVE
-bpy.ops.object.parent_set(type='ARMATURE_AUTO')
+assert 'FINISHED' in bpy.ops.object.parent_set(type='ARMATURE_AUTO', keep_transform=True)
 
-# engine-legal, in this order
-bpy.ops.object.vertex_group_clean(limit=0.01, group_select_mode='ALL')
-bpy.ops.object.vertex_group_limit_total(limit=4, group_select_mode='ALL')
-bpy.ops.object.vertex_group_normalize_all(lock_active=False)
+# engine-legal, in this order — on the MESH
+with bpy.context.temp_override(**ctx):
+    assert 'FINISHED' in bpy.ops.object.vertex_group_clean(limit=0.01, group_select_mode='ALL')
+    assert 'FINISHED' in bpy.ops.object.vertex_group_limit_total(limit=4, group_select_mode='ALL')
+    assert 'FINISHED' in bpy.ops.object.vertex_group_normalize_all(lock_active=False)
 
 # direct edit - no context needed, most reliable headless
 mesh.vertex_groups["Bone"].add([0,1,2], 1.0, 'REPLACE')
@@ -704,17 +752,16 @@ bpy.ops.export_scene.gltf(filepath="out.glb", export_format='GLB')
 **Round trip with a Unity project (§8):**
 
 ```bash
-cp "$FBX" "$FBX.bak"                                   # in-place writes are destructive
-blender -b --factory-startup --python-exit-code 1 --python fix.py -- "$FBX" "$FBX"
-unity command eval 'UnityEditor.AssetDatabase.Refresh(UnityEditor.ImportAssetOptions.ForceSynchronousImport); return "ok";' \
-  --project-path "$PROJ"
+cp "$FBX" "$FBX~"                                      # in-place writes are destructive
+"$BLENDER" -b --factory-startup --python-exit-code 1 --python fix.py -- "$FBX" "$FBX"
+unity command bt_refresh --project-path "$PROJ"
 # in place  -> GUID + importer settings preserved, all scene refs survive
 # new path  -> new GUID, importer settings RESET - copy them across (8.3)
 
 # preview the re-exported result (unity-exporter-cli.md §12)
 http://localhost:8888/index.html                      # default scene
-http://localhost:8888/index.html?scene=level01.gltf   # a specific scene, by file name
-http://localhost:8888/scenes/level01.gltf             # the raw exported asset
+http://localhost:8888/index.html?scene=Level01.gltf   # a specific scene, by file name
+http://localhost:8888/scenes/Level01.gltf             # the raw exported asset
 ```
 
 **The five rules that break naive attempts:**

@@ -62,7 +62,7 @@ unity changelog --no-pager | head -80     # what changed
 | `--format json` / `--json` | **Always, when parsing.** Envelope: `{ success, command, data, errors[], warnings[] }` |
 | `--format ndjson` | One JSON object per line, progress frames first, a final `{"type":"result",…}` frame. Use for `unity run` / `unity build`, where Editor output interleaves |
 | `--format github` | Failures as GitHub Actions inline annotations (`test`, `projects verify`, `doctor --ci`) |
-| `--non-interactive` (+ `--yes`) | No prompts. Use both in CI and in agent shells |
+| `--non-interactive` | No prompts. Add `--yes` only where that subcommand offers it (install, uninstall, projects clean/upgrade, license return, skill install/refresh, mcp configure, self-update) — `projects new` and `open` reject it |
 | `--quiet` / `--no-banner` / `--no-pager` | Clean, scrapeable output |
 | `--verbose` | Full stack trace + cause chain on failure |
 
@@ -113,7 +113,7 @@ CI (no browser) — the secret never touches the argument list:
 unity auth login --client-id "$UNITY_SERVICE_ACCOUNT_ID" --secret-from-stdin <<<"$UNITY_SERVICE_ACCOUNT_SECRET"
 unity license activate            # or --serial / --floating / --file
 # ... work ...
-unity license return --yes        # release the seat
+unity license return --yes        # returns ALL of this machine's seats — ask the user first
 ```
 
 A **resident** Editor (GUI or headless) holds a licence seat until it exits; one-shot `unity run` / `build` /
@@ -121,6 +121,18 @@ A **resident** Editor (GUI or headless) holds a licence seat until it exits; one
 
 > The **Unity** licence (to run the Editor) is unrelated to the **Babylon Toolkit** Pro licence
 > (`license.json`, which decides whether exports are interactive) — see `unity-exporter-cli.md` §0.
+
+### Ask the user first
+
+| Command | Why |
+|---|---|
+| `unity license return` | returns every seat on this machine |
+| `unity projects upgrade --to` | one-way migration of the project |
+| `unity uninstall` | removes an Editor |
+| `unity vcs resolve --ours\|--theirs` | discards the other side of a conflict |
+| `unity vcs doctor --fix` | rewrites repository configuration |
+| `unity projects create --vcs` | creates remote repositories |
+| `unity self-update` | replaces the CLI itself |
 
 ---
 
@@ -131,9 +143,8 @@ unity editors --installed --format json            # what is installed; "locatio
 unity editors running --format json                # Editor processes, with their projects
 unity releases --stream lts --limit 5 --format json
 unity install lts --yes --accept-eula              # or an exact version: 6000.5.10f1
-unity install 6000.5.10f1 --module webgl --yes --accept-eula
 unity install-modules --editor-version 6000.5.10f1 --list
-unity editors path 6000.5.10f1 --format json       # the Editor executable path
+unity editors path 6000.5.10f1 --format json       # the Editor's install directory
 unity uninstall 6000.3.0f1 --yes
 ```
 
@@ -219,7 +230,7 @@ Run it after any bulk file operation, git merge, or before handing a project to 
 ```bash
 unity assets inspect Pack.unitypackage                                   # list contents, offline
 unity assets import Pack.unitypackage --project ~/UnityProjects/MyGame   # batch-mode import (refuses if an Editor has the project open)
-unity assets export Assets/Levels/Level01 Assets/Prefabs --output Level01.unitypackage --project ~/UnityProjects/MyGame
+unity assets export Assets/Levels/Level01 Assets/Prefabs --output Level01.unitypackage --project ~/UnityProjects/MyGame --no-dependencies   # dependencies are included unless --no-dependencies
 ```
 
 `assets import` is how an agent pulls in an Asset Store-era package without the Editor's import dialog; it checks
@@ -249,13 +260,13 @@ project **contains the current directory** (deepest wins). No match or a tie fai
 **`unity status`** lists connected Editors (`data.instances[] {port, project, version, pid, state}`) — a headless
 `-batchmode` Editor was listed in verification (beta.11), though Unity's own skill says otherwise. **Gate readiness
 on `unity command --project-path <proj>` succeeding**, which works for every Editor kind. `unity pipeline list` adds
-the Pipeline version, `isReachable`, and **Safe Mode** detection per Editor.
+the Pipeline version, `data.instances[].pipelineServer.isReachable`, and **Safe Mode** detection per Editor.
 
 ### Two false negatives before concluding "no Editor"
 
 1. **Safe Mode.** A project with C# compile errors boots into Safe Mode, where the Pipeline package does not load —
    `unity command` / `status` / `recompile` cannot connect at all. Confirm with `unity pipeline list`
-   (`data.summary.instancesInSafeMode`, `data.instances[].safeMode.detected`); then fix the `.cs` errors on disk and
+   (`data.summary.instancesInSafeMode`, `data.instances[].safeMode` (it is `null` when the Editor is not in Safe Mode — check it before reading `.detected`)); then fix the `.cs` errors on disk and
    restart the Editor. Recovery loop: `unity-exporter-cli.md` §15.
 2. **A sandboxed agent shell.** A restrictive sandbox can block the loopback connection or the discovery file, so a
    genuinely running Editor looks absent (and `unity recompile` exits 7). Do not treat "no instances" as proof the
@@ -318,7 +329,7 @@ not only Unity's exit code (a failed player build can exit 0). Per-project defau
 unity doctor --format json                  # platform, auth, editors, proxy, recent CLI log lines
 unity doctor --ci --format json             # preflight: exit 0 ok · 6 definitive failure · 7 transient (retry)
 unity env --format json                     # Hub user-data path, editor install path, cache path, CLI version
-unity logs --tail 50 --level error          # the CLI's OWN log — not the Editor's log
+unity logs --tail 50 --level error          # the Unity Hub's log — not the Editor's log
 unity docs Lightmapping --url               # version-matched Unity docs URL for a class (--manual for the manual)
 unity diagnose update                       # why the CLI is or is not updating
 unity version --format json
@@ -355,10 +366,10 @@ repo, use GitHub's maintained `Unity.gitignore`, and confirm `git ls-files | gre
 
 ```bash
 unity skill show --list                          # read Unity's own agent skill without installing it (beta.9+)
-unity skill install claude-code [--local]        # install it; --local also mirrors the Pipeline package's deeper skill into the project
+unity skill install claude-code [--local]        # install it; --local writes the project-local copy instead of the user-global one
 unity skill install codex                        # -> ~/.agents/skills/unity-cli (read by Codex, Copilot, Gemini, Antigravity)
 unity skill refresh                              # after every self-update
-unity mcp configure claude-code [--project-path P]   # expose a live Editor's commands as MCP tools
+unity mcp configure claude-code [--project-path P]   # expose a live Editor's commands as MCP tools (for claude-code this writes no file; it prints the setup steps)
 unity shell --protocol ndjson                    # one warm CLI process; {"id":"1","argv":["status","--format","json"]} per line
 ```
 
