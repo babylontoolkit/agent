@@ -140,6 +140,30 @@ Anything else is work, and work is yours.
   sub-document (ES6 or UMD), the `Interactive Scene Components` sub-document, and the
   `AI Training Example Reference`.
 
+## Unity Is The 3D Asset Project — Scenes Are Served, Never Copied
+
+The Unity project is the **3D asset project**: it owns every level, mesh, texture, lightmap, probe, animation and
+sound, and the Babylon Toolkit exporter turns it into glTF. An export can be hundreds of megabytes to gigabytes, so
+the web app **never** holds a copy of it.
+
+- **While developing**, the exporter's dev server (`bt_devserver_start`, `unity-exporter-cli.md` §12) serves the
+  export folder, and the game loads the scene straight from it:
+  `navigate('/play', { gameMode, sceneUrl: 'https://localhost:4444/scenes/Level01.gltf' })`.
+  Use the scheme and port `bt_devserver_status` reports (`port`, `securePort`) — e.g. `https://localhost:4444`
+  or `http://localhost:8888`. Re-export in Unity and reload the game; nothing is copied.
+- **Never copy exported files into the web project** — no `.gltf`/`.glb`/`.bin`/textures/`.env`/probe files/the
+  exporter's project `.js` under `public/`, `src/` or anywhere else in it, not for development and not for
+  publishing.
+- **For production**, the user uploads the export folder — keeping its `scenes/` layout so relative references
+  still resolve — to a real server with a real domain name (typically an AWS S3 bucket, optionally behind a CDN,
+  or any web/FTP host), and the game's `sceneUrl` points at that address, e.g.
+  `https://assets.mygame.com/scenes/Level01.gltf`. The two modes: **local dev = the Unity exporter's dev server
+  on `localhost`; production = the user's hosted copy on their own domain.** Keep the scene base URL in ONE place in the
+  game code so switching from the dev server to the hosted copy is a one-line change. A `localhost` URL in a
+  published game cannot load for anyone else — ask the user for the hosted URL before they publish.
+- **In the App Builder**, the projects folder the user picks holds `Apps/` (web apps, one folder per project) and
+  `Unity/` (Unity asset projects — the Unity Bridge helper's projects folder) side by side.
+
 ## Routing Table
 
 Match the user's task against the **Fetch when the task involves…** column. Fetch every

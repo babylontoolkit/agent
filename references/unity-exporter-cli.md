@@ -1751,9 +1751,11 @@ mirror the on-disk layout in internals doc §13. Three shapes matter:
   raw `scenes/*.gltf` URL still works, because the exporter always writes that.
 - **`?scene=` takes a file name, not a path.** It is resolved against `DefaultScenePath` — the `scenes/`
   subfolder of the export root. Use it to preview any level in the project without rebuilding the page.
-- **The raw asset URL is what a separate web project consumes.** Point a BabylonJS `SceneLoader` /
-  `SceneManager` at `http://localhost:8888/scenes/<Name>.gltf` to develop against a live Unity Editor
-  without copying files (see `project-installer.md`).
+- **The raw asset URL is what a separate web project consumes.** Point the game's `sceneUrl` (or a BabylonJS
+  `SceneLoader` / `SceneManager`) at `http://localhost:8888/scenes/<Name>.gltf` — or the `https://localhost:<securePort>/…`
+  form when the web app is served over HTTPS — to develop against a live Unity Editor. **Never copy the export
+  into the web project**; for production the user uploads the export folder to their own hosting (S3, CDN, FTP)
+  and `sceneUrl` points there (`reference.md` → "Unity Is The 3D Asset Project").
 - A prefab/asset-container export written with an explicit `folder` lands outside `scenes/` — serve it from
   wherever it was written, e.g. `http://localhost:8888/containers/Crates.glb`.
 

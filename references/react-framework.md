@@ -277,6 +277,11 @@ function Home() {
    * `navigate('/play', { gameMode, sceneUrl?, ...selections })`. The scene URLs are playground demo
    * fixtures: do not carry them into a game unless the user asked for that specific content, and note
    * that this whole page is REWRITTEN from scratch for each project anyway.
+   *
+   * A game's OWN levels come from its Unity asset project: while developing, `sceneUrl` is the Unity
+   * exporter's dev server (e.g. `https://localhost:4444/scenes/Level01.gltf`); for production it is the
+   * user's hosted copy (S3 / CDN / FTP). Never copy exported scene files into this web project
+   * (`reference.md` → "Unity Is The 3D Asset Project").
    */
 
   return (

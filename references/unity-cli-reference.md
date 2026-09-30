@@ -62,7 +62,7 @@ unity changelog --no-pager | head -80     # what changed
 | `--format json` / `--json` | **Always, when parsing.** Envelope: `{ success, command, data, errors[], warnings[] }` |
 | `--format ndjson` | One JSON object per line, progress frames first, a final `{"type":"result",…}` frame. Use for `unity run` / `unity build`, where Editor output interleaves |
 | `--format github` | Failures as GitHub Actions inline annotations (`test`, `projects verify`, `doctor --ci`) |
-| `--non-interactive` | No prompts. Add `--yes` only where that subcommand offers it (install, uninstall, projects clean/upgrade, license return, skill install/refresh, mcp configure, self-update) — `projects new` and `open` reject it |
+| `--non-interactive` | No prompts. Add `--yes` only where that subcommand offers it (install, uninstall, projects clean/upgrade, skill install/refresh, mcp configure, self-update) — `projects new` and `open` reject it |
 | `--quiet` / `--no-banner` / `--no-pager` | Clean, scrapeable output |
 | `--verbose` | Full stack trace + cause chain on failure |
 
@@ -113,7 +113,7 @@ CI (no browser) — the secret never touches the argument list:
 unity auth login --client-id "$UNITY_SERVICE_ACCOUNT_ID" --secret-from-stdin <<<"$UNITY_SERVICE_ACCOUNT_SECRET"
 unity license activate            # or --serial / --floating / --file
 # ... work ...
-unity license return --yes        # returns ALL of this machine's seats — ask the user first
+unity license return --yes        # release the seat
 ```
 
 A **resident** Editor (GUI or headless) holds a licence seat until it exits; one-shot `unity run` / `build` /
@@ -126,7 +126,6 @@ A **resident** Editor (GUI or headless) holds a licence seat until it exits; one
 
 | Command | Why |
 |---|---|
-| `unity license return` | returns every seat on this machine |
 | `unity projects upgrade --to` | one-way migration of the project |
 | `unity uninstall` | removes an Editor |
 | `unity vcs resolve --ours\|--theirs` | discards the other side of a conflict |
