@@ -351,8 +351,9 @@ setting loses range and is warned.
 ## 5. Light probes
 
 **Reaches BabylonJS as.**
-- **Files and components:** a binary side file `<scene>.lightprobes.bin`, a scene `lightprobes` header, per-node
-  `lightprobes` usage, and one `TOOLKIT.LightProbeNetwork` component.
+- **Files and components:** a binary side file `<scene>.probe.bin` written **next to the scene file** in the scenes
+  folder (not under `assets/`; with compression on, its gzip twin is `<scene>.probe.gz.bin`), a scene `lightprobes`
+  header, per-node `lightprobes` usage, and one `TOOLKIT.LightProbeNetwork` component.
 - **Runtime:** a tetrahedral walk. Static meshes get pre-interpolated spherical harmonics; dynamic meshes
   re-sample after moving 0.05 m.
 - **This is how Baked lights light moving objects.** The probe network deliberately excludes Baked lights from
@@ -372,6 +373,12 @@ A renderer is probe-lit only if it is a Mesh or SkinnedMeshRenderer, **not** lig
 **Author it:** place a `LightProbeGroup` that covers everywhere dynamic objects move
 (`add_component --type LightProbeGroup`), then set its positions via `set_serialized_field` on
 `m_SourcePositions.Array.data[i]` or from `run_script`. Run `bake_lighting` — the probes bake with the lightmaps.
+
+**See the probes.** Exporter setting **Show Debug Probes** (Collision System panel; `CanvasToolsInfo.Instance.ShowDebugProbes`,
+default off) draws a small yellow sphere at every probe position — one thin-instanced mesh, so thousands of APV probes
+cost one draw. It is exported as the `showdebug` property of the `TOOLKIT.LightProbeNetwork` component. At runtime,
+`TOOLKIT.LightProbeNetwork.Get(scene).setDebugVisible(true | false)` toggles it without a re-export, and
+`TOOLKIT.LightProbeNetwork.DebugProbeSize` (metres, default 0.1) sets the sphere size before the scene loads.
 
 ---
 

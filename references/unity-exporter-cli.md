@@ -2145,7 +2145,7 @@ That single flag gates the entire scene-level metadata block.
 | Clear colour, tonemapping, exposure, gamma, image processing | ✅ | ❌ |
 | Scene-level gravity, physics world, CCD, world sweep, fixed timestep | ✅ | ❌ (node-level rigidbodies/colliders **are** still exported) |
 | **NavMesh** (the Recast `navigation.prebaked` block) | ✅ | ❌ |
-| **Light probes** (`LightProbeNetwork` + `<scene>.lightprobes.bin`) | ✅ | ❌ |
+| **Light probes** (`LightProbeNetwork` + `<scene>.probe.bin` beside the scene file) | ✅ | ❌ |
 | Sun position/rotation, wind zones | ✅ | ❌ |
 | User input, pointer lock, context menu, capture | ✅ | ❌ |
 | Debug colliders / collision wireframe | ✅ | ❌ |
