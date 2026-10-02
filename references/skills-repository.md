@@ -535,12 +535,13 @@ The sub-documents `unity-exporter-cli.md`, `unity-editor-commands.md`, `unity-au
 | `unity-cli`, `unity-package-management`, `new-unity-project` | ✅ Editor/CLI mechanics — but scaffold Babylon projects with `unity-exporter-cli.md` §4B, and install packages with `package_add` |
 | `urp-postprocessing` | ✅ Volumes carry to BabylonJS (the whole colour grade is baked to a LUT) — `unity-authoring-recipes.md` §9 |
 | `migrate-birp-to-urp` | ✅ Materials, reflection probes, lighting bakes — and the first step for a Built-in Asset Store scene (`unity-authoring-recipes.md` §23) |
-| `validate-urp-render-graph-renderer-feature` | ⚠️ URP renderer features are Unity-side only; use a Babylon post-process in a script component (§22) |
-| `physics-3d-collision`, `generate-editor-search-query`, `asset-transformer-toolkit`, `shader-graph-create-custom-node` | ✅ Authoring aids (physics carries via Havok — §11; Shader Graphs transpile — §2) |
+| `validate-urp-render-graph-renderer-feature` | ⚠️ Only the Full Screen Pass (Shader Graph material) and Decal renderer features export; other features need a Babylon post-process in a script component (§22) |
+| `physics-3d-collision`, `generate-editor-search-query`, `asset-transformer-toolkit`, `shader-graph-create-custom-node` | ✅ Authoring aids (physics carries via Havok — §11; Shader Graphs, including Custom Function HLSL, transpile at export — §2 and `shader-materials.md`) |
 | `initialize-ai-navigation` | ⚠️ Unity's navmesh is Unity-side only — the exported navmesh is the toolkit's **Recast** bake (`unity-authoring-recipes.md` §12) |
 | `optimize-audio` | ⚠️ Import settings don't touch the exported file — the source file ships as-is, so compress the source (§14) |
-| `ui`, `ui-ugui`, `ui-uitk`, `optimize-text-mesh-pro` | ⚠️ Screen-space Canvas / UIDocument and TMP text inside a Canvas **do** export to Babylon GUI (Pro, §17); world-space UI does not. For app-style UI prefer DOM/React (`ui-design-system.md`) |
-| `ui-imgui`, `2d-pixel-perfect`, `sprite-*`, `tilemap-*`, `manage-sprite-atlas` | ❌ Editor-only or 2D features with no exporter path — Babylon `SpriteManager` / quads (§22) |
+| `ui`, `ui-ugui`, `ui-uitk`, `optimize-text-mesh-pro` | ✅ uGUI Canvases in every render mode, UI Toolkit UIDocuments and TMP / Legacy text export to Babylon GUI (Pro, §17). TMP atlas tuning does not carry (the web draws the source font file); keyboard / gamepad navigation and UI Toolkit data binding are not carried. For app-style UI prefer DOM/React (`ui-design-system.md`) |
+| `sprite-*`, `tilemap-*` | ⚠️ SpriteRenderer and TilemapRenderer export as toolkit carriers (Pro, §17); 2D physics does not |
+| `ui-imgui`, `2d-pixel-perfect`, `manage-sprite-atlas` | ❌ Editor-only features with no exporter path (§22) |
 | `localization`, `implement-in-app-purchases`, `levelplay-unity-integration`, `build-live-game`, `setup-multiplayer-services`, `setup-vivox-voice-chat`, `optimize-web` | ❌ Unity-runtime services and Unity WebGL player tuning — never used; build the web-side version (`unity-authoring-recipes.md` §22) |
 
 > **Licence.** Unity's skills are © Unity Technologies under the **Unity Companion License**, which covers use in

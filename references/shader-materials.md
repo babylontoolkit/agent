@@ -1,4 +1,4 @@
-# Custom Shader Code Instructions (2.0.0)
+# Custom Shader Code Instructions (2.1.0)
 
 **IMPORTANT. THIS DOCUMENT PROVIDES CRUCIAL SHADER CODE GENERATION INSTRUCTIONS. ALWAYS READ THIS ENTIRE DOCUMENT TO THE END OF FILE**
 
@@ -9,6 +9,14 @@
 ---
 
 ## Follow these rules exactly when generating custom shader code
+
+### RULE 0 — If the look is a Unity Shader Graph, do not write a shader at all.
+
+Unity Shader Graphs are **transpiled at export** into generated `MY.*` material classes (GLSL + WGSL, the same
+material + plugin pair RULE 1 describes). Author or edit the **graph in Unity**, re-export with a script compile, and
+drive it from game code by its Unity property names. Hand-write a shader only for looks that do not exist as a graph.
+Read **Unity Shader Graphs — transpiled at export** below before touching any graph-backed material, and never edit a
+generated file.
 
 ### RULE 1 — Never write a standalone shader. Extend a toolkit material and attach a plugin.
 
@@ -111,7 +119,7 @@ export class MyEffectPlugin extends TOOLKIT.CustomShaderMaterialPlugin {
 
 The `getUniforms` body is **not optional and not reorderable**: it is what hands the material's declarations to the shader before the uniform list is emitted. Omit it and every custom uniform is undefined in WGSL.
 
-Priorities in the shipped runtime — pick a number that does not fight them: `UnityStyleLightingPlugin` 10, `SkinArraySwitchingPlugin` 21, project/terrain effects 100, vegetation 110.
+Priorities in the shipped runtime — pick a number that does not fight them: `UnityStyleLightingPlugin` 10, `SkinArraySwitchingPlugin` 21, terrain probes 90, terrain splat / project effects 100, texture grass 110, terrain foliage 120.
 
 ### RULE 5 — The injection points, and which shader they exist in.
 
@@ -235,15 +243,14 @@ Check this list before writing any shader. These are complete, tested, WebGL+Web
 
 | Need | Use | Notes |
 |---|---|---|
-| terrain with splatmaps | `TOOLKIT.UniversalTerrainMaterial` | Unity-style splatmap **atlas** blending, up to 4 layers per splatmap × N splatmaps, albedo + normal + parallax + clearcoat aware |
-| waving grass patches | `TOOLKIT.GrassStandardMaterial` | exact Unity `TerrainWaveGrass` (Taylor-series `FastSinCos`), distance fade, alpha cutoff, shadow-intensity control |
-| camera-facing grass | `TOOLKIT.GrassBillboardMaterial` | billboard variant of the above |
-| swaying tree branches | `TOOLKIT.TreeBranchMaterial` | local-space pivot bend, vertex-color mask, `setWindDirection(x, y, z)` |
+| any look authored as a **Unity Shader Graph** (water, foliage wind, toon, dissolve, decals, fullscreen effects, UI effects, sky) | the **Shader Graph transpiler** — the generated `MY.<Graph>` class | see **Unity Shader Graphs — transpiled at export** below; drive it with `setFloat("_Ref", v)` / `TOOLKIT.ShaderGlobals` |
+| terrain splatmaps, trees, grass, wind | author a **Unity Terrain** — `TOOLKIT.TerrainBuilder` builds `TOOLKIT.TerrainSplatMaterial`, `GrassStandardMaterial` / `GrassBillboardMaterial` and `TerrainFoliagePlugin` from the export (`unity-authoring-recipes.md` §10) | these are fed by terrain export data (texture arrays, control maps, instance buffers); they are **not** general-purpose materials. A terrain whose material template is a Shader Graph renders through its generated class |
 | baked vertex animation (VAT) | `TOOLKIT.VertexAnimationMaterial` + `TOOLKIT.VertexAnimationController` | crowd/instance animation from position+normal textures, clip blending, `play/pause/stop/driveBlend`, `cloneForInstance()` |
 | many characters, one mesh, different skins | `enableSkinArray()` on any `CustomShaderMaterial` | see below |
 | double-sided surface | `TOOLKIT.CustomShaderMaterial` + `backFaceCulling = false; twoSidedLighting = true;` in `awake()` | no shader code needed at all |
-| water | `PROJECT.WaterMaterialSystem` script component | wraps `BABYLON.WaterMaterial` (reflection/refraction RTT, wind, waves) |
-| sky | `PROJECT.SkyMaterialSystem` script component | wraps `BABYLON.SkyMaterial` + optional `ReflectionProbe` |
+| water | `PROJECT.WaterMaterialSystem` (Starter content), or the scene's own Unity water Shader Graph | wraps `BABYLON.WaterMaterial` (reflection/refraction RTT, wind, waves) |
+| Unity-matching atmospheric sky | `TOOLKIT.ProceduralSkyMaterial` on `TOOLKIT.ProceduralSkyMaterial.CreateSkyMesh(name, scene, 1000)` | exact port of Unity `Skybox/Procedural`; the loader builds it for any level whose skybox is Procedural (incl. Unity's Default-Skybox); follows the sun light every frame (`unity-authoring-recipes.md` §7) |
+| Preetham sky (not Unity-matching) | `PROJECT.SkyMaterialSystem` (Starter content) | wraps `BABYLON.SkyMaterial` + optional `ReflectionProbe` |
 | node-editor material (.json from NME) | `PROJECT.NodeMaterialInstance` script component | `BABYLON.NodeMaterial.Parse`; `PROJECT.NodeMaterialTexture` turns one into a procedural texture |
 | shadow-catcher plane | `PROJECT.MobileShadowMaterial` | `BABYLON.ShadowOnlyMaterial` |
 | depth-only occluder | `PROJECT.MobileOccludeMaterial` | sets `disableColorWrite` |
@@ -268,6 +275,147 @@ inst.instancedBuffers.tkSkinLayer = 3;
 Channels are independent and combinable — `enableSkinArrayNormal()` (`tkNormalArray`, needs a tangent frame: BUMP + TANGENT + NORMAL), `enableSkinArrayMetalRough()` (`tkMetalRoughArray`, metallic = Blue, roughness = Green), `enableSkinArrayEmissive()` (`tkEmissiveArray`, works with no base emissive, so it drives emissive-only swaps like brake lights). Every injected line is gated, so a material that never opts in compiles identically.
 
 For VAT materials use the `enableVatSkinArray*()` variants instead: the layer is packed into the existing `g_vatAnim1.w` attribute (VAT instances are already at the vertex-buffer ceiling), and set per instance with `TOOLKIT.VertexAnimationController.SetAtlasCellIndex(mesh, index)`.
+
+---
+
+## Unity Shader Graphs — transpiled at export
+
+Unity ships most custom looks as Shader Graphs: water, wind-swept grass and foliage, SpeedTree, toon, dissolve, decals,
+fullscreen effects, UI effects, TextMesh Pro SDF text, terrain templates and skies. The exporter's **Shader Graph
+transpiler** turns every graph into a generated BabylonJS material class at export time. **The goal is that Unity
+content using Shader Graphs exports and renders out of the box. Do not hand-port a graph.**
+
+### How a graph reaches BabylonJS
+
+| Step | What happens |
+|---|---|
+| Discovery | Every export path except Launch (level, selection, prefab / asset container) sweeps active **and inactive** renderers, terrain templates and prototypes, prefabs referenced by exported components, the skybox, uGUI, particle and trail materials, Custom Render Textures and fullscreen renderer features |
+| Transpile | Each graph becomes `Assets/Scripts/Materials/Generated/<GraphName>.ts`: a `MY.<GraphName>` material (`TOOLKIT.CustomShaderMaterial` + `MY.<GraphName>Plugin`, GLSL **and** WGSL), registered with `RegisterClass`. A name starting with a digit gets an `Sg` prefix (`MY.Sg0_Lit_Basic`); duplicate names get `_2`, `_3` |
+| Target | The graph is generated for the **project's active render pipeline**, whatever targets it declares. Dead nodes, unused properties and greyed-out blocks are pruned first, exactly as Unity compiles only what reaches an active block |
+| Compile | UMD: the project bundle recompiles whenever the transpiler wrote files or the bundle lacks a generated class. ESM: the generated classes compile alone into `<scene dir>/shadergraphs.js`, which the runtime loads before any material. `bt_export_level` defaults `compileScripts` to true for this reason |
+| glTF | The material's `extras.metadata` carries `customMaterial: "MY.<GraphName>"` plus the property bags (`customFloats`, `customColors`, `customVectors`, `customTextures`, `customMatrices`); keyword values ride as `customFloats["kw_<REF>"]`. Scene metadata carries `shaderglobals`, `renderfeatures`, `customrendertextures`, `lights2d` and per-renderer property blocks |
+
+**Generated files are build output.** Never edit them (each has a `GENERATED … do not edit (hash …)` header); change the
+graph in Unity and re-export. To opt one graph out on purpose, add `{ "<graphPath>": "<reason>" }` to
+`Generated/overrides.json`.
+
+### The degrade ladder — a gap never kills a graph
+
+Every node, block, property, keyword and custom-function construct is handled **at its own position**:
+**faithful port → polyfill** (closest WebGL2 + WebGPU behaviour) **→ neutral value** (pass-through of the primary input,
+else the slot's Unity default). Every step other than a port is a **deviation**, reported:
+
+- in the export summary — one count line (`N graphs transpiled: a clean, b with deviations, c last resort`) plus one
+  block per graph with deviations, in plain language;
+- in `Assets/Scripts/Materials/Generated/manifest.json`;
+- on the class (`SgInfo.deviations`, `material.getGraphInfo()`), shown read-only in the Babylon Inspector as
+  "Shader Graph deviations";
+- in the browser, one collapsed `Shader Graph: N materials with deviations, M last resort` console group per scene in
+  debug mode (`TOOLKIT.ShaderGraphRuntime.ReportDeviations`; `null` = follow `SceneManager.IsDebugMode()`).
+
+**Plain PBR is the last resort only** for an unreadable graph file (export) or a generated shader that fails to compile
+on the device (runtime). At runtime the material disables its graph in place, so the mesh still renders with its glTF
+PBR inputs and one warning names the error; check `material.graphDisabled` / `graphDisabledReason`. A class missing
+from the bundle renders with the `TOOLKIT.UniversalShaderMaterial` stand-in, and one warning says to re-export with
+`compileScripts`.
+
+### What renders
+
+| Area | Coverage |
+|---|---|
+| Sub-targets | **URP:** Lit (Metallic **and** Specular), Unlit, Sprite Lit / Unlit / Custom Lit, Decal, Fullscreen, Canvas, Six Way, Terrain Lit. **Built-in:** Lit, Unlit, Canvas. **HDRP:** Lit (every material type), StackLit, Hair, Fabric, Eye, Unlit, Decal, Fullscreen, Canvas, Six Way, Fog Volume, Physically Based Sky, Terrain Lit. Custom Render Texture target. VFX-target graphs render as Lit / Unlit on ordinary meshes |
+| Lighting | Generated Lit classes use their **pipeline's** response (`TOOLKIT.PipelineLightingPlugin` modes `urp`, `builtin`, `hdrp`, `sixway`); Hair, Eye, Fabric and StackLit use `TOOLKIT.GraphLightingExtension` |
+| Nodes | Every Unity node except the HDRP Water simulation nodes. Virtual textures are baked to plain textures, tessellation becomes export-time subdivision, URP 2D Light Texture is a screen-space light-accumulation texture, UI element nodes are fed by the element being drawn |
+| Properties | Float, Vector 2/3/4, Color, Boolean, Texture 2D / 2D Array / 3D / Cubemap, Gradient, Matrix, Sampler State, Dropdown, **Global** and **Hybrid Per Instance** scope, Tiling & Offset and Texel Size |
+| Keywords | Material-local `shader_feature` keywords compile as variants; global, `multi_compile` and script-toggled keywords branch at runtime; pipeline keywords resolve from the scene |
+| Custom Function nodes | A toolkit HLSL-subset compiler: control flow, structs, helper functions, `#include` of project and package `.hlsl`, int and bit operations, texture macros and Unity's ShaderLibrary (`GetMainLight`, `GetAdditionalLight`, `SampleSH`, space transforms, depth helpers, …). An unresolved `#if` takes the `#else` branch, as a deviation |
+| Old graphs | Pre-v10 single-JSON graphs, sub-graphs and the FBX-importer graphs load |
+
+**Renderers Babylon lacks are exported as carriers** that host the graph (any graph or plain material):
+
+| Unity | Runtime class |
+|---|---|
+| `DecalProjector` (URP / HDRP) | `TOOLKIT.DecalProjector` — receiver triangles clipped in Unity's decal space, angle / distance fade, rendering layers; rebuilt when the projector or a receiver moves. A scene with no decal renderer feature draws nothing (warned) |
+| URP Full Screen Pass renderer feature, HDRP fullscreen Custom Pass | A post-process from `TOOLKIT.ShaderGraphPass`, ordered before or after the toolkit post-processing chain as Unity injects it |
+| Custom Render Texture with a graph material | `TOOLKIT.ShaderGraphRenderTexture` — GPU updates OnLoad / Realtime / period / OnDemand, double-buffered Self |
+| Skybox material that is a graph | `TOOLKIT.ShaderGraphSky` — draws on Unity's own sky mesh; adds a live environment probe when no baked environment exists |
+| HDRP Fog Volume graph | `TOOLKIT.ShaderGraphFogVolume` (raymarched, no volumetric shadows) |
+| `SpriteRenderer`, `TilemapRenderer`, `LineRenderer`, `TrailRenderer` | `TOOLKIT.SpriteRenderer` / `TilemapRenderer` / `LineRenderer` / `TrailRenderer`; non-graph materials draw unlit, vertex-coloured and alpha-blended |
+| Particle system with a graph material | `TOOLKIT.ShurikenParticles` draws through the generated class with Unity's vertex streams |
+| uGUI Image / RawImage / TMP with a Canvas graph | Rendered per element to a texture inside the Unity UI pipeline (TMP SDF graphs: face / outline / underlay polyfill) |
+| Terrain `materialTemplate` graph | `TOOLKIT.TerrainGraphAdapter` — the terrain's layers, splat maps and holes feed Terrain Texture / Terrain Properties nodes |
+| SpeedTree 8 wind | `TOOLKIT.SpeedTreeWind` drives the graph's wind uniforms |
+
+### Driving graphs from game code
+
+Names are always the graph property's **Unity reference name** (`_BaseColor`, `_DissolveAmount`), not its display name.
+
+```typescript
+// One material (any generated MY.* class is a TOOLKIT.CustomShaderMaterial)
+const mat = mesh.material as TOOLKIT.CustomShaderMaterial;
+mat.setFloat("_DissolveAmount", 0.4);
+mat.setColor("_EdgeColor", new BABYLON.Color3(1, 0.4, 0));      // converted to linear, as Unity does
+mat.setVector("_WindDirection", new BABYLON.Vector3(1, 0, 0));
+mat.setTexture("_MaskTex", maskTexture);
+mat.enableKeyword("_USE_RIM");                                 // compile-time variants rebuild the effect once
+const amount = mat.getFloat("_DissolveAmount");
+
+// Engine-wide globals: Unity's Shader.SetGlobal* / Shader.EnableKeyword
+TOOLKIT.ShaderGlobals.SetGlobalFloat("_TransitionProgress", 0.5);
+TOOLKIT.ShaderGlobals.SetGlobalColor("_FogTint", new BABYLON.Color3(0.5, 0.6, 0.7));
+TOOLKIT.ShaderGlobals.SetGlobalTexture("_RippleMap", rippleTexture);
+TOOLKIT.ShaderGlobals.EnableKeyword("_RAIN_ON");               // enum keyword entry: "<REF>_<ENTRY>"
+
+// A fullscreen graph a script drives (e.g. a transition blit)
+const fx = TOOLKIT.ShaderGraphFullscreen.Create(scene, "MY.FullscreenTransition", { injection: "afterPost" });
+fx.pass.setFloat("_Progress", 0.0);
+// ... later: fx.dispose();
+
+// An On Demand Custom Render Texture
+TOOLKIT.ShaderGraphRenderTexture.Update(scene, "RippleCRT");
+```
+
+| API | Notes |
+|---|---|
+| `setFloat` / `setVector` / `setColor` / `setTexture` / `setMatrix`, `get*`, `enableKeyword` / `disableKeyword` / `isKeywordEnabled` | On every generated material and on `ShaderGraphPass` (fullscreen, CRT, UI hosts). `clone()` keeps the full graph state; never clone through `BABYLON.PBRMaterial.clone()` |
+| `TOOLKIT.ShaderGlobals.SetGlobalFloat/Vector/Color/Texture/Matrix`, `Get*`, `EnableKeyword` / `DisableKeyword` / `IsKeywordEnabled` | Engine-wide, keyed by reference name. Every graph material reading the global updates the next frame. The values Unity held at export are pre-loaded |
+| `TOOLKIT.ShaderGlobals.GetClock(scene)` | `{ time, deltaTime, smoothDeltaTime, frame }`, Unity's `_Time`. One clock per scene, so all graph materials animate in lockstep and never pause while hidden |
+| `TOOLKIT.ShaderGraphFullscreen.Create(scene, className, { camera?, injection?: "beforePost" \| "afterPost", block? })` | Returns `{ pass, postProcess, enabled, dispose() }` |
+| `TOOLKIT.ShaderGraphRenderTexture.Update(scene, name, count?)`, `Initialize`, `Get`, `WhenReady` | Custom Render Textures |
+| `TOOLKIT.ShaderGraphRuntime.CreateMaterialFromBlock(scene, { customMaterial: "MY.X", customFloats, … }, name)` | Build a graph material without a glTF |
+| `TOOLKIT.ShaderGraphRuntime.SetThinInstanceValue(mesh, index, key, value)` | Hybrid Per Instance properties on thin instances (`EnsureThinInstanceBuffers(mesh)` first) |
+| `TOOLKIT.SgShadowDepth.Enabled` | **Default `false`.** Shadows and the depth pass use Babylon's stock depth shader, so wind / vertex displacement and graph clip do **not** show in shadows. Set it to `true` **before the scene loads** only when displaced shadows matter; it costs a full material bind per shadow draw (≈16 ms/frame on a 290-material vegetation scene) and swaying shadows can flicker under TAA |
+
+MaterialPropertyBlocks are applied automatically per renderer (as clones named `<material>#mpb<meshId>`).
+
+### Gotchas
+
+- **Re-export after editing a graph**, with script compilation on. A stale bundle shows the plain-PBR stand-in plus the
+  missing-class warning; in ESM, `shadergraphs.js` must sit beside the scene.
+- **Sampler budget:** WebGPU allows 16 samplers per stage. The runtime drops stock textures the graph never reads,
+  strips dead graph code, shares samplers with the same state, and only then reads the remaining graph textures as
+  neutral values (each reported as a `budget` deviation). Graphs with 13+ textures should be simplified in Unity.
+- **Scene Color / Scene Depth nodes** cost an opaque-scene render target / depth renderer per camera. Use them on water
+  and glass, not everywhere.
+- **Babylon's rough-IBL / irradiance mix is off** on every toolkit material (`mixIblRadianceWithIrradiance = false`) to
+  match Unity; do not turn it back on.
+- **Performance:** check frame time on the heaviest scene after adding many graph materials.
+
+### Known limits — do not over-promise
+
+| Area | Status |
+|---|---|
+| VFX Graph assets | Not exported. Use a Babylon substitute (`unity-authoring-recipes.md` §22) |
+| HDRP | Graphs load and compile, but HDRP visual parity is incomplete: **water surfaces do not render**, the Physically Based Sky atmosphere draws nothing, fog-volume looks are approximate |
+| Clear coat | Environment term not ported (slightly bright under the probe) |
+| Subsurface | An in-shader per-light wrap polyfill, not Babylon subsurface |
+| Hair | Marschner is close; cinematic hair is treated as non-cinematic |
+| Tessellation | Flat export-time subdivision; Phong is approximated; skinned and blend-shape meshes are not subdivided |
+| Decals | A static projector does not pick up receivers that move in later; channel toggles are approximate |
+| 2D | Light2D sorting-layer targeting is ignored; SpriteMask is not drawn |
+| UI | UI Toolkit SDF text / gradient and uGUI TMP graphs are polyfills |
+| SpeedTree | Leaves render slightly bright; `SpeedTreeWind` stands in for the UV3 wind data glTF drops |
+| Smaller substitutions | MirrorOnce → Mirror; Exposure previous-frame = current; LOD crossfade fixed off |
 
 ---
 
@@ -423,3 +571,5 @@ Note the sRGB `pow(rgb, 2.2)` on the overlay: albedo lives in **linear** space i
 11. Any per-frame time accumulation in `update()` is frame-id guarded.
 12. Both classes are passed to `TOOLKIT.SceneManager.RegisterClass`.
 13. Nothing on the "do not rebuild" list was reimplemented from scratch.
+14. No look that exists as a Unity Shader Graph was hand-ported, and no generated `MY.*` file under `Materials/Generated/` was edited.
+15. Graph properties and keywords are set by their Unity **reference** names, through `setFloat` / `enableKeyword` or `TOOLKIT.ShaderGlobals`.

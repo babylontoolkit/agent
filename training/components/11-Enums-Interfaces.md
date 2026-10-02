@@ -464,7 +464,7 @@ interface NodeMetadata {
     physics: any;            // Physics shape metadata
     navigation: any;         // Navigation agent parameters
     audio: any;              // AudioSource metadata
-    particles: any;          // Shuriken particle system data
+    particles: any;          // unused — particles arrive as a components[] entry (TOOLKIT.ShurikenParticles)
     postprocessing: any;     // Volume effects data
     terrain: any;            // Terrain data
     vehicle: any;            // WheelCollider / vehicle data

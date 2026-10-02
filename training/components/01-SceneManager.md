@@ -228,6 +228,7 @@ static GetSkinnedMesh(transform): BABYLON.AbstractMesh
 static FindSceneLightRig(transform): BABYLON.Light
 static FindSceneCameraRig(transform): BABYLON.FreeCamera
 static GetDefaultSkybox(scene): BABYLON.AbstractMesh
+static GetDefaultSkyboxMaterial(scene): BABYLON.Material  // TOOLKIT.ProceduralSkyMaterial for a Unity procedural sky
 ```
 
 ### Metadata
@@ -265,7 +266,7 @@ const dt = this.getDeltaSeconds(); // calls SceneManager.GetDeltaSeconds(this.sc
 
 ```typescript
 static RunOnce(scene, func, timeout?): void          // execute once before next render
-static DisposeScene(scene, clearColor?): void        // dispose + clear buffer
+static DisposeScene(scene, clearColor?): void        // the ONE supported in-page unload — never scene.dispose()
 static SafeDestroy(transform, delay?, disable?): void // dispose after delay ms
 static WaitForSeconds(seconds): Promise<void>        // async sleep
 static GetRootUrl(scene): string                     // root URL of loaded scene

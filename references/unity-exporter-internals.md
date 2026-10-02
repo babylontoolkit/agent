@@ -190,7 +190,7 @@ Same scene, exported both ways:
 | Extension | `.gltf` (`ExportFileFormat`) | `.glb` (`PrefabFileFormat`) |
 | Written to | `Export/scenes/` | `Export/containers/` — the `folder` given, no `scenes/` subfolder |
 
-Skybox cubemap faces (`Default-Skybox_px.png` …) are emitted beside the level and **not** beside the container.
+Skybox files (`assets/<sky>_px.png` …, `assets/<sky>_sky.env`, `assets/<sky>_ibl.env`) are emitted beside the level and **not** beside the container. Unity's stock Default-Skybox is procedural and writes no sky files except its IBL.
 
 **File names.** With the default `ExportCaseMode = UseDefaultCasing` (0), a level keeps its scene's name
 (`Level01.gltf`); with `ForceLowerCasing` (1) every output path and file name is lowercased (`level01.gltf`).
@@ -258,7 +258,7 @@ Editor that has already cached `CanvasToolsInfo.Instance` will not see it.
 | `BuildWebProject` / `ProgressiveWebApp` | Emit the web project / PWA assets |
 | `AutoDeployProject` | Deploy after a `Project` build (**ignored by `Automate`**) |
 | `ExportCaseMode` | `UseDefaultCasing` = 0 (default), `ForceLowerCasing` = 1 lowercases every output path and filename |
-| `TextureImageFormat` | `PNG` = 0 (default), `WEBP` = 2, `KTX2` = 3. There is no max size for materials: set `maxTextureSize` on the importer. `TerrainLayerMaxSize` (default 1024) caps terrain layers only. Keep lightmaps on PNG |
+| `TextureImageFormat` | `PNG` = 0 (default), `WEBP` = 2, `KTX2` = 3. There is no max size for materials: set `maxTextureSize` on the importer. Terrain layer, control, hole and grass images are always JPG / PNG at their imported size, whatever this says. Keep lightmaps on PNG |
 | `DefaultWebpImageCommandType` | WEBP encoding — **lossless by default**; switch to lossy for real savings |
 | `DefaultKtx2RenderingQuality` / `DefaultKtx2ImageCompression` | KTX2 UASTC quality (default 3) / zstd level (default 9) |
 | `ForceHighBitDepth` | Default `false`; `true` forces 16-bit normal maps to PNG |
@@ -270,7 +270,9 @@ Editor that has already cached `CanvasToolsInfo.Instance` will not see it.
 | `ExportNavigation` | Export the toolkit Recast navmesh (`unity-authoring-recipes.md` §12) |
 | `ExportMeshInstances` | Default `true`: repeated meshes become glTF mesh instances (off for lightmapped meshes) |
 | `FreezeStaticMeshes` | Default `true`: static-flagged objects get `freezeworldmatrix` |
-| `EnableAntiAliasing` | Default `true`; MSAA needs it |
+| `EnableAntiAliasing` ("Antialias Mode") | Default `true`: canvas MSAA. Only cameras with no post chain use it; on a post chain the camera's MSAA goes on the chain head regardless |
+| `CompressSceneFiles` ("Compress Scenes") | Default `false`. Also writes gzip twins: `<scene>.gz.gltf` + `.gz.bin` (or `.gz.glb`), `<scene>.probe.gz.bin`, `<scene>.nav.gz.bin`. The `.gz` scene points only at twins. Hosts must send `Content-Encoding: gzip` for any path whose last segment contains `.gz.` (query string excluded) — the runtime has no gzip code (`project-installer.md`) |
+| `PreferCompression` ("Enforce Compression") | Default `true`. With Compress Scenes on, the preview opens the `.gz.` scene |
 | `GpuRenderingMode` | `0` off (default), `1` / `2` WebGPU snapshot rendering |
 | `AnimBakingFrameRate` | Clip bake rate (default 30) |
 | `TerrainExportMode` | `0` heightfield (default), `1` legacy mesh |
@@ -338,7 +340,7 @@ A **prefab export with an explicit `folder`** writes straight into that folder �
 | `There is a project compile in progress.` | `EditorApplication.isCompiling` | Poll `unity command recompile_status` until `completed` |
 | `There is a lightmap bake in progress.` | `Lightmapping.isRunning` | Wait or cancel the bake |
 | `Pro tools license expired / does not have seat` | License gate in `BuildProject` | Sign into Unity as the licensee; link the project to the licensed org |
-| `Pro Tools Disabled: Exporting standard community edition content` | No `Assets/[Config]/license.json` | **NOT harmless.** The export runs but silently drops every physics and collision block, and the Animator, AudioSource, NavMeshAgent, CharacterController, ParticleSystem, Canvas, Terrain, VideoPlayer, PostProcess, camera-AA and LOD components. See §0 |
+| `Pro Tools Disabled: Exporting standard community edition content` | No `Assets/[Config]/license.json` | **NOT harmless.** The export runs but silently drops every physics and collision block, and the Animator, AudioSource, NavMeshAgent, CharacterController, ParticleSystem, LineRenderer, TrailRenderer, SpriteRenderer, TilemapRenderer, Canvas, Terrain, VideoPlayer, PostProcess, camera-AA and LOD components. See §0 |
 | Exported glTF has geometry and scripts but no physics or native components | Community edition — the Pro gate stripped them | Install `license.json`, verify `ToolkitManager.IsPro()` is true, re-export (§0) |
 | `CanvasTools` type not found in `eval` | Toolkit package missing or not compiled | §5, then `recompile` |
 | Prefab exported with skybox/fog | `selection` was `null` | Pass a non-empty `Transform[]` (§10) |
@@ -348,9 +350,9 @@ A **prefab export with an explicit `folder`** writes straight into that folder �
 | Prefab export produced no file / odd extension | `PrefabFileFormat` set to a non-enum value (e.g. `2`) | `GLB` is `1` (§13) |
 | Level exported but has no navigation | `NavigationMesh.bin` missing — Unity's `bake_navmesh` is not what the exporter reads | Bake the toolkit Recast surface (`unity-authoring-recipes.md` §12) |
 | Baked lights are not in the node list (`Baked lights` warning) | Expected — a Baked light is carried by its bake (lightmaps + light probes) | Nothing to fix. If a Baked light had children, they were skipped too — re-parent them (`unity-authoring-recipes.md` §3) |
-| Dynamic objects look unlit or flat | No light-probe network: missing `SceneController`, ambient mode not Skybox, no IBL bake, no `LightProbeGroup` / APV, or an asset-container export | Fix whichever is missing and re-bake (`unity-authoring-recipes.md` §5) |
+| Dynamic objects look unlit or flat | No light-probe network: missing `SceneController`, no baked `LightProbeGroup` / APV, or an asset-container export | Fix whichever is missing and re-bake (`unity-authoring-recipes.md` §5) |
 | Browser frame differs from the Unity frame of the same camera | A feature carried differently, or a toolkit parity gap | Find the feature's row in `unity-authoring-recipes.md` §0; if none explains it, record a parity gap with both captures (§21) |
-| Sky exported but no reflections / flat PBR | IBL source `ReflectionProbe-N.exr` never baked (`SKYBOX: You must generate the scene lighting`) | `bake_lighting` after setting the skybox (`unity-authoring-recipes.md` §7) |
+| Sky exported but reflections are sharp / unfiltered (no prefiltered IBL) | IBL source `ReflectionProbe-N.exr` never baked (`SKYBOX: You must generate the scene lighting`) | `bake_lighting` after setting the skybox (`unity-authoring-recipes.md` §7) |
 | `unity pipeline install --version` rejected | Flag collides with global `-V` | Use `--package-version` |
 | `Pipeline package requires Unity 6.0 or higher. Project version: unknown` on a 6000.x project | Project creation had not finished — `ProjectVersion.txt` is written last | Wait for `unity projects new` to exit (§3) |
 | `PIPELINE_MANIFEST_WRITE_FAILED` | `unity pipeline install` into a project an Editor already has open | Install before opening, or `unity close` first |

@@ -7,7 +7,7 @@
 > `new-unity-project`), © 2026 Unity Technologies, used under the Unity Companion License. Every statement about
 > how a feature reaches BabylonJS was checked against the exporter source (`ProfessionalEdition/Core`: `CVTools.cs`,
 > `GLTFMetaDataExporter.cs`, `UnityTools_*.cs`, `PostProcessLutBaker.cs`, `TerrainDataExporter.cs`) and the
-> runtime source (`TOOLKIT` runtime `core/`, `pro/`, `dlc/`). Toolkit source tree 9.27.1, published 9.25.1.*
+> runtime source (`TOOLKIT` runtime `core/`, `pro/`, `dlc/`). Toolkit source tree 9.28.0, published 9.25.1.*
 
 ### What this pipeline is
 
@@ -46,7 +46,7 @@ recreates.
 > - Keep working in Unity, and let the milestone browser checks (§21) confirm fidelity.
 > - The tables in this document explain how each feature is carried. Use them to **diagnose a specific
 >   difference seen at a milestone**, and to pick between two equally good authoring options (Metallic over
->   Specular, mesh grass over texture grass, Baked Indirect over Distance Shadowmask).
+>   Specular, Baked Indirect over Distance Shadowmask).
 > - When the Unity frame is right, the browser frame is wrong, and no row lists a fix, that is a **toolkit parity
 >   gap**. Record it for the toolkit (the feature, the scene, both captures) instead of restyling the scene
 >   around it.
@@ -63,22 +63,24 @@ How to call the typed commands is in `unity-editor-commands.md`. The export itse
 | Meshes, skinned meshes, blend shapes | **Direct** | ≤ 4 bone influences; blend shapes take the last frame (§13) |
 | URP Lit (Metallic), Complex Lit, Unlit, Built-in Standard, HDRP Lit → glTF PBR + KHR extensions | **Direct** | Author URP Lit in the **Metallic** workflow; Specular workflow and Simple Lit specular are ignored (§2) |
 | Detail maps, parallax, premultiply / additive / multiply blending | **Direct** (material extras, rendered) | §2 |
-| Shader Graph | **Toolkit** — transpiled to a TypeScript material class | Level exports only (§2) |
+| Shader Graph (every URP / Built-in / HDRP sub-target, sub-graphs, Custom Function nodes, keywords, globals) | **Toolkit** — transpiled at export to a generated `MY.*` material class | Every export path; per-node polyfills, never a whole-graph fallback (§2, `shader-materials.md`) |
 | Directional / Point / Spot, **Realtime** | **Direct** | §3 |
 | **Mixed** lights | **Direct + Bake** — realtime direct light, baked indirect and shadowmask | The right mode for a sun (§3) |
 | **Baked** lights, Area / Rect / Disc lights | **Bake** — lightmaps light static objects, light probes light dynamic ones | The light node itself is not written, and **its children are skipped too** (§3) |
 | Lightmaps: Baked Indirect, Shadowmask, Subtractive | **Bake** | Distance Shadowmask is approximated (§4) |
 | Directional lightmaps | **Bake**, approximated as non-directional | Bake `NonDirectional` so Unity previews what ships (§4) |
 | Emissive surfaces lighting the scene | **Bake** (the emission itself is Direct) | Material GI = Baked (§4) |
-| Light probes / Adaptive Probe Volumes | **Bake** → `TOOLKIT.LightProbeNetwork` | Needs Skybox ambient, the baked IBL and a `SceneController`; levels only (§5) |
+| Light probes / Adaptive Probe Volumes | **Bake** → `TOOLKIT.LightProbeNetwork` | Needs baked probes (Light Probe Group or APV) and an active `SceneController`; works in every ambient mode; levels only (§5) |
 | Reflection probes (Baked / Custom), box projection | **Bake** | One probe per renderer; no blending. **Never use Realtime mode** (§6) |
-| Skybox, IBL `.env`, spherical-harmonic ambient | **Bake** | Levels only; needs `Camera.main` with Skybox clear flags (§7) |
-| Gradient / Color ambient | **Direct**, approximated with a hemispheric light | No light probes in these modes (§7) |
+| Skybox — Cubemap, 6 Sided, **Procedural** (incl. Default-Skybox), Shader Graph skies; IBL `.env`, spherical-harmonic ambient | **Direct** (sky textures copied; Procedural and Shader Graph skies drawn live) + **Bake** (IBL `.env`) | Levels only; needs a camera with Skybox clear flags. `Skybox/Panoramic` is not carried (§7) |
+| Gradient / Color ambient | **Direct**, approximated with a hemispheric light | Light probes still light probe-lit renderers (§5, §7) |
 | Fog (Linear / Exp / Exp2; HDRP Fog volume) | **Direct** | §8 |
 | Shadows — cascades, distance, resolution, softness | **Direct**, from the URP asset | §3 |
 | URP / HDRP / PPv2 Volumes | **Toolkit** `PostProcessor` + **Bake** (the whole colour grade becomes a LUT) | Pro (§9) |
-| Camera — projection, FOV, clip, clear, HDR, physical camera, FXAA / SMAA / TAA / MSAA | **Direct** | Anti-aliasing owner is Pro (§9) |
-| Terrain — heightmap, ≤ 16 layers, holes, trees, mesh details, wind, TerrainCollider, terrain lightmap | **Toolkit** `TerrainBuilder` | Pro. Texture-grass details are not rendered — use mesh details (§10) |
+| Camera — projection, FOV, clip, clear, HDR, physical camera | **Direct** | §9 |
+| Camera anti-aliasing — FXAA / SMAA / TAA / MSAA | **Toolkit** `PostProcessor` plugin passes (MSAA on the chain head, or the canvas) | Pro; per-pipeline gating (§9) |
+| PPv2 Auto Exposure (eye adaptation) | **Toolkit** `AutoExposurePlugin` | Built-in only; HDRP Exposure is a static export value (§9) |
+| Terrain — heightmap, ≤ 16 layers, holes, Shader Graph terrain material, trees (LODGroup, SpeedTree), mesh details, texture grass, wind, TerrainCollider, terrain lightmap | **Toolkit** `TerrainBuilder` | Pro. HDRP draws no texture grass (neither does Unity's HDRP). Terrain lightmaps need `.gltf` (§10) |
 | Rigidbody, Box / Sphere / Capsule / Mesh / Terrain / Wheel colliders, physics materials, triggers, CharacterController | **Direct / Toolkit** (Havok) | Pro (§11) |
 | Physics joints, gravity | **Toolkit** — Starter joint components, `SceneController` gravity | §11 |
 | Navigation mesh | **Bake** — the toolkit's Recast `UniRcNavMeshSurface` | Levels only (§12) |
@@ -87,18 +89,22 @@ How to call the typed commands is in `unity-editor-commands.md`. The export itse
 | Animator state machines, blend trees, layers, avatar masks, root motion, events | **Toolkit** `AnimationState` | Pro. Direct blend trees and additive layers are not carried (§13) |
 | AudioSource, AudioListener | **Toolkit** `AudioSource`; the camera system is the listener | Pro (§14) |
 | Prefabs | **Toolkit** — layer-31 in-level prefabs, or asset containers | §15 |
-| Particle systems (Shuriken, every module) | **Toolkit** `ShurikenParticles` | Pro (§17) |
-| Screen-space uGUI Canvas / UIDocument, TMP text in a Canvas | **Toolkit** `UserInterface` → Babylon GUI | Pro (§17) |
+| Particle systems (Shuriken, every module; CPU-simulated), incl. Shader Graph particle materials | **Toolkit** `ShurikenParticles` | Pro. Noise, distortion and lit-particle shading approximated (§17) |
+| LineRenderer, TrailRenderer | **Toolkit** `LineRenderer` / `TrailRenderer` (ribbon mesh) | Pro (§17) |
+| SpriteRenderer, TilemapRenderer, 2D lights (for Sprite / Shader Graph materials) | **Toolkit** `SpriteRenderer` / `TilemapRenderer` carriers, `Light2DTexture` | Pro. No 2D physics; SpriteMask not drawn (§17) |
+| DecalProjector, URP Full Screen Pass renderer feature, HDRP fullscreen Custom Pass, Custom Render Textures | **Toolkit** `DecalProjector`, `ShaderGraphPass`, `ShaderGraphRenderTexture` | Their materials are Shader Graphs (`shader-materials.md`) |
+| uGUI Canvas (Overlay / Camera / World Space), UI Toolkit `UIDocument` (overlay / world / render-texture panels), TMP and Legacy text | **Toolkit** `UserInterface` → Babylon GUI, laid out in the browser with Unity's rules | Pro (§17) |
 | VideoPlayer (Material Override) | **Toolkit** `WebVideoPlayer` | Pro (§17) |
 | LOD groups | **Direct** | Pro; distances need a GUI Editor (§17) |
 | Babylon Toolkit script components (`EditorScriptComponent`) | **Toolkit** — TypeScript classes | Not licence-gated (§18) |
 | Tags, layers, static flags | **Direct** | §19 |
-| Timeline, VFX Graph, Trail / Line renderers, cookies, realtime GI, occlusion culling, URP renderer features, 2D | **Substitute** | §22 |
+| Timeline, VFX Graph, cookies, realtime GI, occlusion culling, URP renderer features other than Full Screen Pass / Decal, 2D physics | **Substitute** | §22 |
 
 **Pro** means the project needs a valid Babylon Toolkit `license.json` (`unity-exporter-cli.md` §0). Without it
 the export still "succeeds", but the following are **silently omitted**:
 - every `physics` and `collision` block, including static colliders;
-- terrain, AnimationState, AudioSource, NavigationAgent, CharacterController, particles, UI, video;
+- terrain, AnimationState, AudioSource, NavigationAgent, CharacterController, particles, line / trail / sprite /
+  tilemap renderers, UI, video;
 - post-processing volumes, LOD groups and camera anti-aliasing.
 
 Meshes, materials, lights, cameras, bakes, animation clips and script components still export.
@@ -150,7 +156,8 @@ unity command save_scene --project-path "$PROJ"
 - **Instances:** the same material splits into `…Instance…` copies when renderers differ in lightmap index or
   reflection probe.
 - **Textures:** re-encoded in `TextureImageFormat` (PNG `0`, WEBP `2`, KTX2 `3`). Two exceptions: 16-bit normal
-  maps always stay PNG16, and skybox KTX2 is off by default.
+  maps always stay PNG16, and skybox faces never become KTX2 (with WEBP, six-face skies export WEBP faces;
+  single-file `.env` / `.hdr` / `.exr` skies ship as-is). Terrain images are always JPG / PNG.
 
 **The specular setting.** **`UseSpecularMaterials`** (default **on**) selects one of two whole export paths:
 - **On (Specular path):** metallic-roughness plus `KHR_materials_specular`. URP shaders get their specular factor
@@ -174,9 +181,9 @@ No material or texture feature is licence-gated.
 | URP **Baked Lit** | ⚠️ exported as lit PBR — use Unlit with lighting in the albedo, or Lit + a lightmap |
 | HDRP Lit | Generic path (warned) that still carries `_BaseColorMap`, `_MaskMap` (metallic/roughness + AO), `_NormalScale`, `_EmissiveColor`, and the `_MaterialID` features. Subsurface scattering is dropped; HDRP Unlit's `_UnlitColor` is not read |
 | Unrecognised shaders | Generic PBR by property sniffing, warned *"unrecognised shader … map it or give it a SHADER_CONTROLLER block"* |
-| **Shader Graph** | `customShader` + a generated TypeScript material class (transpiled on **level** exports; plain PBR in asset containers and for terrain prototypes). With *Allow Material Override* off, the graph's own surface / alpha / cull settings win |
+| **Shader Graph** | `customMaterial: "MY.<Graph>"` + a generated TypeScript material class, transpiled on **every** export path (levels, selections, prefabs / asset containers, terrain prototypes and templates) for the active pipeline's target. Unsupported nodes are polyfilled or neutralised one by one and reported; plain PBR only for an unreadable graph or a device compile failure. With *Allow Material Override* off, the graph's own surface / alpha / cull settings win. **Read `shader-materials.md` → Unity Shader Graphs** before scripting one |
 | `Babylon/…`, `Babylon/Custom/…`, `Custom/…` | Toolkit custom shader (`SHADER_CONTROLLER` block), falling back to `UniversalShaderMaterial` with a warning |
-| `Legacy Shaders/*`, `Particles/Standard Unlit` | No custom hook — convert to a PBR shader |
+| `Legacy Shaders/*`, and any particle shader on a **mesh** renderer | No custom hook — convert to a PBR shader. On a `ParticleSystem` renderer the particle shader families are carried (§17) |
 
 **Author it:**
 
@@ -221,8 +228,8 @@ Double-sided comes from `_Cull` = 0, `_DoubleSidedEnable`, a `/DoubleSided` shad
 face set to Both.
 
 **Textures.** The exporter has **no maximum texture size for materials**: every texture ships at its Unity
-**import** size, so set `maxTextureSize` on the importer (§16, §20). Terrain layers are the exception, capped
-by `TerrainLayerMaxSize`.
+**import** size, so set `maxTextureSize` on the importer (§16, §20). Terrain layers follow the same rule: each
+exports at its imported size (§10).
 - **Tools:** WEBP needs the **`cwebp`** tool and KTX2 the **`ktx`** tool on the machine. KTX2 is UASTC, zstd,
   mipmaps; normal maps are encoded `--normalize`.
 - **WEBP is lossless by default** (`DefaultWebpImageCommandType`). Switch it to lossy for real savings.
@@ -372,11 +379,17 @@ setting loses range and is warned.
 - **Sources:** classic `LightProbeGroup`s or Adaptive Probe Volumes. APV is capped at 8192 probes, and every
   non-lightmapped renderer is probe-lit under APV.
 
-**All of these are required, or nothing is written:**
-- `RenderSettings.ambientMode` = **Skybox**;
-- the IBL environment baked (§7);
-- an **active `SceneController`**;
+**Required, or the network never loads:**
+- baked probes (`bake_lighting`);
+- an **active `SceneController`** (it hosts the `TOOLKIT.LightProbeNetwork` component; without one the
+  `<scene>.probe.bin` is written but never loaded);
 - a **level** export — light probes never ship in asset containers.
+
+The ambient mode does not matter. Under Gradient or Color ambient, probe-lit meshes use the probe SH and drop the
+hemispheric fill. When APV is active, classic Light Probe Group data is ignored (warned). APV statics that are not
+anchored ship a 6-point bounds fit, not a centre sample; Unity's `normalBias` is applied, `viewBias` is not. Terrain
+tree and rock instances whose prototype uses probes are lit per instance, and a runtime-instantiated prefab loads the
+probe data itself.
 
 A renderer is probe-lit only if it is a Mesh or SkinnedMeshRenderer, **not** lightmapped, with *Blend Probes*
 (or Proxy) usage.
@@ -424,6 +437,9 @@ unity command bake_lighting --project-path "$PROJ"     # baked probes bake with 
 - Under URP, turn probe blending **off** in the URP pipeline asset. Box projection is also switched on there.
 - The component's public properties for those flags are read-only in some versions. Set them through the
   serialized fields (`set_serialized_field` / `SerializedObject`), not the C# property.
+- Toolkit PBR materials turn off Babylon's `brdf.mixIblRadianceWithIrradiance` to match Unity's mip-only probe
+  reflections. A plain `BABYLON.PBRMaterial` you create in a script still mixes, so rough surfaces reflect sky
+  colour inside a probe zone — call `TOOLKIT.CustomShaderMaterial.ApplyUnityReflectionModel(mat)` on it.
 
 ---
 
@@ -435,7 +451,8 @@ unity command bake_lighting --project-path "$PROJ"     # baked probes bake with 
   spherical-harmonic floats (`sh`) that become the scene's ambient in **Skybox ambient mode**.
 
 **Requirements:**
-- `Camera.main` with **Skybox clear flags**;
+- a camera with **Skybox clear flags**: `Camera.main`, or the first enabled camera when none is tagged MainCamera
+  (HDRP ignores clear flags; its Visual Environment decides);
 - a skybox material in `RenderSettings.skybox`;
 - **Reflections Source = Skybox** (`RenderSettings.defaultReflectionMode`);
 - a lighting bake.
@@ -443,19 +460,22 @@ unity command bake_lighting --project-path "$PROJ"     # baked probes bake with 
 `defaultReflectionResolution` becomes the IBL cube size. **Custom** reflection mode exports its cubemap without
 the camera check.
 
-| Skybox material shader | Export |
+| Skybox material shader | Export → runtime |
 |---|---|
-| `Skybox/Cubemap` (`_Tex`) | One RGBD `.env` (Compressed), a copied `.hdr/.exr/.dds`, or six RGBD PNG faces |
-| `Skybox/6 Sided`, `Mobile/Skybox`, `Skybox/Babylon Toolkit` | Six face textures |
-| `Skybox/Procedural` | A `procedural` block (sun disk/size, atmosphere, tint, ground, exposure) — no texture |
-| HDRP `HDRISky` | Its cubemap as the sky. From the source, HDRP gets no `.env` IBL, SH or probe network unless Reflections Source is Custom (unverified) |
-| Anything else (incl. HDRP PhysicallyBased/Gradient sky) | **Skybox and reflections disabled** (warned) |
+| `Skybox/Cubemap` (`_Tex`) | IBL Texture Format `.env` (default): one unfiltered RGBD `assets/<cube>_sky.env`, pre-multiplied by min(`_Exposure`, 1). Otherwise the `.hdr/.exr/.dds` source is copied, or six RGBD faces are split |
+| `Skybox/6 Sided`, `Mobile/Skybox`, `Skybox/Babylon Toolkit` | Six faces. PNG or `_rgbd`-named sources are copied as they are; anything else is re-encoded (warned *"Must encode PNG skybox textures"*) |
+| `Skybox/Procedural` (also Unity's stock **Default-Skybox**) | A `procedural` block (sun disk / size / convergence, atmosphere thickness, sky tint, ground colour, exposure, the `RenderSettings.sun` name). Drawn **live** by `TOOLKIT.ProceduralSkyMaterial` on Unity's own sky mesh, following the sun every frame. No texture |
+| A **Shader Graph** skybox material | The generated class draws the sky through `TOOLKIT.ShaderGraphSky` (class must be in the bundle — no class, no sky) |
+| HDRP `HDRISky` | Its cubemap through the `Skybox/Cubemap` path, exposure from the sky's intensity mode. No baked `.env` IBL unless Reflections Source = Custom. HDRP sky brightness parity is open |
+| HDRP `PhysicallyBasedSky` in Material mode with a PBR Sky graph | Graph sky, as above; the atmosphere itself is not emulated |
+| HDRP plain PhysicallyBased, Gradient, legacy Procedural sky | No sky (warned *"procedural skies have no cubemap to export"*) |
+| `Skybox/Panoramic` and anything else | No sky and no `.env` IBL (warned *"shader type is unsupported"*); ambient SH still ships. Re-import the panorama as a cubemap (`textureShape` 2) and use `Skybox/Cubemap` |
 
 | Ambient mode | Result |
 |---|---|
 | **Skybox** | Spherical-harmonic ambient from the baked sky, plus the light-probe network (§5). **Use this** |
-| Gradient | A hemispheric light (sky and ground colours; the equator colour is dropped). No light probes |
-| Color | A hemispheric light (ground = half the colour). No light probes |
+| Gradient | A hemispheric light (sky and ground colours; the equator colour is dropped). Light probes still apply |
+| Color | A hemispheric light (ground = half the colour). Light probes still apply |
 
 **Author it:**
 
@@ -476,8 +496,41 @@ Import an HDR panorama as a cubemap first: `set_import_settings --asset Textures
 (`2` = Cube).
 
 **Trap:** `SKYBOX: You must generate the scene lighting` in the log means the IBL source `.exr` does not exist.
-Bake lighting after setting the skybox. Without it the level has a sky but **no image-based lighting**, and PBR
-materials look flat.
+Bake lighting after setting the skybox. Without a bake there is no prefiltered IBL:
+- a textured sky becomes its own unfiltered specular environment, so rough metals reflect a sharp sky;
+- a Procedural or Shader Graph sky gets a 128 px live capture of the sky;
+- diffuse ambient comes from the exported ambient SH (Skybox ambient mode).
+
+Always bake for parity.
+
+**Procedural sky at runtime** (`TOOLKIT.ProceduralSkyMaterial`, every edition):
+
+| Item | Fact |
+|---|---|
+| Class | Extends `TOOLKIT.StandardShaderMaterial`; `getClassName()` returns `"StandardMaterial"`, so test with `instanceof`. `TOOLKIT.SceneManager.GetDefaultSkyboxMaterial(scene)` returns it for a procedural level |
+| Mesh | `ProceduralSkyMaterial.CreateSkyMesh(name, scene, size = 1000)` — Unity's 1680-triangle sky sphere. Scattering is per vertex, so the horizon only matches on this mesh |
+| Properties (Unity names) | `sunDisk` (0 None, 1 Simple, 2 High Quality), `sunSize`, `sunSizeConvergence`, `atmosphereThickness`, `exposure`, `skyTint`, `groundColor` (sRGB `BABYLON.Color3`) |
+| Sun | `sunDirection` / `sunColor` overrides, else `sunLight`, else the light named `sunName`, else the brightest enabled DirectionalLight. Re-read every frame, so rotating the light moves the sun (day/night cycles just rotate the light) |
+| Reflections | A baked `.env` wins. With none, `createEnvironmentProbe(skyMesh, 128)` captures the sky once (diffuse locked to Unity's ambient SH); call `refreshEnvironment()` after moving the sun a lot |
+
+```typescript
+const sky = TOOLKIT.ProceduralSkyMaterial.CreateSkyMesh("Sky", scene, 1000);
+sky.infiniteDistance = true; sky.isPickable = false;
+const mat = new TOOLKIT.ProceduralSkyMaterial("SkyMat", scene);
+mat.initMaterial();                       // runs awake(): unlit, both faces
+mat.sunLight = sun;                       // a BABYLON.DirectionalLight
+sky.material = mat;
+mat.createEnvironmentProbe(sky, 128);     // only when the scene has no baked .env
+```
+
+**Sky authoring rules:**
+- Make the sun **Mixed** and assign it to `RenderSettings.sun` (Lighting window → Sun Source). A Baked sun is not
+  exported, so the procedural sky falls back to another light.
+- Keep the project **Linear** (a procedural sky in Gamma is warned). Built-in skyboxes declare `[Gamma] _Exposure`;
+  the exporter linearises it, so author the value Unity shows and never compensate by hand.
+- Every procedural-sky level writes its IBL to the same `assets/procedural_skybox_ibl.env`; export two such levels to
+  separate folders.
+- Known gaps: the procedural sun disc renders brighter than Unity's; HDRP sky / exposure parity is open.
 
 ---
 
@@ -506,45 +559,57 @@ return "ok";' --project-path "$PROJ"
 
 ---
 
-## 9. Post-processing (URP Volumes) and the camera
+## 9. Post-processing (PPv2 / URP / HDRP Volumes) and the camera
 
 **Reaches BabylonJS as** (Pro). Each enabled `Volume` (URP/HDRP) or `PostProcessVolume` (PPv2) becomes a
 `TOOLKIT.PostProcessor` component with `isglobal`, `weight`, `priority`, `blenddistance`, `bounds` and an
 `effects[]` list, read from the volume's `sharedProfile`.
-- **Colour grading.** The volume's whole colour grade is **baked into a LUT strip PNG**
-  (`assets/<volume>_lut.png`) and replayed by the toolkit's HDR grading plugin. That grade covers tonemapping,
-  contrast, saturation, hue, colour filter, white balance, channel mixer, lift/gamma/gain,
-  shadows/midtones/highlights, split toning, curves and ColorLookup. It is baked in HDR (LogC) with the
-  tonemapper inside. Post-exposure stays a runtime value.
-- **Tonemapping inheritance.** A volume that does not override Tonemapping inherits it from the pipeline
+- **Colour grading.** The volume's grade is **baked into one 32³ LUT strip PNG** (`assets/<volume>_lut.png`; URP
+  also writes `_lut_<mode>` tone-mapper variants). It covers tonemapping, contrast, saturation, hue shift, white
+  balance, channel mixer, lift/gamma/gain, shadows/midtones/highlights, split toning, curves and ColorLookup.
+  - **HDR path:** PPv2 `HighDefinitionRange` / `External` and every URP volume, on an HDR camera — a LogC strip with
+    the tonemapper inside, applied by `ColorGradingHdrPlugin`, post-exposure a runtime uniform.
+  - **LDR path:** PPv2 `LowDefinitionRange`, a camera without HDR, and every HDRP export — the strip goes through
+    Babylon image processing. PPv2 LDR ignores the tonemapper, as Unity does.
+- **Tonemapping inheritance (URP).** A volume that does not override Tonemapping inherits it from the pipeline
   defaults.
-- **Pipeline defaults.** URP's **default volume profiles** (the global default at priority -20000, the quality
-  asset's at -10000) are exported onto the main camera, so the look matches Unity even with no scene Volume.
+- **Pipeline defaults.** URP's two **default volume profiles** (global at priority -20000, quality asset at -10000)
+  are exported onto `Camera.main`, so the look matches Unity with no scene Volume. HDRP: only the default-settings
+  volume's Exposure and Tonemapping are exported, into the scene's image processing (levels only); its other effects
+  need a scene Volume.
 
-| Effect | How it reaches BabylonJS |
-|---|---|
-| Tonemapping, ColorAdjustments, WhiteBalance, ChannelMixer, LiftGammaGain, ShadowsMidtonesHighlights, SplitToning, ColorCurves, ColorLookup (PPv2 ColorGrading) | **Bake** → the LUT |
-| Bloom, Vignette, ChromaticAberration, FilmGrain / Grain, LensDistortion | **Toolkit** post-process plugins |
-| DepthOfField, MotionBlur | **Direct** → Babylon's default rendering pipeline / motion blur |
-| HDRP ScreenSpaceAmbientOcclusion, PPv2 AmbientOcclusion | **Direct** → SSAO2 |
-| HDRP ScreenSpaceReflection, PPv2 SSR (Deferred) | **Direct** → SSR pipeline |
-| HDRP Exposure, PPv2 AutoExposure | **Toolkit** auto-exposure |
-| PaniniProjection, ScreenSpaceLensFlare, anything else | **Substitute** (warned) — a custom Babylon post-process or `LensFlareSystem` in a script component |
-| URP **renderer features** (including the SSAO feature) | **Substitute** — not read; add `SSAO2RenderingPipeline` etc. from a script component |
+| Unity effect | Reaches BabylonJS as | Notes |
+|---|---|---|
+| Tonemapping, ColorAdjustments / ColorGrading, WhiteBalance, ChannelMixer, LiftGammaGain, ShadowsMidtonesHighlights, SplitToning, ColorCurves, ColorLookup | **Bake** → the LUT strip | Texture3D LUTs are refused |
+| Bloom | **Toolkit** `ColoredBloomPlugin` (PPv2 pyramid, URP Gaussian ladder). HDRP: native pipeline bloom unless tinted or a vignette is active | URP Kawase / Dual render as Gaussian (warned). Dirt and anamorphic are not carried |
+| Vignette (Classic) | **Toolkit** `VignettePlugin` (follows lens distortion) | Masked mode is ignored (warned) |
+| ChromaticAberration | **Toolkit** `ChromaticAberrationPlugin` (spectral LUT exported) | |
+| Grain / FilmGrain | **Toolkit** `GrainPlugin` | URP grain runs after grading, as in Unity |
+| LensDistortion | **Toolkit** `LensDistortionPlugin` | |
+| DepthOfField | **Direct** → pipeline bokeh DOF | URP Gaussian approximated (warned). HDRP Manual → midpoint of the in-focus band; HDRP UsePhysicalCamera needs the camera's Physical Properties |
+| MotionBlur | **Direct** → `MotionBlurPostProcess` | URP CameraAndObjects = object-based |
+| PPv2 AmbientOcclusion, HDRP ScreenSpaceAmbientOcclusion | **Direct** → `SSAO2RenderingPipeline` | |
+| PPv2 / HDRP ScreenSpaceReflections | **Direct** → `SSRRenderingPipeline` | PPv2 only on a **Deferred** camera; forward is skipped (warned) unless `TOOLKIT.PostProcessor.ForceScreenSpaceReflections = true` before load |
+| PPv2 AutoExposure | **Toolkit** `AutoExposurePlugin` (GPU histogram + eye adaptation) | Built-in only. Needs camera HDR and WebGL2 / WebGPU, else exposure 1 (warned) |
+| HDRP Exposure | **Bake** → static scene exposure | Fixed is exact. Automatic / Histogram / Curve / Physical are a one-time export estimate, no adaptation (warned). URP has no auto exposure |
+| PaniniProjection, ScreenSpaceLensFlare, anything unlisted | **Substitute** (warned) — a Babylon post-process or `LensFlareSystem` in a script component | |
+| HDRP Fog / sky / IndirectLightingController inside a profile | Not post-processing — read from the scene (§7, §8) | |
+| URP renderer features | **Full Screen Pass** (Shader Graph material) and **Decal** are carried (`shader-materials.md`). The SSAO feature and others are **Substitute** (SSAO warned) — add `SSAO2RenderingPipeline` from a script | |
 
 **The camera** (`Camera.main` drives the view):
 - **Direct:** projection, FOV, near/far clip, clear flags and background colour, `allowHDR` (**the browser
   follows the camera's HDR flag, not the URP asset's**) and the physical camera.
-- **Anti-aliasing (Pro):** FXAA, SMAA and TAA become toolkit plugins. MSAA samples need the exporter's
-  `EnableAntiAliasing` (default on).
+- **Anti-aliasing (Pro, toolkit passes):** see *Camera anti-aliasing* below.
 - **Not carried:** URP render scale — use `engine.setHardwareScalingLevel`. Viewport rect, depth, target texture,
   culling mask and Cinemachine are not carried either — use the toolkit `DefaultCameraSystem` or a script
   component.
 
-**The five pre-flight checks** — an effect that "does nothing" in Unity will do nothing in the export either:
+**The five pre-flight checks (URP)** — an effect that "does nothing" in Unity will do nothing in the export either
+(Built-in and HDRP: see the per-pipeline table below):
 
 1. The project's render pipeline asset exists (`get_graphics_settings`, quality levels).
-2. **HDR** is allowed on the camera, and on in the URP asset (for an accurate Unity preview).
+2. **HDR** is allowed on the **camera** (the browser follows the camera's flag; the URP asset's HDR only affects
+   Unity's preview).
 3. **Post Processing** is ticked on the camera (`UniversalAdditionalCameraData.renderPostProcessing` — off by
    default). The exporter warns when no exported camera renders the volumes.
 4. The camera's **Volume Mask** includes the Volume's layer.
@@ -600,8 +665,8 @@ public static class Post
 - **A local Volume's blend weight is computed once, when the level loads**, not per frame as the camera moves.
   Use local Volumes only for areas the camera starts in, or drive transitions from a script component.
 - Use `sharedProfile` to edit the asset; `profile` silently clones it.
-- URP's LDR grading mode is not read; grading always bakes as HDR.
-- Texture3D LUTs are not supported.
+- URP's Grading Mode is honoured: LowDynamicRange bakes in URP's order (tonemap, then grade). Re-export older levels.
+- Texture3D LUTs are not supported. A ColorLookup / external LUT must be an N²×N 2D strip (Read/Write or a PNG source).
 - The URP names differ from PPv2: `Volume` (not `PostProcessVolume`), `ColorAdjustments` (not `ColorGrading`),
   `profile.TryGet<T>(out var x)` (not `GetSetting<T>`).
 
@@ -614,15 +679,49 @@ Recipes for common looks (all with ACES tonemapping):
 | **Horror** | Desaturate −40, vignette 0.45, film grain 0.3, cool white balance |
 | **Clean / mobile** | Tonemapping + light bloom only |
 
+**Per-pipeline authoring (what to tick in Unity):**
+
+| | Built-in (PPv2) | URP | HDRP |
+|---|---|---|---|
+| Camera renders volumes | Enabled `PostProcessLayer`; its Volume Layer includes the volume's layer | Post Processing ticked; Volume Mask | Postprocess frame setting on; Volume Mask |
+| HDR | Camera Allow HDR — needed for the HDR grading pass, auto-exposure and the half-float chain | Camera Allow HDR | Always exported LDR |
+| Grading mode | HighDefinitionRange (default) = Unity-exact LUT including the tonemapper | Asset Grading Mode honoured | Tonemapping / Exposure usually come from the default-settings volume |
+| SSR | Camera Rendering Path = Deferred | No SSR volume in URP | Volume SSR |
+| Local volume | Box or Sphere Collider on the same GameObject | same | same |
+
+**Camera anti-aliasing (Pro).** The mode Unity actually renders is exported per camera; the camera gets a
+`PostProcessor` even with no Volume.
+
+| Mode | Built-in (PPv2) | URP | HDRP |
+|---|---|---|---|
+| Source | `PostProcessLayer.antialiasingMode` (layer enabled) | Camera Anti-aliasing (needs Post Processing ticked) | Camera Anti-aliasing (Postprocess frame setting) |
+| FXAA | FXAA 3.11 preset 28 (12 in Fast Mode), last pass | preset 12 | lite FXAA |
+| SMAA | SMAA 1x Low / Medium / High, last pass | before bloom / grading | as URP |
+| TAA | `TaaPlugin`, URP High resolve | Quality VeryLow–VeryHigh + RCAS sharpen | closest URP resolve; TAAU forces TAA |
+| MSAA | Quality level × camera Allow MSAA | URP asset (or target texture); Deferred renderer = none | Frame settings, Forward only |
+
+- **URP drops TAA** (exported as None, warned) under MSAA > 1, camera stacking / overlay, or dynamic resolution.
+  Turn MSAA off for TAA.
+- **TAA needs WebGL2 / WebGPU**, otherwise no AA is drawn (warned). Its velocity misses bone-texture skinning,
+  morphs and VAT (warned) — expect ghosting there.
+- The exporter's `EnableAntiAliasing` (canvas MSAA) only affects cameras with no post chain.
+
+**Known gaps:** a local volume blends once, at apply time, not per frame. HDRP runs an 8-bit chain (no HDR grading
+pass, no auto-exposure), uses PPv2 / URP effect maths and is the least verified pipeline. Each effect warns once for
+every overridden parameter it cannot carry. The runtime API (toggle an effect, change a value in Unity units, switch
+AA mode, reset TAA history, the Inspector's *Unity Post Processing* section) is in `10-ProComponents.md`.
+
 ---
 
 ## 10. Terrain
 
 **Reaches BabylonJS as** (Pro): a `TOOLKIT.TerrainBuilder` component, recreated as a quadtree-LOD heightfield
-surface with the same splat blend as the Unity terrain material. Heights, trees and details go into the scene's
+surface with the same splat blend as the Unity terrain material (or the terrain's Shader Graph material template).
+Heights, trees and details go into the scene's
 binary buffer, and splat/control images are written beside it.
 - **Transform:** the terrain node is exported **position-only**, because Unity ignores terrain rotation and scale.
-- **Prototypes:** tree and detail prototypes export as template groups, with their materials forced to plain PBR.
+- **Prototypes:** tree and detail prototypes export as template groups. Their materials are glTF PBR, or the
+  Shader Graph's generated `MY.*` class when the prototype uses a graph.
 - **`TerrainExportMode`:** 0 = heightfield (default, use it), 1 = legacy segmented mesh.
 
 **Author it:** create everything from `run_script`:
@@ -631,22 +730,38 @@ binary buffer, and splat/control images are written beside it.
 2. Create the `Terrain` GameObject with `Terrain.CreateTerrainGameObject(data)`.
 3. Set heights with `data.SetHeights(0, 0, float[,])`.
 4. Assign `TerrainLayer` assets to `data.terrainLayers`, and paint with `data.SetAlphamaps`.
-5. Save the scene, bake lighting, then export.
+5. Trees: `data.treePrototypes = new[] { new TreePrototype { prefab = treePrefab } }`, then
+   `data.SetTreeInstances(TreeInstance[], true)` (positions 0–1). Give tree prefabs a LODGroup; add a capsule
+   collider and tick *Enable Tree Colliders* on the TerrainCollider for solid trunks.
+6. Details: `data.SetDetailResolution(1024, 32)`, `data.detailPrototypes = new[] { … }` (mesh:
+   `usePrototypeMesh = true, prototype = prefab, renderMode = VertexLit, useInstancing = true`; grass:
+   `prototypeTexture = tex, renderMode = Grass`), and paint with `data.SetDetailLayer(0, 0, i, int[,])`.
+7. Save the scene, bake lighting, then export.
 
 | Terrain feature | How it reaches BabylonJS |
 |---|---|
 | Heightmap | Full resolution (≥ 33), u16, in the scene `.bin`; `pixelError` drives the runtime LOD |
-| Terrain layers | **Up to 16** (beyond that the 16 most-painted are kept, warned). Albedo, normal and mask as JPG at ≤ `TerrainLayerMaxSize` (default 1024). Smoothness packs into the normal's blue channel. Mask maps export for URP/HDRP |
+| Terrain layers | **Up to 16** (beyond that the 16 most-painted are kept, warned). Albedo, normal and mask are JPG at each layer's **Unity-imported size** (no exporter cap). Smoothness packs into the normal's blue channel. Mask maps export for URP/HDRP. The runtime packs layers into texture arrays whose slice size is the **largest** layer — keep every layer texture at one size (the importer's `maxTextureSize`) |
 | Splat control maps | PNG, not resampled |
-| Terrain material | Its pipeline flavour (URP Terrain Lit / Shader Graph "Terrain" → urp, HDRP TerrainLit → hdrp, `Nature/Terrain/*` → built-in) is recreated, with height blending |
+| Terrain material | URP Terrain Lit, HDRP TerrainLit and `Nature/Terrain/*` become `TerrainSplatMaterial` with that pipeline's blend (height blend, mask maps, holes, lightmap). A **Shader Graph** `materialTemplate` draws as its generated `MY.*` class, with Terrain Texture / Terrain Properties nodes fed by `TerrainGraphAdapter` |
 | Holes | Carried — cut in the surface, the collider and the splat material |
 | Terrain lightmap | ✅ in `.gltf` exports — **skipped in `.glb`** (warned) |
-| Trees | Prefab prototypes → thin instances with LODGroup levels, crossfade, billboards and SpeedTree hue. Tree colliders need "Enable Tree Colliders"; only the first capsule/box/sphere is used |
-| **Mesh** details | Instanced, with sway, grass wave and distance fade (`TerrainFoliagePlugin`); sway reads `Wind_Intensity` / `Wind_Speed` / `Wind_Wavelength` material properties |
-| **Texture** grass (Grass / GrassBillboard) | ⚠️ exported but **not rendered** — author grass as **mesh** detail prototypes (a crossed-quad prefab) |
-| WindZone | Carried (levels) — drives foliage sway |
-| `TerrainCollider` | Carried — a **Havok heightfield** body with friction and bounciness (needs Havok physics) |
-| Neighbouring terrains | One builder per terrain; mesh skirts close the seams |
+| Trees | Prefab prototypes → thin instances per LOD renderer: Unity LODGroup selection, 0.5 s dithered crossfade, SpeedTree billboards, hue and SpeedTree 8 wind. Only the active LOD casts, with its renderer's cast flag; billboards never cast. Probe-lit prototypes take the scene's light probes per instance. Tree colliders need *Enable Tree Colliders*; only the first capsule/box/sphere is used |
+| **Mesh** details | Unity's exact detail positions, instanced, streamed by distance, fading between 0.9× and 1× `detailObjectDistance`, healthy/dry tint. Only the prototype's **first** mesh is drawn. Sway reads `Wind_Intensity` / `Wind_Speed` / `Wind_Wavelength` on the prototype material |
+| **Texture** grass (Grass / GrassBillboard) | Rendered (`GrassStandardMaterial` / `GrassBillboardMaterial`) from the density map with Unity's scatter and waving-grass maths: nearly static on URP (as in Unity), waving on Built-in. Never casts. Density above 255 per cell is clamped (warned). **HDRP draws none — Unity's HDRP draws none either** (warned) |
+| WindZone | Levels only. The **first directional** WindZone drives tree bend, mesh-detail sway and SpeedTree 8 graph wind; spherical zones are ignored. Texture grass uses the TerrainData *Waving Grass* settings |
+| `TerrainCollider` | Built by `TerrainBuilder` (not a `collision` block): a static **Havok heightfield** with the physics material's friction / bounciness and the node's layer. Hole cells drop out. Needs Havok |
+| Neighbouring terrains | One `TerrainBuilder` per tile; surface skirts close the seams. `TerrainBuilder.GetWorldHeightAt` covers every tile |
+
+**Export settings.** `TerrainExportMode` 0 = heightfield (default; use it), 1 = legacy mesh (a far larger `.bin`, no
+runtime LOD). `TerrainTreeInstances` / `TerrainDetailPrototypes` (default true) skip trees / details when false.
+
+**Limits and gaps:**
+- **The terrain surface is not pickable** — `scene.pickWithRay` never hits it. Use `TerrainBuilder.GetWorldHeightAt`
+  or a Havok raycast (`10-ProComponents.md`).
+- Mesh details draw the prototype's first mesh only; `detailObjectDensity` can only thin the exported instances.
+- A Shader Graph prototype needs its class in the bundle; keep its own textures well under 16 (the sampler budget).
+- Built-in terrain surfaces cast back faces only (avoids acne from Built-in's tiny bias).
 
 Without Pro nothing is written — in heightfield mode there is then **no terrain surface at all**.
 
@@ -656,7 +771,8 @@ Without Pro nothing is written — in heightfield mode there is then **no terrai
 
 **Reaches BabylonJS as** (Pro, `ExportPhysics` on). Per node:
 - **`physics`:** `type: "rigidbody"`, `mass`, drag, `freeze`, `gravity`, `kinematic`.
-- **`collision`:** Box, Sphere, Capsule, Mesh (a convex hull when *Convex*), Terrain or Wheel. Two or more
+- **`collision`:** Box, Sphere, Capsule, Mesh (a convex hull when *Convex*) or Wheel (a `TerrainCollider` is built
+  by `TerrainBuilder`, §10). Two or more
   colliders become a compound collider with per-shape friction and restitution.
 - **A component:** `TOOLKIT.RigidbodyPhysics` or `TOOLKIT.CharacterController`, recreated with Havok.
 
@@ -931,15 +1047,54 @@ or repaired in Blender follow `unity-blender-cli.md`, which edits them in place 
 
 ---
 
-## 17. LOD, particles, video, UI
+## 17. LOD, particles, lines and sprites, video, UI
 
 | Component | How it reaches BabylonJS (Pro) | Traps |
 |---|---|---|
 | `LODGroup` | Node keys `lods` and `distances` (needs `MeshExportSystem` = sub-meshes, the default) | **Distances need a Scene View camera — in a `-batchmode` Editor they are skipped (warned).** Export LOD levels from a GUI Editor. LOD renderers must be children of the group. Non-first levels never cast shadows. Screen coverages and crossfade are not used |
-| `ParticleSystem` | `TOOLKIT.ShurikenParticles` — every module: main, emission/bursts, shape (incl. mesh), velocity/force/limit, colour/size/rotation over lifetime and by speed, noise, collision (planes, and world via ray casts), triggers, sub-emitters, texture-sheet animation, lights, trails, custom data. Renderer: billboard, stretched, horizontal, vertical, mesh | Use particle shaders from the Particles / Legacy / Mobile / URP / HDRP families or Shader Graph. **VFX Graph, TrailRenderer and LineRenderer are not carried** — use Babylon GPU particles, `TrailMesh` and GreasedLine from a script. Normal maps on particle materials are not sampled |
+| `ParticleSystem` | `TOOLKIT.ShurikenParticles` — one **CPU** `BABYLON.ParticleSystem` per system. Every module: main, emission/bursts, shape (every type incl. mesh, skinned mesh, sprite, shape texture), velocity / limit / inherit / force, lifetime by emitter speed, colour / size / rotation over lifetime and by speed, external forces (force fields, wind zones), noise, collision (planes; world by ray casts), triggers, sub-emitters (birth / death / collision / trigger / manual), texture-sheet animation (grid, sprites), lights, trails (particle + ribbon), custom data. Renderer: billboard, stretched, horizontal, vertical, mesh (thin instances, ≤ 4 meshes), none (trail-only); sort modes, sorting layer / order | Materials: `Particles/Standard Unlit` / `Surface`, `Legacy Shaders/Particles/*`, `Mobile/Particles/*`, URP `Particles/Unlit` / `Lit` / `Simple Lit`, URP Lit / Unlit, HDRP Lit / Unlit, and **Shader Graph** (drawn through its generated class with Unity's vertex streams). Any other shader draws alpha-blended with the main texture (warned). See *Particle fidelity* below |
+| `LineRenderer` | `TOOLKIT.LineRenderer` — a ribbon through the exported points: width curve, colour gradient, View / TransformZ alignment, every texture mode. `setPositions(points)` / `getPositions()` at runtime | Corner and cap vertices are not generated. A non-graph material draws **unlit and alpha-blended** with its colour and texture — use a Shader Graph material for additive looks. Draws in rendering group 1 |
+| `TrailRenderer` | `TOOLKIT.TrailRenderer` — a world-space ribbon behind the moving node: `time`, `minVertexDistance`, width curve, colour gradient, `emitting` | Same material rule as `LineRenderer`. `autodestruct` and corner / cap vertices are not read |
+| `SpriteRenderer`, `TilemapRenderer` | `TOOLKIT.SpriteRenderer` / `TOOLKIT.TilemapRenderer` quads, sorted by sorting layer and order (rendering group 1). Sprite Lit / Shader Graph materials see 2D lights through `TOOLKIT.Light2DTexture` | No 2D physics; Light2D sorting-layer targeting is ignored; SpriteMask is not drawn |
 | `VideoPlayer` | `TOOLKIT.WebVideoPlayer` (a video texture) | **Only Material Override render mode** |
-| uGUI `Canvas` / `UIDocument` | `TOOLKIT.UserInterface` → Babylon GUI: layout groups, Button, Toggle, Slider, Scrollbar, Dropdown, ScrollRect, InputField, Text and **TMP text / dropdowns / inputs**, Image (9-slice), RawImage, masks; ~35 UI Toolkit element types; onClick/onValueChanged listeners | Needs `ExportUserInterfaces` (default on). **Canvas render mode is not read — World Space and Camera canvases export as full-screen 2D.** For world-space UI, use Babylon GUI on a mesh from a script component. For app-style UI, see `ui-design-system.md` first |
+| uGUI `Canvas` / `UIDocument` | `TOOLKIT.UserInterface`, one per root Canvas / UIDocument, rebuilding Unity's own model and re-running layout on every resize. Layout: CanvasScaler (constant pixel; scale with screen with match / expand / shrink; constant physical), anchors, pivots, Z rotation, Horizontal / Vertical / Grid layout groups, LayoutElement, ContentSizeFitter, AspectRatioFitter. Graphics: Image (simple / sliced / tiled / filled), RawImage, Mask, RectMask2D, CanvasGroup, Outline / Shadow. Controls: every Selectable — Button, Toggle + ToggleGroup, Slider, Scrollbar, ScrollRect, Dropdown, InputField (TMP and Legacy). Text: TMP and Legacy Text. UI Toolkit: UXML/USS computed styles, flexbox, hover / active / focus states, 58 element types. **Render modes:** Overlay draws on the scene's foreground texture after post-processing; Camera is a plane at `planeDistance`; World Space is a mesh on the canvas node. Persistent `onClick` / `onValueChanged` listeners call script-component methods or `GameObject.SetActive` | Needs `ExportUserInterfaces` (*Embed User Interface*, default on). See *Unity UI — rules and limits* below; the scripting API is in `10-ProComponents.md`. For app-style UI, read `ui-design-system.md` first |
 
+### Particle fidelity and limits
+
+| Topic | Rule |
+|---|---|
+| Simulation | CPU only. Cost grows with live particles; trails, lights, world collision, triggers and force fields add CPU work per particle. Budget live particles like draw calls on mobile |
+| Lit particles | Per-vertex: ambient + main directional + the 4 nearest point lights. **No shadows, light probes, specular or normal maps** |
+| Particle lights | Pooled point lights, ≤ 8 per system and ≤ 16 per scene; they light a material only where it has a free light slot. Spot templates draw as points |
+| Soft particles | Need a depth texture: the toolkit adds an opaque depth pass unless `TOOLKIT.ShurikenParticles.SoftParticleDepth = false` is set before load |
+| World collision | Rays hit Havok colliders when physics runs, else pickable meshes, filtered by *Collides With*; 256 rays a frame for the whole scene, so dense collision is approximate |
+| Triggers | Box, sphere, capsule; mesh colliders by their bounds; ≤ 31 colliders per system |
+| Blend | Alpha, additive, multiply, premultiply, cutout, opaque. Subtractive is approximated. Distortion has no refraction (a tinted quad) |
+| Approximated | Noise (ported, not exact); billboard rotation is Z only (X / Y on mesh particles); wind turbulence, vector fields; Use Unscaled Time; Freeform Stretching |
+| Caps | Sorting is skipped above 2000 live particles; ≤ 32 points per trail; ≤ 16 sprite rectangles per sheet |
+| Sub-emitters | The child must be another exported `ParticleSystem`; it never emits on its own |
+| Inactive objects | A system whose GameObject is inactive at export never auto-plays — call `play()` |
+
+### Unity UI — rules and limits
+
+| Rule / limit | Detail |
+|---|---|
+| Listener targets | A persistent listener runs only when its target is a script component whose C# class carries an **explicit `[Babylon(Class="…")]`**, or `GameObject.SetActive`. The TypeScript class needs a public method with the same name. Arguments: void → `()`, dynamic → `(value)`, static int/float/string/bool → `(arg)`, Object → `(BABYLON.Node)`. Any other target (Animator, AudioSource, plain MonoBehaviour) is skipped (warned `listener-unsupported`) |
+| UI Toolkit events | UXML has no UnityEvents — wire UI Toolkit controls from a script (`UserInterface.OnClick` / `OnValueChanged`) |
+| Fonts | The source `.ttf/.otf` is copied into `fonts/`. A TMP font asset with no source font file falls back to `"<family>", sans-serif` (warned). Built-in Arial becomes LiberationSans |
+| Sprites | Exported once, untinted, named by asset name — give every UI sprite a unique name |
+| RawImage | The texture must be a `Texture2D`; a RenderTexture draws empty (warned) |
+| Rotation | Only Z rotation carries; rotate a World Space canvas for tilt |
+| Masks | Clip to rectangles; a Mask sprite with transparent pixels clips to its rect |
+| TMP | Overflow / Ellipsis / Masking / Truncate carry; ScrollRect / Page / Linked become Overflow. `<sprite>` and `<link>` tags are removed. Outline and underlay carry |
+| Transitions | Color Tint and Sprite Swap carry; Animation renders the normal state |
+| Colour | Translucent UI blends in sRGB, so translucent panels look a little darker than in a Linear Unity project |
+| Render modes | Overlay is drawn after post-processing; Camera and World Space canvases are scene meshes and are post-processed, as in Unity. Screen Space – Camera with no camera falls back to overlay (warned). A UI Toolkit render-texture panel draws on the mesh whose material samples that texture |
+| Inactive UI | An inactive root canvas still exports and builds the first time it is enabled (`UserInterface.SetActive("Name", true)`) |
+| Input | UI owns every pointer it hits, in every mode — camera controls and scene picks never see it. Empty UI area passes through |
+| Not carried | Keyboard / gamepad navigation between Selectables; UI Toolkit data binding |
+| Shader Graph UI | An Image / RawImage / TMP text / UI Toolkit element whose material is a Canvas / UI Shader Graph renders through the transpiled graph, per element. Any other custom material draws as the plain graphic (warned `custom-material`) |
+| Diagnostics | Export: `[GUI] <path>: …` in the Unity console. Runtime: `UserInterface: [<code>] <path> — …`, once per code and path |
 ---
 
 ## 18. Script components — the game logic
@@ -999,10 +1154,12 @@ Author the full level, but keep it light enough to run in a browser, and on mobi
 | Texture format | `TextureImageFormat` KTX2 (`3`) for the smallest GPU memory. WEBP (`2`) only after switching `DefaultWebpImageCommandType` to lossy. Keep lightmaps PNG |
 | Lightmaps | `lightmapResolution` and `maxLightmapSize` (1024–2048) set lightmap memory. Fewer, fuller atlases are cheaper |
 | Lights | Bake fills and practicals (they cost nothing at runtime). Keep realtime and Mixed lights few. A material takes at most `SceneController.maximumLights` (default 4). The shadow map size comes from the URP asset |
-| Terrain | `TerrainLayerMaxSize` 512–1024, 4–8 layers, a moderate heightmap (257–513 for mobile), tree instances and detail density sized for the target |
+| Terrain | 4–8 layers, all layer textures one imported size (1024 mobile, 2048 desktop — the largest sets every array slice), heightmap 257–513 for mobile, tree / detail distance and detail density sized for the target, heightfield mode |
 | Geometry | LOD groups on heavy meshes (export LODs from a GUI Editor). Repeated meshes stay glTF instances (`ExportMeshInstances`, default on). Mark static objects Static to freeze their world matrices |
 | Probes | Enough light probes to cover dynamic areas (APV ≤ 8192). Reflection-probe resolution 128–256 |
-| Post-processing | Grading is free (one LUT). Bloom, DOF, motion blur, SSAO and SSR cost real fill-rate — use them sparingly on mobile |
+| Post-processing | Grading is one LUT (an extra pass on the HDR path). TAA ≈ 2.5 ms (mostly its velocity prepass), auto-exposure ≈ 0.4 ms. Bloom, DOF, motion blur, SSAO and SSR cost fill-rate — use them sparingly on mobile. `TOOLKIT.PostProcessor.HalfFloatChain = false` before load halves HDR-chain bandwidth but brings back banding |
+| Shader Graph | Graph shadows use stock depth by default (`TOOLKIT.SgShadowDepth.Enabled = false`). Scene Color / Scene Depth nodes add a render target per camera. Keep each graph under 16 samplers |
+| Particles | CPU-simulated — budget live particles, trails, particle lights and world collision |
 | Audio | Compress the source files (`.ogg` / `.mp3`); they ship as-is |
 | Snapshot rendering | `GpuRenderingMode` (WebGPU snapshot rendering) for very large static scenes |
 
@@ -1038,7 +1195,7 @@ unity command bt_devserver_start --project-path "$PROJ"
 2. A **lit and tonemapped** image — not flat grey, not blown out — means lighting, IBL and post-processing are wired.
 3. When they differ, decide **which side of the export the gap is on**:
    - **Unity right, browser wrong:** look up the feature's row in §0. It may need a substitute, or an authoring
-     change (for example Metallic instead of Specular, or mesh grass instead of texture grass).
+     change (for example Metallic instead of Specular).
    - **Both wrong the same way:** it's the art — keep authoring.
 4. Also check the exported `scenes/<level>.gltf` holds the keys the pass should have produced: `lightmapbakemode`,
    `skybox.environment`, `lightprobes`, `navigation.prebaked`, `PostProcessor` components and so on.
@@ -1067,18 +1224,19 @@ few lines in a script component:
 | Unity feature | Babylon-side substitute |
 |---|---|
 | Timeline / PlayableDirector cinematics | A TypeScript component driving `AnimationState`, animation groups or camera paths |
-| VFX Graph | Babylon GPU particles / Node Particle Editor |
-| TrailRenderer, LineRenderer | `TrailMesh`, `CreateLines` / GreasedLine |
+| VFX Graph | Babylon `GPUParticleSystem` / Node Particle Editor from a script, or Starter `PROJECT.FxParticleSystem` (plays a Babylon particle-system JSON, CPU or GPU). Shuriken systems are carried (§17) |
 | Light cookies | `SpotLight.projectionTexture` |
 | Realtime GI (Enlighten) | Bake the GI (§4) |
 | Realtime reflection probes | Babylon `ReflectionProbe` in a script component |
-| URP renderer features (SSAO, custom passes), Panini, lens flare | `SSAO2RenderingPipeline`, custom `PostProcess`, `LensFlareSystem` |
+| URP renderer features other than Full Screen Pass / Decal (e.g. the SSAO feature), Panini, Screen Space Lens Flare | `SSAO2RenderingPipeline`, custom `PostProcess`, `LensFlareSystem` |
 | Render scale | `engine.setHardwareScalingLevel` |
 | Occlusion culling | `mesh.occlusionType` / occlusion queries |
 | Layer Collision Matrix | `shape.filterCollideMask` in a script |
 | Navmesh areas, off-mesh links, obstacles | The runtime `SceneManager` navigation-area API; scripted jumps |
-| World-space UI, 3D TextMeshPro | Babylon GUI on a mesh (`AdvancedDynamicTexture.CreateForMesh`), or DOM overlays |
-| Sprites, Tilemaps, 2D physics and lights | Babylon `SpriteManager` and quads |
+| 3D `TextMeshPro` (not TextMeshProUGUI) on the default *Distance Field* shader | A World Space Canvas with TMP text, a TMP SDF Shader Graph font material, or Babylon GUI on a mesh |
+| Keyboard / gamepad navigation between Selectables | `TOOLKIT.InputController` in a script driving `UserInterface.SetValue` / click targets |
+| Selectable *Animation* transitions, UI Toolkit data binding | Color Tint / Sprite Swap; set values from a script with `UserInterface.SetValue` / `SetText` |
+| 2D physics (Rigidbody2D, Collider2D) | Havok 3D bodies with a locked axis, or scripted motion. Sprites, tilemaps and 2D lights are carried (§17) |
 | Unity Input System | Toolkit input (`userinput` scene options) — `scene-components.md` |
 
 **Unity game-runtime services never apply.** This pipeline never builds a Unity player. When a request names one of these, build the Babylon-side version in the web project and say so in one line:

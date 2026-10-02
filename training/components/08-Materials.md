@@ -40,6 +40,22 @@ const mat = scene.getMaterialByName(matData.name) as TOOLKIT.CustomShaderMateria
 
 ---
 
+## Transpiled Unity Shader Graph Materials
+
+Every Unity Shader Graph is exported as a generated `MY.<Graph>` class that **is** a `TOOLKIT.CustomShaderMaterial`. Address its inputs by the graph property's **Unity reference name** with the graph API — not the raw `setFloatValue` uniform names below, which can differ from the Unity names for graphs:
+
+```typescript
+const mat = mesh.material as TOOLKIT.CustomShaderMaterial;
+mat.setFloat("_DissolveAmount", 0.4);
+mat.setColor("_EdgeColor", new BABYLON.Color3(1, 0.4, 0));   // converted to linear
+mat.enableKeyword("_USE_RIM");
+TOOLKIT.ShaderGlobals.SetGlobalFloat("_WindStrength", 2.0);    // every graph reading the global
+```
+
+Full API, coverage and limits: Custom Shader Code Instructions → *Unity Shader Graphs — transpiled at export* (https://raw.githubusercontent.com/babylontoolkit/agent/main/references/shader-materials.md).
+
+---
+
 ## Texture Uniforms
 
 ```typescript

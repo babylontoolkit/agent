@@ -428,6 +428,20 @@ This is the **most critical architectural decision** when building game UI. Choo
 
 4. **Never mix DOM and GPU GUI for the same logical UI element.** Pick one layer and own it completely. Mixing creates z-ordering battles and double input handling.
 
+#### Unity-authored UI (exported Canvas / UIDocument)
+
+A Unity level can carry its own UI. uGUI Canvases (Overlay, Camera and World Space) and UI Toolkit documents export (Pro) and are rebuilt in Babylon GUI with Unity's layout rules (`unity-authoring-recipes.md` §17; scripting API `TOOLKIT.UserInterface` in `10-ProComponents.md`).
+
+| Situation | Layer |
+|---|---|
+| The scene (incl. an Asset Store scene) already has a Canvas / UIDocument | Keep it — it exports as authored; script it with `TOOLKIT.UserInterface` |
+| In-world panels, terminals, cockpit screens designed in the level | World Space Canvas / UIDocument |
+| A HUD the level designer positions and previews in Unity | Overlay Canvas |
+| Text-heavy menus, settings, store, chat, front-end pages | DOM React (`CustomOverlay`) |
+| UI built at runtime from data; labels tracking characters | `@babylonjs/gui` from a script (`linkWithMesh`); reuse `TOOLKIT.UserInterface.GetForegroundTexture(scene)` as the fullscreen ADT |
+
+Overlay Unity UI is drawn after post-processing; Camera / World Space canvases are post-processed, as in Unity. Never rebuild an exported Unity UI in DOM as well — one layer per logical UI (rule 4).
+
 ---
 
 ## The BabylonJS GUI API Reference

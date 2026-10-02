@@ -38,7 +38,7 @@ import * as GUI from '@babylonjs/gui';
 All BabylonJS GUI begins with an `AdvancedDynamicTexture`. It is the root surface onto which all controls are drawn. There are two modes:
 
 #### Fullscreen Mode (2D Overlay)
-Creates a full-viewport GUI layer rendered by the GPU above the scene. Rescales automatically to match canvas resolution. Only **one fullscreen ADT per scene** is allowed.
+Creates a full-viewport GUI layer rendered by the GPU above the scene. Rescales automatically to match canvas resolution. Only **one fullscreen ADT per scene** is allowed. In a toolkit scene with exported Unity UI that ADT already exists and holds the Unity overlay canvases — get it with `TOOLKIT.UserInterface.GetForegroundTexture(scene)` instead of creating another.
 
 ```typescript
 // In SceneController.createScene():

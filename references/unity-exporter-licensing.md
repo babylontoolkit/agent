@@ -27,12 +27,13 @@ Pro Tools Disabled: Exporting standard community edition content
 | **NavMeshAgent** | ❌ dropped | ✅ |
 | **CharacterController** | ❌ dropped | ✅ |
 | **ParticleSystem** | ❌ dropped | ✅ |
+| **LineRenderer / TrailRenderer / SpriteRenderer / TilemapRenderer** | ❌ dropped | ✅ |
 | **Canvas / UIDocument** (UI) | ❌ dropped | ✅ |
 | **Terrain** | ❌ dropped | ✅ |
 | **VideoPlayer** | ❌ dropped | ✅ |
 | **PostProcess volumes** (and URP default volumes) | ❌ dropped | ✅ |
 | **LOD groups** | ❌ dropped | ✅ |
-| **Camera anti-aliasing** (FXAA / SMAA / TAA) | ❌ dropped | ✅ |
+| **Camera anti-aliasing** (FXAA / SMAA / TAA, and MSAA on a post chain) | ❌ dropped | ✅ |
 
 *(Gates in `CVTools.cs`, toolkit source 9.27.1: 3807 LOD, 4222 camera AA, 4231 default volumes, 4518, 4553,
 4608, 4647, 4683, 4738, 4773, 4808, 5028, 5043, 5132, and 5250–5254, which nulls physics + collision.)*

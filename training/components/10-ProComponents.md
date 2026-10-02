@@ -1,6 +1,8 @@
 # Pro Components Reference
 
-> This document covers: `PostProcessor`, `TerrainBuilder`, `ShurikenParticles`, `WebVideoPlayer`, and Unity GUI Controls (`UnitySlider`, `UnityScrollBar`, `UnityDropdownMenu`).
+> This document covers: `PostProcessor`, `TerrainBuilder`, `ShurikenParticles`, `LineRenderer` / `TrailRenderer`, `WebVideoPlayer`, `UserInterface` (exported Unity UI), and the legacy Unity GUI controls (`UnitySlider`, `UnityScrollBar`, `UnityDropdownMenu`).
+>
+> All of these are **created by the exporter** from Unity components (Pro licence). Find them with `TOOLKIT.SceneManager.FindScriptComponent`, then tune them — never rebuild what they already render. Shader Graph material APIs (`setFloat`, `TOOLKIT.ShaderGlobals`) are in the Custom Shader Code Instructions (`references/shader-materials.md`).
 
 ---
 
@@ -9,7 +11,7 @@
 ```typescript
 import * as TOOLKIT from "@babylonjs-toolkit/next";
 // named imports are equivalent:
-// import { PostProcessor, TerrainBuilder, ShurikenParticles, WebVideoPlayer, UnitySlider, UnityScrollBar, UnityDropdownMenu } from "@babylonjs-toolkit/next";
+// import { PostProcessor, TerrainBuilder, ShurikenParticles, WebVideoPlayer, UserInterface } from "@babylonjs-toolkit/next";
 // ⚠️ Do NOT import from "@babylonjs-toolkit/next/shurikenparticles" or "/webvideoplayer" — those subpaths are broken; use the root import.
 ```
 
@@ -18,175 +20,146 @@ import * as TOOLKIT from "@babylonjs-toolkit/next";
 ## TOOLKIT.PostProcessor
 
 > **Namespace:** `TOOLKIT`  
-> **Role:** Post-processing volume controller. Parses Unity URP Volume exported settings and creates the appropriate Babylon.js pipeline objects.
+> **Role:** One component per exported Volume (Built-in PPv2, URP, HDRP), plus a camera-owner component for cameras with anti-aliasing work. The volumes are blended per camera and rendered as Babylon pipelines plus toolkit plugin passes (colour-grading LUT, bloom, vignette, chromatic aberration, grain, lens distortion, FXAA / SMAA / TAA, auto-exposure) in Unity's pass order. What each Unity effect becomes is in `unity-authoring-recipes.md` §9.
 
-### Singleton Access
-```typescript
-const pp = TOOLKIT.PostProcessor.Instance;
-```
-
-### Key Accessors
-```typescript
-pp.scene                        // BABYLON.Scene (inherited from ScriptComponent)
-pp.GetDefaultRenderPipeline()   // BABYLON.DefaultRenderingPipeline (main pipeline)
-pp.GetSSAORRenderPipeline()     // BABYLON.SSAORenderingPipeline
-pp.GetSSRRenderPipeline()       // BABYLON.SSRRenderingPipeline
-```
-
-### Configuring Post Effects at Runtime
-
-The pipeline is built from Unity metadata, but you can modify properties at runtime:
+### Runtime API
 
 ```typescript
-const pipeline = pp.GetDefaultRenderPipeline();
+const pp = TOOLKIT.PostProcessor.Instance;               // null when the scene has no volumes / AA cameras
+const cam = scene.activeCamera;
 
-// Bloom
-pipeline.bloomEnabled = true;
-pipeline.bloomThreshold = 0.8;
-pipeline.bloomWeight = 0.3;
-pipeline.bloomKernel = 64;
-pipeline.bloomScale = 0.5;
+pp.onEffectListingChangedObservable.add(() => {         // stacks apply a frame after ready; LUT passes arrive later
+    const effects = pp.GetEffectListing(cam);           // what is actually applied on this camera
+    const vignette = effects.find(e => e.family === "vignette");
+    vignette?.fields.find(f => f.key === "intensity")?.set?.(0.45);   // Unity units, live
+});
 
-// Depth of Field
-pipeline.depthOfFieldEnabled = true;
-pipeline.depthOfField.focusDistance = 2000;  // mm
-pipeline.depthOfField.focalLength = 50;
-pipeline.depthOfField.fStop = 1.4;
-
-// Chromatic Aberration
-pipeline.chromaticAberrationEnabled = true;
-pipeline.chromaticAberration.aberrationAmount = 30;
-
-// Grain
-pipeline.grainEnabled = true;
-pipeline.grain.intensity = 20;
-pipeline.grain.animated = true;
-
-// Sharpening
-pipeline.sharpenEnabled = true;
-pipeline.sharpen.edgeAmount = 0.3;
-
-// Vignette
-pipeline.imageProcessing.vignetteEnabled = true;
-pipeline.imageProcessing.vignetteWeight = 1.5;
-pipeline.imageProcessing.vignetteCameraFov = 0.5;
-
-// Color Grading (LUT)
-pipeline.imageProcessing.colorGradingEnabled = true;
-pipeline.imageProcessing.colorGradingTexture = new BABYLON.ColorGradingTexture("lut.png", scene);
+pp.SetEffectEnabled(cam, "bloom", false);               // toggle a family; false when it is not applied
+pp.SetAntialiasingMode(cam, 3);                         // 0 None, 1 FXAA, 2 SMAA, 3 TAA
+pp.ResetHistory(cam);                                   // after a camera cut / teleport: fresh TAA history + exposure snap
+pp.SetToneMapper(cam, 2);                               // URP only: 0 None, 1 Neutral, 2 ACES
 ```
 
-### SSAO
-```typescript
-const ssao = pp.GetSSAORRenderPipeline();
-ssao.radius = 2.0;
-ssao.totalStrength = 1.0;
-ssao.fallOff = 0.000001;
-ssao.base = 0.1;
-```
+| Call | Does |
+|---|---|
+| `TOOLKIT.PostProcessor.Instance` | The orchestrating instance |
+| `pp.GetCameraStacks()` | `{ camera, stack, pipeline }[]` |
+| `pp.GetEffectListing(camera)` | `IPostProcessInspectorEffect[]`: `{ family, unityEffect, applied, target, reason?, enabled, fields[] }`; each field is `{ key, label, kind, readOnly?, get(), set?(v) }` in **Unity units** |
+| `pp.SetEffectEnabled(camera, family, on)` / `pp.IsEffectEnabled(camera, family)` | Families: `ambientOcclusion`, `screenSpaceReflections`, `motionBlur`, `autoExposure`, `lensDistortion`, `chromaticAberration`, `bloom`, `vignette`, `grain`, `colorGrading`, `depthOfField`, `antialiasing` |
+| `pp.SetAntialiasingMode(camera, mode)` / `pp.ResetHistory(camera?)` / `pp.SetToneMapper(camera, mode)` | See above |
+| `pp.GetDefaultRenderPipeline()` / `GetSSAORRenderPipeline()` / `GetSSRRenderPipeline()` | The first rendered camera's `DefaultRenderingPipeline` / `SSAO2RenderingPipeline` / `SSRRenderingPipeline` (legacy accessors) |
+| `pp.applyVolumes()` | Re-blend and rebuild every stack — heavy, one-off only |
 
-### Unity-Exported Volume Effects
+Static switches, set **before** the scene loads: `TOOLKIT.PostProcessor.ForceScreenSpaceReflections` (false — PPv2 SSR on a forward camera), `Dithering` (true), `HalfFloatChain` (true; false halves HDR bandwidth but brings back banding).
 
-These are automatically parsed from `node.metadata.toolkit.postprocessing`:
-- `colorgrading` → `imageProcessing` color grading + tone mapping
-- `ambientocclusion` → SSAO2
-- `screenspacereflections` → SSR pipeline
-- `bloom` → pipeline bloom
-- `chromaticaberration` → chromatic aberration
-- `depthoffield` → DOF
-- `grain` → grain
-- `lensdistortion` → barrel distortion
-- `motionblur` → motion blur
-- `vignette` → vignette
-- `sharpen` → sharpen
-- `autoexposure` → eye adaptation
+**Rules:**
+- Edits last for the session; any re-apply restores the authored values.
+- An effect authored at intensity 0 creates no pass. Author it above 0 in Unity and disable it at start.
+- **Never** enable the pipeline's own bloom / chromatic aberration / grain / `imageProcessing.vignette*` / `colorGradingTexture` on a camera with exported volumes — toolkit passes already render those, so you get a second copy (or nothing: the toolkit turns Babylon's vignette off). Edit through `GetEffectListing` instead. Direct pipeline properties are fine for depth of field, sharpen, or a scene with no volumes.
+- `PostProcessor` reuses an existing `DefaultRenderingPipeline` on the camera (e.g. `DefaultCameraSystem`'s) and overrides it.
+
+**Inspector:** `TOOLKIT.WindowManager.ShowInspector` / `ToggleDebug` / `PopupDebug` add a **"Unity Post Processing"** section to the Babylon Inspector: select a camera for per-effect ON/OFF switches and Unity-unit fields, the AA mode dropdown and every TAA knob.
 
 ---
 
 ## TOOLKIT.TerrainBuilder
 
-> **Extends:** `TOOLKIT.ScriptComponent`  
-> **Role:** Runtime renderer for Unity terrain — grass layers, detail meshes, and tree billboards.
+> **Extends:** `TOOLKIT.ScriptComponent` (Pro)  
+> **Role:** Rebuilds an exported Unity terrain from data: a quadtree-LOD heightfield surface (splat material, or the terrain's Shader Graph class), holes, a Havok heightfield collider, instanced trees (LODGroup, crossfade, billboards, wind), mesh details and texture grass streamed by distance. The exporter creates one per Unity terrain; never add it by hand.
 
-### Static Configuration (set before scene load)
-
-```typescript
-// Grass
-TOOLKIT.TerrainBuilder.grassHeightScale     // number (default 1.0) — world scale of grass height
-TOOLKIT.TerrainBuilder.grassRandomFlip      // boolean (default true) — randomly mirror grass quads
-
-// Detail mesh chunks
-TOOLKIT.TerrainBuilder.detailChunkMode      // number — 0 = static instances, 1 = dynamic
-TOOLKIT.TerrainBuilder.detailChunkWorldSize // number — chunk size in world units
-TOOLKIT.TerrainBuilder.meshDetailChunkTargetInstances  // number — target instances per chunk
-```
-
-### Instance API
-
-> ⚠️ `TerrainBuilder` exposes **no** public instance query methods — there is no `getTerrain()`,
-> `getTerrainData()`, or `getHeightAtPoint()`. The class is driven entirely by the static
-> configuration fields above plus the exported terrain metadata. To place objects on the ground
-> at runtime, raycast down against the terrain mesh instead:
+### Find it, wait for it
 
 ```typescript
-const ray = new BABYLON.Ray(new BABYLON.Vector3(spawnX, 1000, spawnZ), BABYLON.Vector3.Down(), 2000);
-const hit = scene.pickWithRay(ray, (m) => m.isPickable);
-if (hit?.pickedPoint) spawnNode.position.set(spawnX, hit.pickedPoint.y + 0.5, spawnZ);
+const terrain = TOOLKIT.SceneManager.FindScriptComponent<TOOLKIT.TerrainBuilder>(node, "TOOLKIT.TerrainBuilder");
+if (terrain.isBuilt) start(); else terrain.onBuiltObservable.addOnce(() => start());
+TOOLKIT.TerrainBuilder.IsAllBuilt(scene);              // every terrain in the scene finished
+TOOLKIT.TerrainBuilder.GetTerrains(scene);             // TerrainBuilder[]
+TOOLKIT.TerrainBuilder.GetTerrainAt(scene, worldPos);  // the tile under a point, or null
 ```
+
+### Height queries (Unity names)
+
+| Call | Returns |
+|---|---|
+| `TerrainBuilder.GetWorldHeightAt(scene, worldPos)` (static) | World Y under the point across all tiles; null off-terrain |
+| `terrain.GetWorldHeight(worldPos)` | World Y on this tile (clamped to its rect) |
+| `terrain.SampleHeight(worldPos)` | Height relative to the terrain (`Terrain.SampleHeight`) |
+| `terrain.WorldToTerrainUV(worldPos)` | Normalised `Vector2`; null outside |
+| `terrain.GetInterpolatedHeight(u, v)` / `GetInterpolatedNormal(u, v)` | Local height / world normal at uv |
+
+They return 0 or null before the build.
+
+> ⚠️ The terrain surface is **not pickable** — `scene.pickWithRay` never hits it. Use the queries above, or a Havok
+> raycast against the terrain collider (`TOOLKIT.RigidbodyPhysics.Raycast(origin, direction, length)`).
+
+```typescript
+const y = TOOLKIT.TerrainBuilder.GetWorldHeightAt(scene, new BABYLON.Vector3(x, 0, z));
+if (y != null) spawnNode.position.set(x, y + 0.5, z);
+```
+
+### Live Unity settings
+
+| Member | Unity equivalent |
+|---|---|
+| `treeDistance` | `Terrain.treeDistance` |
+| `detailObjectDistance` | `Terrain.detailObjectDistance` (fade 0.9–1×) |
+| `detailObjectDensity` | `Terrain.detailObjectDensity` (relative to the exported density — can only thin) |
+| `heightmapPixelError` | `Terrain.heightmapPixelError` (surface LOD) |
+| `setGrassWind(strength, amount, speed, tint?)` | TerrainData *Waving Grass* settings |
+
+There are no static configuration fields. An export from an older exporter logs "export contract N is not supported — re-export the scene" and builds nothing.
 
 ---
 
 ## TOOLKIT.ShurikenParticles
 
-> **Extends:** `TOOLKIT.ScriptComponent`  
-> **Role:** Unity Shuriken particle system runtime. Reads exported metadata and creates a `BABYLON.ParticleSystem` with Unity-compatible defaults.
+> **Extends:** `TOOLKIT.ScriptComponent` (Pro)  
+> **Role:** Unity Shuriken runtime. Each exported `ParticleSystem` becomes one **CPU** `BABYLON.ParticleSystem` that this component drives: clock, emission, every module, sorting, trails, mesh instances, particle lights and Shader Graph particle materials.
 
-### Accessing the Particle System
+### Find and control a system
 
 ```typescript
-const particles: TOOLKIT.ShurikenParticles = TOOLKIT.SceneManager.FindScriptComponent(
-    emitterNode, "TOOLKIT.ShurikenParticles"
-);
-
-// Get the underlying Babylon particle system
-const ps = particles.getParticleSystem();
-
-// Play / stop
-particles.play();
-particles.stop();
-particles.pause();
+const fx = TOOLKIT.SceneManager.FindScriptComponent<TOOLKIT.ShurikenParticles>(node, "TOOLKIT.ShurikenParticles");
+fx.play();                // resumes if paused, restarts if stopped; also plays child systems (play(false) = this one only)
+fx.stop();                // StopEmitting — live particles finish
+fx.stop(true, 1);         // StopEmittingAndClear
+fx.pause();  fx.clear();
+fx.emit(20);              // 20 extra particles, through the shape and start values
+fx.simulate(1.5);         // jump 1.5 s ahead (restart = true clears and rewinds first)
+fx.onSystemStoppedObservable.add((s) => { /* Stop Action = Callback */ });
 ```
 
-### Common Runtime Modifications
+| Member | Notes |
+|---|---|
+| `play(withChildren = true)`, `stop(withChildren = true, stopBehavior = 0)`, `pause(withChildren = true)`, `clear(withChildren = true)` | Unity semantics. Children = descendant nodes with the component |
+| `emit(count)`, `emitFrom(position, velocity, count)` | Extra particles; `emitFrom` takes a world position and velocity |
+| `simulate(seconds, withChildren = true, restart = true)` | Fixed 1/60 s steps |
+| `reset()` | Stop and clear, then `play()` |
+| `isPlaying()`, `isPaused()`, `isEmitting()`, `isAlive(withChildren = true)` | |
+| `time`, `duration`, `loop`, `particleCount` | Read-only getters |
+| `getParticleSystem()`, `getEmitterMesh()`, `getChildSystems()` | The CPU `BABYLON.ParticleSystem`, the component's node, child systems |
+| `triggerSubEmitter(index)` | Fire the Manual sub-emitter at that index of the Inspector list |
+| `onParticleCollisionObservable` | Needs Collision › **Send Collision Messages** |
+| `onParticleTriggerObservable` `{ type, particle, system }` | `type`: 0 inside, 1 outside, 2 enter, 3 exit. Fires only for actions set to **Callback** |
+| `ShurikenParticles.SimulateAll(scene, seconds)`, `SetHold(scene, hold)`, `FindByInstanceId(scene, id)` | Step or freeze every system (captures) |
+
+### Editing the Babylon system
+
+Safe to edit (written once at load): the *constant* start values `minLifeTime` / `maxLifeTime`, `minEmitPower` / `maxEmitPower`, `minSize` / `maxSize`, `minInitialRotation` / `maxInitialRotation`, `color1` / `color2`, `blendMode`. Start values authored as curves are rewritten every frame.
+
+**Has no effect — do not set:** `emitRate`, `manualEmitCount`, `updateSpeed`, `gravity`, `colorDead`. Emission, gravity and colour over lifetime come from the exported modules. Control playback with the component (`play` / `stop` / `emit`), never `ps.start()` / `ps.stop()`. Change the look in Unity and re-export.
+
+---
+
+## TOOLKIT.LineRenderer / TOOLKIT.TrailRenderer
+
+> **Extends:** `TOOLKIT.ScriptComponent` (Pro)  
+> **Role:** Unity `LineRenderer` / `TrailRenderer` as ribbon meshes (width curve, colour gradient, alignment, texture mode). A Shader Graph material draws through its generated class; any other material draws unlit and alpha-blended.
 
 ```typescript
-const ps = particles.getParticleSystem();
-
-// Emission rate
-ps.emitRate = 200;
-
-// Color over lifetime
-ps.color1 = new BABYLON.Color4(1, 0.5, 0, 1);
-ps.color2 = new BABYLON.Color4(1, 0, 0, 0);
-ps.colorDead = new BABYLON.Color4(0, 0, 0, 0);
-
-// Speed
-ps.minInitialRotation = -Math.PI;
-ps.maxInitialRotation = Math.PI;
-ps.minEmitPower = 1;
-ps.maxEmitPower = 3;
-
-// Gravity
-ps.gravity = new BABYLON.Vector3(0, -9.81, 0);
-```
-
-### More Methods
-
-```typescript
-particles.reset(): void                 // reset the particle system
-particles.isPlaying(): boolean
-particles.getParticleCount(): number
-particles.getEmitterMesh(): BABYLON.AbstractMesh
+const line = TOOLKIT.SceneManager.FindScriptComponent<TOOLKIT.LineRenderer>(node, "TOOLKIT.LineRenderer");
+line.setPositions([from, to]);                  // BABYLON.Vector3[] — replaces the points
+const points = line.getPositions();
 ```
 
 ---
@@ -246,9 +219,59 @@ protected start(): void {
 
 ---
 
-## Unity GUI Controls
+## TOOLKIT.UserInterface — exported Unity UI
 
-These custom GUI controls extend the Babylon.js GUI control classes (`Slider`, `ScrollBar`, `Container`) and are registered automatically for GUI parsing when the toolkit initializes. Import them from the package root as `TOOLKIT.UnitySlider`, `TOOLKIT.UnityScrollBar`, and `TOOLKIT.UnityDropdownMenu`.
+The exporter attaches one `TOOLKIT.UserInterface` per root uGUI Canvas / UI Toolkit UIDocument (every render mode). It builds asynchronously in its own `start()`, so wait for it before looking up elements. Elements are `TOOLKIT.UnityElement` (extends `BABYLON.GUI.Container`). All members below are **static**. Authoring rules and limits: `unity-authoring-recipes.md` §17.
+
+| Member | Returns / does |
+|---|---|
+| `GetInterface(name, scene?)` | The built interface (root node name), else `null` (not built yet, or still inactive) |
+| `GetInterfaceNames(scene?)` / `AllInterfacesLoaded(scene?)` | `string[]` / `boolean` |
+| `OnInterfaceLoaded` | `Observable<string>`: the node name of each interface as it finishes |
+| `FindElement(nameOrPath, scene?)` | `UnityElement`: a `"Canvas/Panel/Button"` path, a path suffix, or the first element with that name |
+| `QueryElements({ name?, className?, type? }, scene?)` | `UnityElement[]`. uGUI `type`: `button`, `toggle`, `slider`, `scrollbar`, `dropdown`, `inputField`, `scrollRect`, `image`, `text`, … UI Toolkit: USS class or element type |
+| `OnClick(el)` | `Observable<UnityElement>`; fires after the persistent listeners |
+| `OnValueChanged(el)` | `Observable<any>`: toggle `boolean`, slider / scrollbar `number`, dropdown index, input `string`, scroll rect `{x,y}` |
+| `OnSubmit(el)` | `Observable<string>` (input field) |
+| `GetText(el)` / `SetText(el, text)` | Text graphic or input value; layout re-runs |
+| `GetValue(el)` / `SetValue(el, value, notify = true)` | The control's value |
+| `SetInteractable(el, on)` | `Selectable.interactable` (disabled tint, no events) |
+| `SetActive(nameOrPathOrInterface, active, scene?)` | Show / hide an element with layout, or enable a whole interface (building an inactive one the first time) |
+| `GetForegroundTexture(scene)` | The shared fullscreen ADT that holds the overlay canvases — use it instead of creating a second fullscreen ADT |
+
+```typescript
+namespace PROJECT {
+    export class HudController extends TOOLKIT.ScriptComponent {
+        private loaded: BABYLON.Observer<string> = null;
+        constructor(t: BABYLON.TransformNode, s: BABYLON.Scene, p: any = {}) { super(t, s, p, "PROJECT.HudController"); }
+        protected start(): void {
+            if (TOOLKIT.UserInterface.GetInterface("HUD", this.scene) != null) this.wire();
+            else this.loaded = TOOLKIT.UserInterface.OnInterfaceLoaded.add((name) => { if (name === "HUD") this.wire(); });
+        }
+        private wire(): void {
+            const UI = TOOLKIT.UserInterface;
+            const play = UI.FindElement("HUD/Menu/PlayButton", this.scene);
+            if (play) UI.OnClick(play).add(() => this.startGame());
+            const volume = UI.FindElement("Volume", this.scene);
+            if (volume) UI.OnValueChanged(volume).add((v: number) => this.setVolume(v));
+            UI.SetText(UI.FindElement("Score", this.scene), "0");
+            UI.SetActive("PauseMenu", false, this.scene);
+        }
+        // Also callable from a Unity Button's persistent onClick when the C# class has [Babylon(Class="PROJECT.HudController")]
+        public startGame(): void { /* … */ }
+        private setVolume(v: number): void { /* … */ }
+        protected destroy(): void { if (this.loaded) TOOLKIT.UserInterface.OnInterfaceLoaded.remove(this.loaded); }
+    }
+}
+```
+
+`OnInterfaceLoaded` is static and is not cleared per scene — always remove your observer in `destroy()`.
+
+---
+
+## Legacy Unity GUI Controls (old exports only)
+
+These controls are created only for scenes exported by an older toolkit (that path logs *"was exported by an older toolkit — re-export the scene"*). Current exports build `TOOLKIT.UnityElement` trees — use the `TOOLKIT.UserInterface` API above and never cast an exported element to these classes.
 
 ### `TOOLKIT.UnitySlider`
 
@@ -304,41 +327,39 @@ dd.options = [                // replace the option list (setter)
 
 ---
 
+---
+
 ## PostProcessor + Volume Scripting Pattern
 
 ```typescript
-namespace TOOLKIT {
+namespace PROJECT {
     export class VolumeBlender extends TOOLKIT.ScriptComponent {
         private ppInstance: TOOLKIT.PostProcessor = null;
-        private playerInCombat: boolean = false;
 
         constructor(t: BABYLON.TransformNode, s: BABYLON.Scene, p: any = {}) {
-            super(t, s, p, "TOOLKIT.VolumeBlender");
+            super(t, s, p, "PROJECT.VolumeBlender");
         }
 
         protected start(): void {
             this.ppInstance = TOOLKIT.PostProcessor.Instance;
-
             TOOLKIT.SceneManager.EventBus.OnMessage("combat:start", () => this.enterCombat());
             TOOLKIT.SceneManager.EventBus.OnMessage("combat:end",   () => this.exitCombat());
         }
 
+        private setVignette(intensity: number): void {
+            const cam = this.scene.activeCamera;
+            const vig = this.ppInstance?.GetEffectListing(cam)?.find(e => e.family === "vignette");
+            vig?.fields.find(f => f.key === "intensity")?.set?.(intensity);     // Unity units
+        }
+
         private enterCombat(): void {
-            this.playerInCombat = true;
-            const pp = this.ppInstance?.GetDefaultRenderPipeline();
-            if (!pp) return;
-            // Intensify vignette and add chromatic aberration
-            pp.imageProcessing.vignetteWeight = 3.5;
-            pp.chromaticAberrationEnabled = true;
-            pp.chromaticAberration.aberrationAmount = 15;
+            this.setVignette(0.45);
+            this.ppInstance?.SetEffectEnabled(this.scene.activeCamera, "chromaticAberration", true);   // authored > 0, disabled at start
         }
 
         private exitCombat(): void {
-            this.playerInCombat = false;
-            const pp = this.ppInstance?.GetDefaultRenderPipeline();
-            if (!pp) return;
-            pp.imageProcessing.vignetteWeight = 1.5;
-            pp.chromaticAberrationEnabled = false;
+            this.setVignette(0.25);
+            this.ppInstance?.SetEffectEnabled(this.scene.activeCamera, "chromaticAberration", false);
         }
     }
 }

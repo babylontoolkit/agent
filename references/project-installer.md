@@ -329,6 +329,18 @@ const MEDIA_MIME_TYPES: Record<string, string> = {
 // Extensions that also need CORS + method headers (3D model fetches from BabylonJS loaders)
 const CORS_FULL_EXTS = new Set([".gltf", ".glb"]);
 
+// "Content-Encoding: gzip" only when the last PATH segment contains ".gz." — the query string and hash are stripped
+// first, so "engine.html?scene=level.gz.gltf" stays plain HTML while "scenes/level.gz.bin" is served as gzip.
+function isGzipEncodedUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  let path = url;
+  const query = path.indexOf("?");
+  if (query >= 0) path = path.substring(0, query);
+  const hash = path.indexOf("#");
+  if (hash >= 0) path = path.substring(0, hash);
+  return path.substring(path.lastIndexOf("/") + 1).toLowerCase().includes(".gz.");
+}
+
 function applyMediaContentType(req: Connect.IncomingMessage, res: { setHeader: (k: string, v: string) => void }) {
   if (!req.originalUrl) return;
   const path = req.originalUrl.split("?")[0].toLowerCase();
@@ -470,7 +482,7 @@ export default defineConfig(({ mode }) => ({
       name: "gzip-response-headers",
       configureServer(server) {
         server.middlewares.use((req: Connect.IncomingMessage, res, next) => {
-          if (req.originalUrl && req.originalUrl.includes(".gz.")) {
+          if (isGzipEncodedUrl(req.originalUrl)) {
             res.setHeader("Content-Encoding", "gzip");
           }
           next();
@@ -478,7 +490,7 @@ export default defineConfig(({ mode }) => ({
       },
       configurePreviewServer(server) {
         server.middlewares.use((req: Connect.IncomingMessage, res, next) => {
-          if (req.originalUrl && req.originalUrl.includes(".gz.")) {
+          if (isGzipEncodedUrl(req.originalUrl)) {
             res.setHeader("Content-Encoding", "gzip");
           }
           next();
