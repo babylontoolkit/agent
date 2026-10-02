@@ -67,27 +67,30 @@ How to call the typed commands is in `unity-editor-commands.md`. The export itse
 | Directional / Point / Spot, **Realtime** | **Direct** | §3 |
 | **Mixed** lights | **Direct + Bake** — realtime direct light, baked indirect and shadowmask | The right mode for a sun (§3) |
 | **Baked** lights, Area / Rect / Disc lights | **Bake** — lightmaps light static objects, light probes light dynamic ones | The light node itself is not written, and **its children are skipped too** (§3) |
+| HDRP **Realtime** Rectangle light | **Direct** → Babylon `RectAreaLight` (type 3, `width` / `height`) | WebGL2 / WebGPU only (WebGL1 skips it, warned once); diffuse only; LTC tables load from the Babylon CDN (§3) |
 | Lightmaps: Baked Indirect, Shadowmask, Subtractive | **Bake** | Distance Shadowmask is approximated (§4) |
-| Directional lightmaps | **Bake**, approximated as non-directional | Bake `NonDirectional` so Unity previews what ships (§4) |
+| Directional lightmaps | **Bake** — the direction map ships and the runtime applies Unity's directional decode | Normal-mapped surfaces keep their baked relief (§4) |
 | Emissive surfaces lighting the scene | **Bake** (the emission itself is Direct) | Material GI = Baked (§4) |
 | Light probes / Adaptive Probe Volumes | **Bake** → `TOOLKIT.LightProbeNetwork` | Needs baked probes (Light Probe Group or APV) and an active `SceneController`; works in every ambient mode; levels only (§5) |
-| Reflection probes (Baked / Custom), box projection | **Bake** | One probe per renderer; no blending. **Never use Realtime mode** (§6) |
+| Reflection probes (Baked / Custom), box projection | **Bake** | One probe per renderer; no blending (§6) |
+| Reflection probes (**Realtime**) | **Toolkit** `TOOLKIT.RealtimeReflection` → live Babylon `ReflectionProbe` | Pro; same box, resolution, culling mask and refresh mode; renders the scene into a cube every N frames — budget it (§6) |
 | Skybox — Cubemap, 6 Sided, **Procedural** (incl. Default-Skybox), Shader Graph skies; IBL `.env`, spherical-harmonic ambient | **Direct** (sky textures copied; Procedural and Shader Graph skies drawn live) + **Bake** (IBL `.env`) | Levels only; needs a camera with Skybox clear flags. `Skybox/Panoramic` is not carried (§7) |
 | Gradient / Color ambient | **Direct**, approximated with a hemispheric light | Light probes still light probe-lit renderers (§5, §7) |
 | Fog (Linear / Exp / Exp2; HDRP Fog volume) | **Direct** | §8 |
 | Shadows — cascades, distance, resolution, softness | **Direct**, from the URP asset | §3 |
-| URP / HDRP / PPv2 Volumes | **Toolkit** `PostProcessor` + **Bake** (the whole colour grade becomes a LUT) | Pro (§9) |
+| URP / HDRP / PPv2 Volumes | **Toolkit** `PostProcessor` + **Bake** (the whole colour grade becomes a LUT) | Pro (§9). Local (Box / Sphere) Volumes blend per frame as the camera walks in and out |
 | Camera — projection, FOV, clip, clear, HDR, physical camera | **Direct** | §9 |
 | Camera anti-aliasing — FXAA / SMAA / TAA / MSAA | **Toolkit** `PostProcessor` plugin passes (MSAA on the chain head, or the canvas) | Pro; per-pipeline gating (§9) |
 | PPv2 Auto Exposure (eye adaptation) | **Toolkit** `AutoExposurePlugin` | Built-in only; HDRP Exposure is a static export value (§9) |
 | Terrain — heightmap, ≤ 16 layers, holes, Shader Graph terrain material, trees (LODGroup, SpeedTree), mesh details, texture grass, wind, TerrainCollider, terrain lightmap | **Toolkit** `TerrainBuilder` | Pro. HDRP draws no texture grass (neither does Unity's HDRP). Terrain lightmaps need `.gltf` (§10) |
-| Rigidbody, Box / Sphere / Capsule / Mesh / Terrain / Wheel colliders, physics materials, triggers, CharacterController | **Direct / Toolkit** (Havok) | Pro (§11) |
+| Rigidbody (incl. position and rotation constraints), Box / Sphere / Capsule / Mesh / Terrain / Wheel colliders, physics materials, triggers (mesh triggers as convex hulls), Layer Collision Matrix, `CollisionFilter`, CharacterController | **Direct / Toolkit** (Havok) | Pro (§11) |
 | Physics joints, gravity | **Toolkit** — Starter joint components, `SceneController` gravity | §11 |
 | Navigation mesh | **Bake** — the toolkit's Recast `UniRcNavMeshSurface` | Levels only (§12) |
-| NavMeshAgent | **Toolkit** `NavigationAgent` (crowd) | Pro (§12) |
+| Off-mesh links — `OffMeshLink`, AI Navigation `NavMeshLink` (width, direction, area, cost override, activation) | **Bake** — into the Recast navmesh, plus scene key `navigation.offmeshlinks` | Re-bake after adding or moving a link (§12) |
+| NavMeshAgent | **Toolkit** `NavigationAgent` (crowd) — crosses off-mesh links (auto or manual traversal) | Pro (§12) |
 | Animation clips | **Bake** (glTF animations, 30 fps) | Not licence-gated (§13) |
-| Animator state machines, blend trees, layers, avatar masks, root motion, events | **Toolkit** `AnimationState` | Pro. Direct blend trees and additive layers are not carried (§13) |
-| AudioSource, AudioListener | **Toolkit** `AudioSource`; the camera system is the listener | Pro (§14) |
+| Animator state machines, blend trees, layers, avatar masks, root motion, events, StateMachineBehaviours | **Toolkit** `AnimationState` | Pro. Direct blend trees, additive and synced layers, entry transitions, interruption, sub-state machines, speed / mirror / cycle-offset parameters carried; mirror and synced Timing are approximations (§13) |
+| AudioSource, AudioListener | **Toolkit** `AudioSource`: Unity's rolloff curves, spatial blend and stereo pan; the active camera is the listener | Pro (§14) |
 | Prefabs | **Toolkit** — layer-31 in-level prefabs, or asset containers | §15 |
 | Particle systems (Shuriken, every module; CPU-simulated), incl. Shader Graph particle materials | **Toolkit** `ShurikenParticles` | Pro. Noise, distortion and lit-particle shading approximated (§17) |
 | LineRenderer, TrailRenderer | **Toolkit** `LineRenderer` / `TrailRenderer` (ribbon mesh) | Pro (§17) |
@@ -95,7 +98,7 @@ How to call the typed commands is in `unity-editor-commands.md`. The export itse
 | DecalProjector, URP Full Screen Pass renderer feature, HDRP fullscreen Custom Pass, Custom Render Textures | **Toolkit** `DecalProjector`, `ShaderGraphPass`, `ShaderGraphRenderTexture` | Their materials are Shader Graphs (`shader-materials.md`) |
 | uGUI Canvas (Overlay / Camera / World Space), UI Toolkit `UIDocument` (overlay / world / render-texture panels), TMP and Legacy text | **Toolkit** `UserInterface` → Babylon GUI, laid out in the browser with Unity's rules | Pro (§17) |
 | VideoPlayer (Material Override) | **Toolkit** `WebVideoPlayer` | Pro (§17) |
-| LOD groups | **Direct** | Pro; distances need a GUI Editor (§17) |
+| LOD groups | **Direct** — Unity's screen coverages (any FOV, orthographic), group size, Cross Fade / SpeedTree dither fades | Pro (§17) |
 | Babylon Toolkit script components (`EditorScriptComponent`) | **Toolkit** — TypeScript classes | Not licence-gated (§18) |
 | Tags, layers, static flags | **Direct** | §19 |
 | Timeline, VFX Graph, cookies, realtime GI, occlusion culling, URP renderer features other than Full Screen Pass / Decal, 2D physics | **Substitute** | §22 |
@@ -254,13 +257,14 @@ exports at its imported size (§10).
 
 | Key | Carries |
 |---|---|
-| `type` | 0 directional, 1 point, 2 spot |
+| `type` | 0 directional, 1 point, 2 spot, 3 rectangle (HDRP Realtime Rectangle only) |
 | `color`, `intensity` | Unity intensity × π on URP/Built-in, × the toolkit's per-type scale (default 1). Colour temperature is applied |
 | `intensitymode` | Point lights use inverse-square falloff |
 | `range`, `spotangle` / `innerspotangle` | Range and cone |
 | Shadows | `generateshadows`, `softshadows` (PCF), `shadowstrength`. Cascades, split, distance and `shadowmapsize` come from the **URP pipeline asset** (map size = the main-light resolution, used for every light). Babylon bias = Unity bias × 0.1 |
 | `lightmapmode`, `occlusionmaskchannel` | Mixed-light bake data |
 | `renderlist` | From the culling mask |
+| `width`, `height` | Rectangle size (type 3), from the light's area size |
 
 Extra Babylon shadow knobs come from the toolkit **`LightSettings`** component on the same GameObject. At
 runtime, shadows are created only at render quality High or Medium. A material takes at most
@@ -272,7 +276,8 @@ runtime, shadows are created only at render quality High or Medium. A material t
 | **Mixed** | **Direct + Bake** — realtime direct light and shadows, plus baked indirect (and the shadowmask) | The **sun**, and any key light that must give specular highlights or realtime shadows on dynamic objects |
 | **Baked** | **Bake** — the light node is not written; its direct and indirect light live in the **lightmaps** (static objects) and the **light probes** (dynamic objects) | Fill, bounce and practical lights. They cost nothing at runtime. They give no specular highlight and no realtime shadow on dynamic objects |
 | Area / Disc / Rectangle (URP, Built-in) | **Bake** — Unity bakes them only; carried by lightmaps and probes | Soft window light, panels, signage |
-| HDRP **realtime** Rectangle | **Substitute** — dropped **without a warning** | Bake it, or add a Babylon `RectAreaLight` from a script component |
+| HDRP **Realtime** Rectangle | **Direct** — a Babylon `RectAreaLight` facing the light's forward, same size, colour, range; intensity passes through in nits (factor 1.0, like every HDRP light) | Soft panels and windows that must light dynamic objects at runtime |
+| Any other Rectangle (Mixed / Baked, or Realtime on URP / Built-in) | **Bake** — not exported, **always warned** ("Rectangle lights" in the export summary) | Carried by the lightmaps and probes; a Realtime one on URP / Built-in lights nothing in Unity either |
 
 **Author it:**
 
@@ -293,6 +298,10 @@ than `MinSunlightDistance` (50) is raised to that height.
 - A Baked light's warning ("Baked lights") in the export summary is expected. It is not a failure.
 - Cookies are not carried. Add `SpotLight.projectionTexture` from a script component.
 - HDRP physical light units carry over only with `UseHDRPPhotometricLights` on (default off, warned).
+- **Rectangle lights need WebGL2 or WebGPU.** A WebGL1 context skips them with one warning. They are **diffuse only**:
+  Babylon 9.29's rect-area specular misuses the light colour as Fresnel F0 and explodes above intensity 1, so the
+  runtime zeroes it. Babylon loads the area-light LTC tables once per scene from `assets.babylonjs.com` — an
+  offline build has no rectangle lighting. Each rect light counts against `maximumLights` like any other.
 - Under Shadowmask, more than four overlapping Mixed lights exceed the shadowmask channels (warned).
 
 ---
@@ -301,10 +310,16 @@ than `MinSunlightDistance` (50) is raised to that height.
 
 **Reaches BabylonJS as.**
 - **Per material:** each lightmapped renderer's material gets `lightmapTexture` (colour) and, under Shadowmask,
-  `shadowmaskTexture`, plus `lightmapLevel`.
+  `shadowmaskTexture`, plus `lightmapLevel`. A **Directional** bake (`directionalMode` = `CombinedDirectional`, Unity's
+  default) also writes `lightmapDirection` — the direction map, linear PNG in every format setting. The runtime then
+  attaches `TOOLKIT.DirectionalLightmapPlugin` (GLSL and WGSL), which runs Unity's `DecodeDirectionalLightmap` with the
+  per-pixel normal (the vertex normal on a material without a normal map). Non-directional bakes are unchanged.
 - **Per mesh:** a `TEXCOORD_1` accessor with the renderer's lightmap scale/offset baked in.
-- **Encoding:** lightmaps are re-encoded as **RGBD PNG**. Keep `TextureImageFormat` = 0: the WEBP/KTX2 lightmap
-  paths are not verified.
+- **Encoding:** lightmaps are always **RGBD**-packed (the GLB-embedded path too). Their format follows
+  `TextureImageFormat`: PNG (0); WEBP (2) when `SuperCompressWebpLightmaps` is on — lossless, decodes to the same pixels as the PNG;
+  KTX2 (3) when `SuperCompressKtx2Lightmaps` is on — linear UNORM, UASTC quality 4, no RDO, no mipmaps, which renders
+  within a level of the PNG. With the matching `SuperCompress*Lightmaps` off, lightmaps stay PNG. Shadowmasks are
+  linear occlusion data (never RGBD) and follow the format setting like any linear texture.
 - **Scene keys:** `lightmapbakemode`, `shadowmaskmode`, `subtractiveshadowcolor`, `renderpipeline`
   (`birp`/`urp`/`hdrp`).
 - **Diffuse IBL:** lightmapped materials suppress it, because the lightmap already holds the indirect light.
@@ -321,7 +336,7 @@ than `MinSunlightDistance` (50) is raised to that height.
 ```bash
 unity command get_lighting_settings --project-path "$PROJ"
 unity command set_lighting_settings --project-path "$PROJ" --dry_run true \
-  --settings '{"bakedGI":true,"realtimeGI":false,"lightmapper":"ProgressiveGPU","bounces":2,"lightmapResolution":20,"directionalMode":"NonDirectional","maxLightmapSize":2048}'
+  --settings '{"bakedGI":true,"realtimeGI":false,"lightmapper":"ProgressiveGPU","bounces":2,"lightmapResolution":20,"directionalMode":"CombinedDirectional","maxLightmapSize":2048}'
 # review applied[] / unknown[], then run again without --dry_run
 unity command bake_lighting --project-path "$PROJ"
 deadline=$((SECONDS+900)); seen=""
@@ -353,16 +368,20 @@ setting loses range and is warned.
 - Each Mixed light's `bakingOutput.mixedLightingMode` matches the scene's mode.
 
 **Traps:**
-- **Bake `directionalMode` = `NonDirectional`.** Directional lightmaps export their colour map only (the
-  direction map is not read), so a directional bake looks non-directional in Babylon. Baking non-directional
-  makes Unity preview what ships.
+- **Directional is carried.** Bake `CombinedDirectional` when normal-mapped static surfaces should keep their
+  baked relief; `NonDirectional` halves the lightmap memory and looks flat in both Unity and Babylon.
+- **No non-uniform transform scale on normal-mapped meshes.** Babylon builds the tangent frame as
+  `mat3(world) * TBN` without renormalising, so a scale like (9, 4, 0.3) exaggerates the normal map many times — in
+  realtime lighting and, through the directional decode, in the baked relief. Put the size in the mesh (scale 1).
 - **Emissive materials** light the scene through the bake: set the material's Global Illumination to **Baked**.
 - **Realtime GI (Enlighten) is not carried** (`globalillumination` is always `false`). Bake the GI instead.
 - The exporter **refuses to export while a bake is running**, and in the legacy *Iterative* GI workflow it
   forces a synchronous bake first. Always bake explicitly and wait for `completed`.
 - A **stale bake** (the mixed-lighting mode changed after baking) is warned — re-bake.
-- **Check duplicated lightmapped props at a browser checkpoint.** Several copies of one mesh and material in the
-  same lightmap atlas may share the first copy's UV2 region. That is unverified, so look before relying on it.
+- **Duplicated lightmapped props are safe.** A lightmapped renderer never shares a cached mesh
+  (`MeshCachePolicy.CanShareMesh`): each copy gets its own mesh with its own lightmap scale/offset baked into UV2, so
+  every copy shows its own atlas region (verified on six copies of one mesh and material in one atlas). The cost is
+  one mesh per lightmapped copy.
 
 ---
 
@@ -414,7 +433,15 @@ cost one draw. It is exported as the `showdebug` property of the `TOOLKIT.LightP
   attached as the material's `reflectionCubemapFile`.
 - `probe.boxProjection` exports as box projection (`boundingBoxSize` = the probe size, `boundingBoxPosition` =
   its position + centre).
-- Probe `intensity` / `importance` are **not** read. The global `ReflectionProbePower` setting applies instead.
+- Probe `intensity` / `importance` are **not** read for baked probes. The global `ReflectionProbePower` setting applies instead.
+- **Realtime** probes (Pro) are carried by `TOOLKIT.RealtimeReflection`, which the exporter adds to the probe node
+  automatically: a live Babylon `ReflectionProbe` at the probe position and `resolution`, linear HDR (`hdr`), with
+  the probe's box projection, `intensity` as the cube level, and Solid Color / Skybox clear. Its render list comes
+  from the culling mask (Everything = every scene mesh). Every renderer whose closest probe it is carries a
+  `PROBE_{id}` tag and its material reflects the live cube. Refresh: On Awake renders once, Every Frame renders
+  every frame (time slicing: every 9 frames for All Faces At Once, 14 for Individual Faces), Via Scripting renders
+  once and then on the component's `render()`. The optional toolkit `RealtimeReflection` editor component's list
+  adds extra render-list entries. Render quality Low skips realtime probes (receivers keep the scene IBL, warned once).
 - **Probe blending is not carried** (warned). Place one probe per area.
 - The runtime applies reflection probes at render quality High / Medium.
 
@@ -426,14 +453,18 @@ unity command add_component --target /Probe_Hall --type ReflectionProbe --projec
 unity command set_transform --target /Probe_Hall --position '[0,2,0]' --project-path "$PROJ"
 unity command set_component_properties --target /Probe_Hall --type ReflectionProbe --project-path "$PROJ" \
   --properties '{"m_Mode":0,"m_BoxProjection":true,"m_BoxSize":[20,6,20],"m_Resolution":256}'
-#   m_Mode: 0 Baked, 1 Realtime, 2 Custom — use Baked or Custom
+#   m_Mode: 0 Baked, 1 Realtime, 2 Custom — Baked / Custom by default; Realtime (+ m_RefreshMode 0 On Awake, 1 Every Frame,
+#   2 Via Scripting; m_TimeSlicingMode 0 All Faces, 1 Individual Faces, 2 None) only where reflections must move
 unity command bake_lighting --project-path "$PROJ"     # baked probes bake with the lightmaps
 ```
 
 **Traps:**
-- **Never use Realtime mode.** A Realtime probe gives its renderers a `[REALTIME]` placeholder cubemap that the
-  runtime does not handle. For truly dynamic reflections, add a Babylon `ReflectionProbe` from a script
-  component.
+- **Budget Realtime mode.** Every Realtime probe re-renders its whole render list six times per refresh. Use
+  it only where reflections must move (a mirror, a car paint showroom); prefer **Time Slicing** (9 / 14 frame
+  refresh) or **On Awake**, a tight **culling mask**, and a modest `resolution` (128–256). Baked stays the default.
+- Rough receivers of a realtime probe sample Babylon's box-filtered mip chain, not Unity's GGX-convolved cube, so
+  their blurry reflections show faint blocky patches. Keep realtime-probe receivers glossy, or keep rough
+  surfaces out of the probe's box.
 - Under URP, turn probe blending **off** in the URP pipeline asset. Box projection is also switched on there.
 - The component's public properties for those flags are read-only in some versions. Set them through the
   serialized fields (`set_serialized_field` / `SerializedObject`), not the C# property.
@@ -572,7 +603,26 @@ return "ok";' --project-path "$PROJ"
   - **LDR path:** PPv2 `LowDefinitionRange`, a camera without HDR, and every HDRP export — the strip goes through
     Babylon image processing. PPv2 LDR ignores the tonemapper, as Unity does.
 - **Tonemapping inheritance (URP).** A volume that does not override Tonemapping inherits it from the pipeline
-  defaults.
+  defaults — not from a lower-priority scene Volume. A scene Volume that sets a different tonemapper than the
+  pipeline default is therefore not inherited by a local Volume's bake: keep the tonemapper in the pipeline default,
+  or override it in every Volume.
+- **Local Volumes blend live.** A local Volume (`isGlobal = false`, with a Box or Sphere Collider) blends like
+  Unity's `VolumeManager`: weight = `Volume.weight × (1 − d²/b²)` where d is the camera's distance to the bounds and
+  b the **Blend Distance** (1 inside; Blend Distance 0 = inside only). Volumes mix in priority order, every
+  parameter lerped by its weight.
+  - The post chain is built once for the **union** of every Volume's effects; an effect at weight 0 is neutralised
+    (its Unity default), never detached, so the chain head never moves.
+  - Each frame the camera or a Volume moved, the weights are recomputed and the blended Unity values are written
+    into the existing passes through the same setters the Inspector uses. A still camera costs nothing; a
+    global-only level registers no per-frame observer.
+  - **LUTs:** the baked LUTs of the overlapping Volumes are blended on the CPU into one LUT per camera, only when a
+    weight moves by more than 1/255 (needs WebGL2 / WebGPU 3D textures). Documented deviation: Unity re-bakes one
+    LUT from the blended parameters, so mid-band grades are close, exact at weights 0 and 1.
+  - Switch a Volume at runtime with `postProcessor.SetVolumeEnabled(false)` (or disable its node); the camera
+    re-blends at once. The Inspector's **Volumes** row shows each Volume's live weight
+    (`PostProcessor.Instance.GetVolumeWeights()` in code).
+  - Only fields the Inspector can edit re-blend per frame (intensity, colour, smoothness, centre, post exposure,
+    bloom threshold / scatter, …); enum switches (tonemapper, modes, quality) keep the union value.
 - **Pipeline defaults.** URP's two **default volume profiles** (global at priority -20000, quality asset at -10000)
   are exported onto `Camera.main`, so the look matches Unity with no scene Volume. HDRP: only the default-settings
   volume's Exposure and Tonemapping are exported, into the scene's image processing (levels only); its other effects
@@ -662,8 +712,9 @@ public static class Post
 - Put the level's grade in **global** Volumes.
 - A **local** Volume (`isGlobal = false`) needs a **Box or Sphere Collider on the same GameObject**, which gives
   its exported bounds. Without one it is ignored at runtime (warned).
-- **A local Volume's blend weight is computed once, when the level loads**, not per frame as the camera moves.
-  Use local Volumes only for areas the camera starts in, or drive transitions from a script component.
+- A local Volume blends per frame (see *Local Volumes blend live* above). Give it a **Blend Distance** for a soft
+  transition; 0 makes it switch at the bounds. Nested Volumes: the higher **priority** wins where both are at full
+  weight.
 - Use `sharedProfile` to edit the asset; `profile` silently clones it.
 - URP's Grading Mode is honoured: LowDynamicRange bakes in URP's order (tonemap, then grade). Re-export older levels.
 - Texture3D LUTs are not supported. A ColorLookup / external LUT must be an N²×N 2D strip (Read/Write or a PNG source).
@@ -706,7 +757,7 @@ Recipes for common looks (all with ACES tonemapping):
   morphs and VAT (warned) — expect ghosting there.
 - The exporter's `EnableAntiAliasing` (canvas MSAA) only affects cameras with no post chain.
 
-**Known gaps:** a local volume blends once, at apply time, not per frame. HDRP runs an 8-bit chain (no HDR grading
+**Known gaps:** HDRP runs an 8-bit chain (no HDR grading
 pass, no auto-exposure), uses PPv2 / URP effect maths and is the least verified pipeline. Each effect warns once for
 every overridden parameter it cannot carry. The runtime API (toggle an effect, change a value in Unity units, switch
 AA mode, reset TAA history, the Inspector's *Unity Post Processing* section) is in `10-ProComponents.md`.
@@ -777,19 +828,27 @@ Without Pro nothing is written — in heightfield mode there is then **no terrai
 - **A component:** `TOOLKIT.RigidbodyPhysics` or `TOOLKIT.CharacterController`, recreated with Havok.
 
 A collider with no Rigidbody becomes a **static** body (mass 0). Kinematic bodies become animated bodies.
-Layers become the shape's collision membership.
+
+**Collision layers.** The scene carries the project's Layer Collision Matrix (`layercollisionmatrix`, `int[32]`:
+bit *j* of row *i* set = layers *i* and *j* collide). Every shape — compound children and triggers included — gets
+membership `1 << layer` (a compound child uses its own GameObject's layer) and collides with its layer's matrix
+row, so two layers unticked in *Project Settings → Physics* pass through each other in BabylonJS exactly as in
+Unity. An enabled `CollisionFilter` on the body replaces the row with its `collideWith` mask
+(`physics.filteroverride: true`). Scenes exported before the matrix existed keep membership from `layermask` and
+collide with everything.
 
 | Unity setting | How it reaches BabylonJS |
 |---|---|
 | Mass, drag, angular drag, use gravity, kinematic | **Direct** |
 | Rotation constraints | **Direct** |
-| **Position** constraints | **Substitute** — not applied at runtime; clamp in a script component or use a `SixdofJoint` |
+| **Position** constraints | **Toolkit** — frozen world axes are held every physics step (frozen velocity zeroed, coordinates restored), so gravity, forces, impulses and hits cannot move the body on them. Kinematic bodies are exempt. `RigidbodyPhysics.HoldFrozenAxes(body, x, y, z)` re-captures after a scripted teleport; `ReleaseFrozenAxes(body)` frees it |
 | Physics materials (friction, bounciness, combine modes) | **Direct**. No material = the exporter's Default Friction / Restitution (0.6 / 0) |
-| Triggers | **Direct** for primitive colliders; events arrive once a script calls `enableCollisionEvents()` |
+| Triggers | **Direct**; events arrive once a script calls `enableCollisionEvents()`. A **MeshCollider** trigger is a convex hull trigger; a non-convex one is exported as convex with one export warning (and warns once at runtime on older exports) |
 | `Physics.gravity` | **Toolkit** — `SceneController.sceneOptions.defaultGravity` (default `(0,-9.81,0)`, levels only) |
 | Hinge / Fixed / Spring / Configurable / Character joints | **Toolkit** — Starter joint components: `BallSocketJoint`, `DistanceJoint`, `FixedHingeJoint`, `LockedJoint`, `PrismaticJoint`, `SixdofJoint`, `SliderJoint` (`Assets/[Starter]/Physics/`) |
 | Centre of mass | **Toolkit** — `PhysicsRoot.centerMass` |
-| Layer Collision Matrix, `CollisionFilter.collideWith` | **Substitute** — exported but not applied; set `shape.filterCollideMask` from a script component |
+| Layer Collision Matrix, `CollisionFilter.collideWith` | **Direct** — shape filter masks (see *Collision layers* above) |
+| Layer-masked queries | **Toolkit** — `RigidbodyPhysics.Raycast(origin, dir, length, RigidbodyPhysics.LayerMaskQuery(mask))` hits only layers in `mask` (Unity layer-mask bits); `Shapecast({ ..., layerMask })` likewise |
 | Interpolation, collision detection mode | **Substitute** — not carried |
 | WheelCollider | **Toolkit** — a chassis Rigidbody with ≥ 2 child wheels becomes a Havok raycast vehicle. Suspension and friction come from the toolkit **`RaycastWheel`** on each wheel; drive it from a script (`dlc/[Racing]/StandardCarController.ts`) |
 | CharacterController | **Toolkit** `CharacterController` (radius, height, centre, skin width, slope, step) |
@@ -816,7 +875,8 @@ Unity 6 renamed the Rigidbody API: `linearVelocity` / `linearDamping` / `angular
 versions, the trigger flag of a mesh collider's collision child was inverted.
 
 **Traps:**
-- Use **primitive colliders for triggers.** Mesh and convex shapes are always solid at runtime.
+- A **mesh trigger fires on its convex hull**, not the exact surface — for a concave trigger volume use several
+  primitive triggers.
 - A collision needs a Rigidbody on **at least one** side. Two kinematic bodies never *collide*, but **two
   kinematic triggers do fire trigger events**.
 - A non-convex **MeshCollider cannot be on a dynamic Rigidbody** — mark it Convex or use primitives. Inside a
@@ -836,7 +896,23 @@ versions, the trigger flag of a mesh collider's collision child was inverted.
   scene key `navigation.prebaked` at it.
 - **Runtime.** The runtime loads it straight into recast-navigation-js. NavMeshAgents become
   `TOOLKIT.NavigationAgent` crowd agents (Pro), with speed, acceleration, radius, height, base offset, angular
-  speed, stopping distance and area mask.
+  speed, stopping distance, area mask and auto-traverse.
+- **Off-mesh links.** Legacy `OffMeshLink` and AI Navigation `NavMeshLink` components are baked into
+  `NavigationMesh.bin` and listed in scene key `navigation.offmeshlinks`. A wide `NavMeshLink` becomes parallel
+  point links across its width. Direction, area (its flags apply to area masks), cost override and activation
+  carry. Runtime bakes (scene data, tile cache) add the same links. A `.bin` baked before a link existed logs a
+  stale-bake warning — re-bake and export again.
+- **Link traversal.** The agent walks to the link start, then crosses in a straight line at its own `speed`,
+  facing the direction of travel, and continues to its destination. It never reports stuck on a link.
+  `isOnOffMeshLink()`, `currentOffMeshLinkData` (`startPosition`, `endPosition`, `area`, `linkId`, `activated`,
+  `autoTraverse`), `onOffMeshLinkStartObservable` and `onOffMeshLinkEndObservable` report the crossing. With
+  `autoTraverseOffMeshLink` off (`setAutoTraverseOffMeshLink(false)`), the agent stops at the link start and
+  leaves the transform to your script. Play a jump there, then call `completeOffMeshLink()` to place it at the
+  link end and continue. `teleport`, `cancelNavigation`, disabling or disposing the agent ends a crossing. A
+  `setDestination` during a crossing applies from the link end.
+- **Links at runtime.** `SceneManager.GetNavigationLinks` / `GetNavigationLink` read them.
+  `SetNavigationLinkActive(scene, id, false)` switches a link off without a rebake: new paths avoid it, and an
+  agent heading for it re-plans. `AddNavigationLink` / `RemoveNavigationLink` apply on the next runtime bake.
 - **Optional height mesh.** With `_buildHeightMesh` on, a height mesh also exports as a pickable surface.
 
 Unity's own navmesh (`bake_navmesh`, the AI Navigation `NavMeshSurface`) is a separate Unity-side system. It is
@@ -898,7 +974,7 @@ unity command save_scene --project-path "$PROJ"
 | Unity feature | Babylon-side substitute |
 |---|---|
 | Area types and costs | The runtime `SceneManager` area API: `RegisterNavigationArea`, `SetNavigationAreaCost`, `AddNavigationAreaVolume`, `AddNavigationAreaMesh`. The agent's area mask *is* honoured |
-| Off-mesh links (`OffMeshLink`, `NavMeshLink`) | Not baked or read — script a jump or teleport |
+| Off-mesh link animation (Unity plays none either) | Carried as links (above). For a jump arc, turn auto-traverse off, animate the transform on `onOffMeshLinkStartObservable`, then call `completeOffMeshLink()` |
 | `NavMeshObstacle`, `NavMeshModifier` | Exclude via layers/tags; agents avoid each other through the crowd |
 
 A missing `NavigationMesh.bin` fails **silently** (`navigation.prebaked` is `null`). Check the file exists
@@ -940,16 +1016,16 @@ Omitted tangents are **flat**, not Unity's Auto tangents. Exact parameter names 
 
 | Feature | How it reaches BabylonJS |
 |---|---|
-| States; transitions with conditions, exit time, (fixed) duration, solo/mute; parameters | **Toolkit** ✅ |
-| Blend trees — 1D, 2D Simple Directional, 2D Freeform (both) | **Toolkit** ✅ |
-| **Direct** blend trees | ❌ not evaluated — use layers and `setLayerWeight` from a script |
-| Layers — weight, **override** blending, avatar masks | **Toolkit** ✅ |
-| **Additive** layers, synced layers | ❌ additive plays as override; synced is ignored — restructure as override layers |
-| Entry transitions | ❌ a layer always starts in its **default state** — set the right default, or call `playAnimation` |
-| Interruption source | Only `None` is honoured |
-| Sub-state machines | Flattened; transitions **to** a sub-machine and machine-level transitions ❌ — keep every state name unique |
-| State `speedParameter`, `mirror`, `cycleOffsetParameter`; Animator `speed` | ❌ (Animator speed is 1) |
-| `StateMachineBehaviour`s | ❌ — subscribe to the runtime transition observable in a script component |
+| States; transitions with conditions, exit time, (fixed) duration, offset, solo/mute; parameters | **Toolkit** ✅ |
+| Blend trees — 1D, 2D Simple Directional, 2D Freeform (both), **Direct** (incl. Normalized Blend Values, nested in other trees) | **Toolkit** ✅ |
+| Layers — weight (`setLayerWeight` / `getLayerWeight`), **override** and **additive** blending, avatar masks | **Toolkit** ✅ — additive adds `inverse(first frame) × current` of its clip on top of the layers below |
+| **Synced** layers (override motions per state) | **Toolkit** ✅ — follow the source layer's state, including mid-transition |
+| Entry transitions | **Toolkit** ✅ — evaluated in order when a machine is entered through Entry (a transition to a sub-state machine, or Exit from the root); like Unity, a layer **starts in its default state** |
+| Transitions in flight; interruption source (None, Current State, Next State, both orders), Ordered Interruption | **Toolkit** ✅ — Any State transitions are evaluated first (Unity order) and can always interrupt; `isInTransition(layer)` / `getActiveTransition(layer)` |
+| Can Transition To Self | **Toolkit** ✅ (Any State transitions); a state's own transition onto itself restarts it |
+| Sub-state machines | **Toolkit** ✅ — transitions to a machine enter through its entry transitions (else its default state); Exit follows the machine's outgoing transitions, else re-enters the parent through Entry |
+| State speed + **speed multiplier parameter** (negative plays backwards), **cycle offset** + parameter, **mirror** + parameter; Animator `speed` | **Toolkit** ✅ — parameters are read live. A state with a speed multiplier parameter plays at that parameter's value, as in Unity. The toolkit's `ThirdPersonPlayerController` and `StandardPlayerController` set the Starter Assets `MotionSpeed` every frame as Unity's ThirdPersonController does (1, or the input magnitude when `analogMovement` is on; parameter name `animationStateParams.motionSpeed`); a custom script driving that controller must set it itself, or locomotion holds still |
+| `StateMachineBehaviour`s | **Toolkit** ✅ — `onStateMachineBehaviourObservable` raises `{kind, behaviour, state, layer, properties}` for enter / update / exit / machineEnter / machineExit; a class registered with `TOOLKIT.SceneManager.RegisterClass("<C# class name>", …)` (namespace-qualified name first) is created on its first enter, gets the exported public / `[SerializeField]` fields, and receives `onStateEnter` / `onStateUpdate` / `onStateExit(animator, stateInfo, layerIndex)` and `onStateMachineEnter` / `onStateMachineExit(animator, machinePath)`. Machine-level behaviours also receive enter / update / exit for every state inside the machine. A missing class warns once per name |
 | `AnimatorOverrideController` | ❌ — nothing exports; use a real controller |
 | Root motion | Baked in when `applyRootMotion` is on, pinned otherwise; the runtime exposes root-motion deltas |
 | AnimationEvents | ✅ via `onAnimationEventObservable` (skeleton mode, 0.01 normalised-time precision) |
@@ -959,6 +1035,25 @@ Omitted tangents are **flat**, not Unity's Auto tangents. Exact parameter names 
 | Skinning | Max **4** bone influences |
 | Blend shapes | ✅ (last frame only, no names); blend-shape animation ✅ |
 | Timeline / PlayableDirector | **Substitute** — a TypeScript component driving `AnimationState` or animation groups |
+
+**Deviations from Unity** (skeleton mode unless noted):
+
+- **Mirror is an approximation.** The runtime swaps the tracks of the exported humanoid left / right bone pairs and
+  reflects local rotations across the character's YZ plane (rest-pose corrected). Like Unity, a mirrored **looping**
+  motion plays half a cycle on (mirrored at t = swapped and reflected clip at t + 0.5), so a mirrored run stays in step
+  with the unmirrored one, and generic rigs ignore mirror. Measured against Unity on the Starter PlayerArmature (Run_N and
+  an authored one-arm clip) hands and feet agree to about 2 cm; Unity mirrors in muscle space, so rigs with an
+  asymmetric rest pose can differ more.
+- **Synced-layer Timing is an approximation.** With Timing on, the source layer plays at
+  `sourceLength / lerp(sourceLength, syncedLength, syncedWeight)` and the synced layer is locked to the source's
+  normalized time; Unity's exact duration blend is not documented, so long, heavily weighted synced clips can drift.
+- **Additive layers carry no root motion,** and an additive layer is never the base layer.
+- **Direct trees divide by the weight sum** of the children that animate a property, so weights summing below 1 do
+  not fade toward the rest pose.
+- **Cycle offset shifts the sampled pose only**; animation events still fire on the unshifted phase.
+- **Machine enter / exit behaviours fire whenever the active state's machine changes** (including the root machine on
+  the first state), not only through Entry / Exit nodes.
+- **VAT mode** carries transitions, interruption, behaviours, speed and cycle offset; it has one layer and no mirror.
 
 For one animated transform in its own `.glb`: `bt_export_animation --path <HierarchyPath>`. It writes no
 metadata, so that file has no `AnimationState`. It also bakes **no keyframes** for a rig in VAT mode.
@@ -973,15 +1068,19 @@ metadata, so that file has no `AnimationState`. It also bakes **no keyframes** f
 | AudioSource setting | How it reaches BabylonJS |
 |---|---|
 | Volume, pitch, loop, mute, play on awake | **Direct**. Autoplay waits for the browser's audio unlock |
-| Spatial blend | **Direct, on/off** — ≥ 0.1 is fully 3D, below is 2D |
-| Min / max distance | **Direct** |
-| Rolloff mode | Always linear at runtime — call `setRolloffMode` from a script for others |
-| Priority, stereo pan, reverb zone mix, bypass flags, doppler, spread | Not used at runtime |
-| AudioListener | **Toolkit** — the camera system attaches the listener (`DefaultCameraSystem` spatial audio) |
+| Rolloff mode, min / max distance | **Direct** — the toolkit computes Unity's curve as a per-frame gain (native Web Audio distance attenuation is switched off). *Logarithmic* (default) = `min / d`, full volume inside min, and it keeps falling past max exactly like Unity (max does not stop it). *Linear* = `1 − (d − min) / (max − min)`, silent at max. *Custom* = your curve over `d / max`, exported as 64 samples of Unity's own `AnimationCurve.Evaluate` (0 or the last key past max) |
+| Spatial blend | **Direct** — any value above 0 is positional; the volume is `lerp(1, rolloff, blend)` like Unity's 2D/3D mix |
+| Stereo pan | **Direct** on the 2D share (`pan × (1 − blend)`), with Unity's constant-power pan law. A 2D source plays at Unity's level (−3 dB per channel at centre) |
+| Priority, reverb zone mix, bypass flags, doppler, spread | Not used at runtime |
+| AudioListener | **Toolkit** — the active camera hears (the toolkit attaches the listener to it when nothing else did); `DefaultCameraSystem` re-attaches it to its rig |
 | AudioMixer and snapshots | **Substitute** — the Starter `SoundManager` / `SceneSoundSystem` components (music and SFX groups) |
 | Reverb zones | **Substitute** — not carried |
 
-`AudioDetails.preloadAsset` makes a clip preload.
+`AudioDetails.preloadAsset` makes a clip preload. Scripts can change the same settings at runtime:
+`setRolloffMode("logarithmic" | "linear" | "custom", keys?)`, `setMinDistance`, `setMaxDistance`, `setSpatialBlend`,
+`setStereoPan`; `getRolloffGain()` / `getListenerDistance()` read back what is applied. A blend between 0 and 1 *and*
+a stereo pan together is approximate (Unity mixes two signal paths; the web plays one). The legacy audio engine
+(`EnableLegacyAudio`) follows the same rules.
 
 Because the file ships as-is, **the source format is the web format**: author `.ogg` or `.mp3` for music and
 ambience, and short `.wav`/`.ogg` for SFX. Unity's audio import settings (compression, load type, force-to-mono)
@@ -1051,7 +1150,7 @@ or repaired in Blender follow `unity-blender-cli.md`, which edits them in place 
 
 | Component | How it reaches BabylonJS (Pro) | Traps |
 |---|---|---|
-| `LODGroup` | Node keys `lods` and `distances` (needs `MeshExportSystem` = sub-meshes, the default) | **Distances need a Scene View camera — in a `-batchmode` Editor they are skipped (warned).** Export LOD levels from a GUI Editor. LOD renderers must be children of the group. Non-first levels never cast shadows. Screen coverages and crossfade are not used |
+| `LODGroup` | Node keys `lods`, `coverages` (screen-relative transition heights), `lodsize` / `lodcenter` (the group's size and reference point), `fademode`, `fadewidths`, `animatecrossfade` (needs `MeshExportSystem` = sub-meshes, the default). The runtime switches by Unity's own rule — group size × LOD bias ÷ (2 tan(fov/2) × distance), or ÷ (2 × ortho size) — so levels change at the same screen height at any field of view and in an orthographic camera, from a GUI or a batch-mode export. Below the last level the group is culled. **Fade Mode Cross Fade / SpeedTree** dither-fades between levels (Unity's 4×4 pattern): *Animate Cross-fading* gives a 0.5 s timed fade at each switch, otherwise the fade runs across each level's *Fade Transition Width*; a culled last level fades out. During a fade only the stronger level casts shadows | LOD renderers must be children of the group. Cross-fades need regular meshes with materials (a group with instanced renderers switches hard). Baked `distances` are only a fallback for old exports without coverages. Non-active levels never cast shadows. A group with one renderer per level and no fade runs on Babylon's native LOD (the fast path, thresholds re-derived from the coverages for the active camera): its active level casts only when the LOD0 renderer has Cast Shadows on |
 | `ParticleSystem` | `TOOLKIT.ShurikenParticles` — one **CPU** `BABYLON.ParticleSystem` per system. Every module: main, emission/bursts, shape (every type incl. mesh, skinned mesh, sprite, shape texture), velocity / limit / inherit / force, lifetime by emitter speed, colour / size / rotation over lifetime and by speed, external forces (force fields, wind zones), noise, collision (planes; world by ray casts), triggers, sub-emitters (birth / death / collision / trigger / manual), texture-sheet animation (grid, sprites), lights, trails (particle + ribbon), custom data. Renderer: billboard, stretched, horizontal, vertical, mesh (thin instances, ≤ 4 meshes), none (trail-only); sort modes, sorting layer / order | Materials: `Particles/Standard Unlit` / `Surface`, `Legacy Shaders/Particles/*`, `Mobile/Particles/*`, URP `Particles/Unlit` / `Lit` / `Simple Lit`, URP Lit / Unlit, HDRP Lit / Unlit, and **Shader Graph** (drawn through its generated class with Unity's vertex streams). Any other shader draws alpha-blended with the main texture (warned). See *Particle fidelity* below |
 | `LineRenderer` | `TOOLKIT.LineRenderer` — a ribbon through the exported points: width curve, colour gradient, View / TransformZ alignment, every texture mode. `setPositions(points)` / `getPositions()` at runtime | Corner and cap vertices are not generated. A non-graph material draws **unlit and alpha-blended** with its colour and texture — use a Shader Graph material for additive looks. Draws in rendering group 1 |
 | `TrailRenderer` | `TOOLKIT.TrailRenderer` — a world-space ribbon behind the moving node: `time`, `minVertexDistance`, width curve, colour gradient, `emitting` | Same material rule as `LineRenderer`. `autodestruct` and corner / cap vertices are not read |
@@ -1151,11 +1250,11 @@ Author the full level, but keep it light enough to run in a browser, and on mobi
 | Lever | How to set it |
 |---|---|
 | Texture size | The importer's `maxTextureSize` is the exported size — there is no exporter cap for materials. 2048 for hero surfaces, 1024 or less for props, 512 or less for UI and small details |
-| Texture format | `TextureImageFormat` KTX2 (`3`) for the smallest GPU memory. WEBP (`2`) only after switching `DefaultWebpImageCommandType` to lossy. Keep lightmaps PNG |
+| Texture format | `TextureImageFormat` KTX2 (`3`) for the smallest GPU memory. WEBP (`2`) only after switching `DefaultWebpImageCommandType` to lossy. Lightmaps follow the format setting (RGBD survives PNG, lossless WEBP and the linear KTX2 lightmap path) |
 | Lightmaps | `lightmapResolution` and `maxLightmapSize` (1024–2048) set lightmap memory. Fewer, fuller atlases are cheaper |
 | Lights | Bake fills and practicals (they cost nothing at runtime). Keep realtime and Mixed lights few. A material takes at most `SceneController.maximumLights` (default 4). The shadow map size comes from the URP asset |
 | Terrain | 4–8 layers, all layer textures one imported size (1024 mobile, 2048 desktop — the largest sets every array slice), heightmap 257–513 for mobile, tree / detail distance and detail density sized for the target, heightfield mode |
-| Geometry | LOD groups on heavy meshes (export LODs from a GUI Editor). Repeated meshes stay glTF instances (`ExportMeshInstances`, default on). Mark static objects Static to freeze their world matrices |
+| Geometry | LOD groups on heavy meshes (any Editor; Cross Fade only where popping shows). Repeated meshes stay glTF instances (`ExportMeshInstances`, default on). Mark static objects Static to freeze their world matrices |
 | Probes | Enough light probes to cover dynamic areas (APV ≤ 8192). Reflection-probe resolution 128–256 |
 | Post-processing | Grading is one LUT (an extra pass on the HDR path). TAA ≈ 2.5 ms (mostly its velocity prepass), auto-exposure ≈ 0.4 ms. Bloom, DOF, motion blur, SSAO and SSR cost fill-rate — use them sparingly on mobile. `TOOLKIT.PostProcessor.HalfFloatChain = false` before load halves HDR-chain bandwidth but brings back banding |
 | Shader Graph | Graph shadows use stock depth by default (`TOOLKIT.SgShadowDepth.Enabled = false`). Scene Color / Scene Depth nodes add a render target per camera. Keep each graph under 16 samplers |
@@ -1227,12 +1326,10 @@ few lines in a script component:
 | VFX Graph | Babylon `GPUParticleSystem` / Node Particle Editor from a script, or Starter `PROJECT.FxParticleSystem` (plays a Babylon particle-system JSON, CPU or GPU). Shuriken systems are carried (§17) |
 | Light cookies | `SpotLight.projectionTexture` |
 | Realtime GI (Enlighten) | Bake the GI (§4) |
-| Realtime reflection probes | Babylon `ReflectionProbe` in a script component |
 | URP renderer features other than Full Screen Pass / Decal (e.g. the SSAO feature), Panini, Screen Space Lens Flare | `SSAO2RenderingPipeline`, custom `PostProcess`, `LensFlareSystem` |
 | Render scale | `engine.setHardwareScalingLevel` |
 | Occlusion culling | `mesh.occlusionType` / occlusion queries |
-| Layer Collision Matrix | `shape.filterCollideMask` in a script |
-| Navmesh areas, off-mesh links, obstacles | The runtime `SceneManager` navigation-area API; scripted jumps |
+| Navmesh areas, obstacles | The runtime `SceneManager` navigation-area API. Off-mesh links are carried (§12) |
 | 3D `TextMeshPro` (not TextMeshProUGUI) on the default *Distance Field* shader | A World Space Canvas with TMP text, a TMP SDF Shader Graph font material, or Babylon GUI on a mesh |
 | Keyboard / gamepad navigation between Selectables | `TOOLKIT.InputController` in a script driving `UserInterface.SetValue` / click targets |
 | Selectable *Animation* transitions, UI Toolkit data binding | Color Tint / Sprite Swap; set values from a script with `UserInterface.SetValue` / `SetText` |
