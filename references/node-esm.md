@@ -42,6 +42,56 @@
     - Interface names (e.g., `IMyInterface`)
     - Enum names (e.g., `EMyEnum`
 
+## 🧹 Coding Practices (ENFORCED)
+
+These rules apply to all code you generate. Code that breaks them is not finished. The full rules, and what they do
+not override, are in **Coding Practices — ENFORCED** in the router `reference.md`.
+
+- **Write clean TypeScript.** Use strict types everywhere. Keep functions small with a single job. Prefer early
+  returns over deep nesting. Use named constants, not magic numbers. Remove dead code, unused imports and leftover
+  `console.log` calls.
+- **Never obfuscate code.** Classes, methods, properties, variables and parameters all get meaningful, full-word
+  names. One- and two-letter names and cryptic abbreviations are not allowed. The only exceptions are loop counters
+  (`i`, `j`, `k`), axis and texture names (`x`, `y`, `z`, `w`, `uv`) and the toolkit aliases this document defines
+  (`IC`).
+- **Write readable, maintainable code for human developers.** Order a class as fields, lifecycle methods, public
+  methods, then private helpers. Split complex expressions into well-named variables. Comment the *why* where it is
+  not obvious. Do not comment what the code already says.
+- **Names that bind to exported data are kept.** Component properties and serialized fields keep their source
+  (C# / Unity) names in camelCase, because the exported metadata binds by name. Give meaningful names to everything
+  you introduce yourself.
+
+**Wrong:**
+
+```typescript
+private sp: number = 5;
+private v: Vector3 = new Vector3();
+protected update(): void {
+    const d = this.getDeltaTime(), h = InputController.GetUserInput(UserInputAxis.Horizontal);
+    this.v.x = h * this.sp * d; if (this.v.x > 0.1) this.transform.position.addInPlace(this.v);
+}
+```
+
+**Right:**
+
+```typescript
+export class PlayerMover extends ScriptComponent {
+    private static readonly MOVE_DEADZONE: number = 0.1;
+    private moveSpeed: number = 5;
+    private readonly frameMovement: Vector3 = new Vector3();
+
+    protected update(): void {
+        const deltaTime: number = this.getDeltaTime();
+        const horizontalInput: number = InputController.GetUserInput(UserInputAxis.Horizontal);
+        this.frameMovement.x = horizontalInput * this.moveSpeed * deltaTime;
+        if (this.frameMovement.x <= PlayerMover.MOVE_DEADZONE) return;
+        this.transform.position.addInPlace(this.frameMovement);
+    }
+}
+```
+
+**Before finishing:** re-read every file you created or changed against these rules and fix every violation.
+
 ## 🏗️ Constructor
 
   ```typescript

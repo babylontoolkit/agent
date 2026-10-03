@@ -139,6 +139,49 @@ Anything else is work, and work is yours.
 - Before writing ANY Babylon Toolkit code, you must have read: the matching code-style
   sub-document (ES6 or UMD), the `Interactive Scene Components` sub-document, and the
   `AI Training Example Reference`.
+- **Every line of code you write follows the Coding Practices below.** There is no exception for speed, prototypes,
+  "quick fixes" or autonomous runs.
+
+## Coding Practices — ENFORCED
+
+> **These are requirements, not preferences.** Code that breaks them is not finished. Fix it before you report the
+> task done, the same way you would fix a TypeScript error.
+
+The user and their team read, debug and extend everything you write. Write it for them.
+
+1. **Write good, clean TypeScript.** Strict typing: fully type every variable, parameter and return value, and never
+   use `any` where the type is known. Keep functions small with a single job. Use early returns instead of deep
+   nesting. Name your constants instead of using magic numbers (`const MAX_JUMP_HEIGHT = 2.5`, not a bare `2.5`).
+   Delete dead code, unused imports and commented-out experiments. Do not leave `console.log` debugging behind.
+2. **Do not obfuscate code. Use meaningful names.** Every class, method, property, variable and parameter name says
+   what it holds or does, in full words: `playerSpeed`, `targetRotation`, `spawnEnemyWave()`, `isGrounded`. One- and
+   two-letter names (`p`, `v`, `ms`, `tg`, `fn()`, `cb`), cryptic abbreviations (`plyrSpd`, `tmpRt`), and code-golf
+   tricks (chained ternaries, comma expressions, `!!`/`~~`/`+x` coercion tricks, one-line mega-expressions) are not allowed.
+   Only these short names are allowed:
+   - loop counters `i`, `j`, `k` in a short, simple loop
+   - the axis names `x`, `y`, `z`, `w`, and `u` / `v` / `uv` for texture coordinates
+   - established toolkit aliases the sub-documents define (`TOOLKIT`, `IC` for `InputController`)
+   - shader math names that read as standard notation (`uv`, `N`, `L`, `V`, `H` in a lighting function)
+3. **Write readable, maintainable code for human developers.** A developer new to the project should understand a
+   file without asking you. Lay it out in a consistent order: fields, lifecycle methods, public methods, private
+   helpers. Group related logic. Break a complex expression into well-named intermediate variables. Add a short
+   comment where the *why* is not obvious (a workaround, a Unity-parity rule, a performance trade-off). Do not
+   comment code that already says what it does. Match the conventions of the code around it.
+
+**What these rules do not override:**
+- **Names that bind to exported data stay exactly as the source has them.** Script component properties, serialized
+  fields and Unity property names are matched by name at runtime (glTF `extras.metadata`, Shader Graph reference
+  names, `TOOLKIT.ShaderGlobals`). Renaming them breaks the binding. Give meaningful names to everything you
+  introduce yourself, such as locals, private helpers and new classes. When converting source code, keep the
+  source's public names and name your new locals well.
+- **Generated code is not yours to restyle.** Transpiled Shader Graph materials, exporter output and minified
+  third-party bundles are never edited (see the sub-documents).
+
+**Enforcement.** Before you report any coding task done:
+- Re-read every file you created or changed against the three rules above, and fix every violation you find.
+- When a `bt-*` skill runs a verifier or reviewer on your task, it checks these rules too. A violation fails the task.
+- Code you are editing is held to the same standard as new code. If you touch a function, leave it clean. Do not
+  rewrite untouched files unless you are asked to.
 
 ## Unity Is The 3D Asset Project — Scenes Are Served, Never Copied
 
@@ -171,8 +214,8 @@ row that matches — multiple rows often apply to one task.
 
 | Sub-document (fetch this URL) | Fetch when the task involves… (keywords) | Critical guardrail |
 |---|---|---|
-| [Modern ES6 Style Code Instructions](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/node-esm.md) | ES6, ESM, `import`/`export`, npm project, TypeScript, node modules, bundlers, Vite, webpack — the DEFAULT style for all new code | ES6 is the preferred format |
-| [Classic UMD Style Code Instructions](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/classic.md) | UMD, `<script>` tags, CDN, global `BABYLON` namespace, Babylon Playground, non-module / legacy projects | Only when UMD is explicitly required |
+| [Modern ES6 Style Code Instructions](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/node-esm.md) | ES6, ESM, `import`/`export`, npm project, TypeScript, node modules, bundlers, Vite, webpack — the DEFAULT style for all new code | ES6 is the preferred format. **Coding Practices — ENFORCED** apply to every line |
+| [Classic UMD Style Code Instructions](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/classic.md) | UMD, `<script>` tags, CDN, global `BABYLON` namespace, Babylon Playground, non-module / legacy projects | Only when UMD is explicitly required. **Coding Practices — ENFORCED** apply to every line |
 | [Project Installation Instructions](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/project-installer.md) | new project, scaffold, setup, install toolkit, npm packages, package versions, git submodules, starter assets, starter repos, StarterAssets, VercelAssets, project deployment | Read the ENTIRE document before scaffolding |
 | [Interactive Scene Components](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scene-components.md) | script components, `ScriptComponent`, scene manager, gameplay code, physics, colliders, rigidbodies, animation state machines, character controllers, navigation, agents, vehicles, raycast, audio, video, terrain, `TerrainBuilder` height queries, `ShurikenParticles` play/stop/emit, `LineRenderer` / `TrailRenderer`, `PostProcessor` runtime API (toggle effects, AA mode, TAA history), `TOOLKIT.UserInterface` (exported Unity UI: find elements, click / value events), interactive prefabs, glTF component metadata, `extras.metadata.components`, component inventory, component reference | Use script component patterns, never ad-hoc BabylonJS wiring — supplied `TOOLKIT.*` components are first-class: compose and tune them, never reimplement them |
 | [Custom Shader Code Instructions](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/shader-materials.md) | shaders, GLSL, WGSL, shader materials, custom materials, material plugins, vertex/fragment programs, **Unity Shader Graph**, shadergraph, Shader Graph transpiler, generated `MY.*` material classes, `Materials/Generated`, Custom Function node, HLSL, sub-graphs, shader keywords, shader globals, `TOOLKIT.ShaderGlobals`, `SetGlobalFloat`, `EnableKeyword`, `setFloat` by Unity reference name, MaterialPropertyBlock, Shader Graph deviations, decals, `DecalProjector`, fullscreen pass, Full Screen Pass renderer feature, Custom Render Texture, Shader Graph skybox, procedural sky, `ProceduralSkyMaterial`, `SgShadowDepth`, sampler budget, grass, vegetation, wind, vertex animation (VAT), per-skin texture arrays, water, sky | **A look authored as a Unity Shader Graph is transpiled at export — never hand-port it or edit generated files** |
@@ -202,5 +245,8 @@ Before acting on any Babylon Toolkit task, confirm all of the following:
       Unity, Blender and the browser are all mine to drive (**Agent Authority**, above).
 - [ ] Any question I am about to ask falls into one of the four categories in **The asking rule**.
       If it does not, I make the call myself, state the assumption, and keep going.
+- [ ] Every file I wrote or changed follows the **Coding Practices — ENFORCED** rules: clean, strictly typed
+      TypeScript, meaningful full-word names (no one- or two-letter names, no obfuscation), and code a human
+      developer can read and maintain.
 
 ---
