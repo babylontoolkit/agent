@@ -46,7 +46,7 @@ execute from the terminal, in either mode, without asking:
 | Set up lighting — lightmap/GI bakes, IBL/skybox, reflection probes, fog, tonemapping, post-processing | `unity-authoring-recipes.md` (`bake_lighting`, `set_lighting_settings`, Volumes) |
 | Author materials, terrain, physics bodies, colliders, navmesh, Animator controllers, particles, audio | `unity-authoring-recipes.md` |
 | Import textures/models/audio and set their import settings; add packages | `unity-editor-commands.md` §9, `import_asset`, `set_import_settings`, `package_add` |
-| Write, compile and attach C#/TypeScript script component pairs | §8.2 |
+| Optionally script up objects in a scene from Unity — write, compile and attach C#/TypeScript script component pairs; the exporter compiles the class into the project script bundle and the glTF loader auto-loads it | §8.2 |
 | Run **arbitrary C# inside the live Editor** — the whole `UnityEditor` API surface | §7.3 — `run_script` (files) and `eval` (one-liners) |
 | Enter/exit play mode (Unity-side comparison only), read the console, check status | `unity-editor-commands.md` §8 |
 | **See what you made** — render Scene/Game view to a PNG and look at it | `screenshot`, `capture_game_view`, `capture_scene_view` |
@@ -1374,6 +1374,34 @@ component inventory and runtime contract.
 
 ### 8.2 Authoring a script component pair from the terminal
 
+> **One of two ways to add script components, and optional.** Script components can live in the web app project
+> that loads the glTF: it finds exported nodes, reaches their components with `SceneManager.GetComponent`, and
+> can attach new ones at runtime (`scene-components.md`). This section is the **other** path: attaching a
+> component to a GameObject in Unity, which suits scripting up objects in one particular scene — a moving
+> platform, a rotating pickup, a door, a trigger zone, a checkpoint. Use it when that is the better fit, and
+> when no supplied `TOOLKIT.*` component already does the job (`scene-components.md` → *Component Authority*).
+>
+> When you take this path, you do all of it yourself: write the pair, attach it from the terminal, export. Never
+> ask the user to add a component in the Editor. Nothing is wired by hand in the web app either: the exporter
+> compiles the class into the project script bundle (just as generated Shader Graph material classes are compiled
+> and auto-loaded), and the glTF loader loads that bundle and instantiates the class on its node automatically
+> (*How the class reaches the browser*, below). Web-app code can then reach it with `GetComponent` like any
+> other component on the node.
+
+**The C# class is an editor-side shell; the TypeScript class is the runtime.**
+- The C# `EditorScriptComponent` exists so the component can be attached to a GameObject and edited in the
+  inspector. **Only its public fields matter to the export**: they are serialised into the node's
+  `extras.metadata.components` entry as the component's property bag.
+- **Its C# code never runs in the game.** The one exception is `OnUpdateProperties(transform, exporter)`, which
+  runs **at export time** as a last chance to normalise or derive field values before they are serialised.
+- The `[Babylon(Class="MY.MyRotator")]` attribute names the TypeScript class to instantiate at runtime. That
+  class reads the property bag with `getProperty(...)` (or `[Auto]` fields), and gets the toolkit lifecycle:
+  `awake`, `start`, `ready`, `update`, `late`, `step`, `fixed`, `after`, `reset`, `destroy`.
+- Public C# methods on the class (for example `public void onButtonClicked() {}`) are **editor proxy events**.
+  They let a Unity UI `Button`'s persistent `onClick` target the component. At runtime the call goes to the
+  TypeScript method with the same name, so that method must exist and be public (`unity-authoring-recipes.md`
+  §17 → *Unity UI — rules and limits*).
+
 A Babylon Toolkit script component is **two files with the same base name**: a C# `EditorScriptComponent` that
 exists only to carry inspector fields and be attachable to a GameObject, and a TypeScript class that is the
 actual runtime behaviour. The exporter serialises the C# component into `extras.metadata.components` and
@@ -1417,17 +1445,23 @@ using System;
 using UnityEditor;
 using UnityEngine;
 
+/**
+ * Editor script component: attaches a continuous rotation to a GameObject.
+ * The runtime behaviour is the MY.DemoRotator TypeScript class named in the Babylon attribute.
+ */
 [Babylon(Class="MY.DemoRotator"), AddComponentMenu("Scripts/My Project/Demo Rotator")]
 public class DemoRotator : EditorScriptComponent
 {
+    /** Rotation speed in degrees per second. */
     [Tooltip("Degrees per second applied around the rotation axis.")]
     [Auto] public float rotationSpeed = 45.0f;
 
+    /** Local axis to rotate around. Normalised at export. */
     [Auto] public Vector3 rotationAxis = Vector3.up;
 
+    /** Runs at export time only: normalises the axis, and falls back to up when it is zero. */
     public override void OnUpdateProperties(Transform transform, SceneExporterTool exporter)
     {
-        // last chance to normalise or derive values before they are serialised
         if (this.rotationAxis.sqrMagnitude <= 0.0f) this.rotationAxis = Vector3.up;
         this.rotationAxis = this.rotationAxis.normalized;
     }
@@ -1442,23 +1476,32 @@ the dotted one (the ESM runtime strips only the `BABYLON.`, `TOOLKIT.` and `PROJ
 
 ```typescript
 namespace MY {
+    /**
+     * Rotates its node continuously around a local axis.
+     * Instantiated automatically on every node whose exported metadata names `MY.DemoRotator`.
+     */
     export class DemoRotator extends TOOLKIT.ScriptComponent {
+        /** Rotation speed in degrees per second, from the Unity inspector. */
         private rotationSpeed: number = 45.0;
+
+        /** Normalised local rotation axis, from the Unity inspector. */
         private rotationAxis: BABYLON.Vector3 = null;
 
         constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties: any = {}, alias: string = "MY.DemoRotator") {
             super(transform, scene, properties, alias);
         }
 
+        /** Reads the exported inspector values into typed fields. */
         protected awake(): void {
-            this.rotationSpeed = this.getProperty("rotationSpeed", 45.0);
-            const axis: any = this.getProperty("rotationAxis", { x: 0.0, y: 1.0, z: 0.0 });
-            this.rotationAxis = new BABYLON.Vector3(axis.x, axis.y, axis.z).normalize();
+            this.rotationSpeed = this.getProperty<number>("rotationSpeed", 45.0);
+            const exportedAxis: { x: number; y: number; z: number } = this.getProperty("rotationAxis", { x: 0.0, y: 1.0, z: 0.0 });
+            this.rotationAxis = new BABYLON.Vector3(exportedAxis.x, exportedAxis.y, exportedAxis.z).normalize();
         }
 
+        /** Applies this frame's rotation, scaled by delta time so the speed is frame-rate independent. */
         protected update(): void {
-            const radians: number = this.rotationSpeed * (Math.PI / 180.0) * this.getDeltaTime();
-            this.transform.rotate(this.rotationAxis, radians, BABYLON.Space.LOCAL);
+            const rotationRadians: number = this.rotationSpeed * (Math.PI / 180.0) * this.getDeltaTime();
+            this.transform.rotate(this.rotationAxis, rotationRadians, BABYLON.Space.LOCAL);
         }
     }
 
@@ -1470,10 +1513,35 @@ Attach it from the terminal like any other component — the type is in `Assembl
 directly once it has compiled:
 
 ```csharp
-var spin = go.AddComponent<DemoRotator>();
-spin.rotationSpeed = 55f;
-spin.rotationAxis  = UnityEngine.Vector3.up;
+var rotator = go.AddComponent<DemoRotator>();
+rotator.rotationSpeed = 55f;
+rotator.rotationAxis  = UnityEngine.Vector3.up;
 ```
+
+#### How the class reaches the browser — the auto script loader
+
+You never import, bundle or `<script>`-tag a script component yourself. The chain is automatic:
+
+1. **Export compiles it.** A build with scripts (`bt_build_project`, `bt_export_level --geometryOnly false`, or
+   `--compileScripts true`) runs `tsc` over every script component class in the Unity project, and writes **one
+   UMD project script bundle**, `Export/scenes/<Product>.js`, beside the scenes.
+2. **The glTF names the bundle.** The exported scene's `extras.metadata` records the bundle's file name
+   (`project`), and every node that carries the component records an entry in `extras.metadata.components` with
+   `klass` (the `[Babylon(Class=…)]` string) and `properties` (the public C# fields).
+3. **The glTF loader loads the bundle.** When the scene loads, the toolkit's `CVTOOLS_unity_metadata` loader
+   extension reads that file name and loads the bundle **from beside the scene** before any node or material is
+   created. It loads each bundle once per page, and it is on by default (`TOOLKIT.SceneManager.AutoLoadScriptBundles = true`).
+   Because it loads from beside the scene, it works the same from the dev server (§12) and from the user's hosted copy.
+4. **The registered class is instantiated per node.** Loading the bundle runs every
+   `TOOLKIT.SceneManager.RegisterClass("MY.X", X)` call. The scene parser then creates one instance per
+   component entry, passes it the node and its property bag, and runs the lifecycle.
+
+So scripting a scene object from Unity is: write the pair, attach it, export, reload the page. A missing bundle logs
+`CVTOOLS: project script bundle not found: <url>`; an unregistered or misspelled class logs
+`Failed to locate script class`. Fix the cause, re-export, reload.
+
+The web app (ESM or UMD) does not import these classes. ESM starter projects expose the global `BABYLON` /
+`TOOLKIT` / `PROJECT` namespaces precisely so this UMD bundle can load at runtime.
 
 #### `[Auto]` serialises as `auto__<field>` — and `getProperty` already knows
 

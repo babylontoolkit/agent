@@ -47,50 +47,85 @@
 These rules apply to all code you generate. Code that breaks them is not finished. The full rules, and what they do
 not override, are in **Coding Practices — ENFORCED** in the router `reference.md`.
 
-- **Write clean TypeScript.** Use strict types everywhere. Keep functions small with a single job. Prefer early
-  returns over deep nesting. Use named constants, not magic numbers. Remove dead code, unused imports and leftover
-  `console.log` calls.
+- **TypeScript and JavaScript are both first-class.** Write in the language the project, folder or file already uses.
+  TypeScript is the default only for new code with no precedent and no stated preference. Never convert code from
+  one language to the other unless the user asks.
+- **Write clean, professional code.** Keep functions small with a single job. Prefer early returns over deep nesting.
+  Use named constants, not magic numbers. Use `const` by default, `let` only when reassigned, and never `var`. Always compare with `===` / `!==`, never `==` / `!=`. The one exception is `== null` / `!= null`, the standard check for "null or undefined": it is allowed, and existing uses must not be rewritten.
+  Remove dead code, unused imports and leftover `console.log` calls. In TypeScript, use strict types everywhere. In
+  JavaScript, carry the types in JSDoc tags (`@param {number} speed`).
 - **Never obfuscate code.** Classes, methods, properties, variables and parameters all get meaningful, full-word
   names. One- and two-letter names and cryptic abbreviations are not allowed. The only exceptions are loop counters
-  (`i`, `j`, `k`), axis and texture names (`x`, `y`, `z`, `w`, `uv`) and the toolkit aliases this document defines
-  (`IC`).
-- **Write readable, maintainable code for human developers.** Order a class as fields, lifecycle methods, public
-  methods, then private helpers. Split complex expressions into well-named variables. Comment the *why* where it is
-  not obvious. Do not comment what the code already says.
+  (`i`, `j`, `k`), axis and texture names (`x`, `y`, `z`, `w`, `uv`) and the toolkit aliases this document defines (`IC`).
+- **Write well-structured code for human developers.** Order a class as fields, lifecycle methods, public methods,
+  then private helpers. Split complex expressions into well-named variables.
+- **Write meaningful JSDoc comments.** Every class, function and method (including lifecycle methods you implement),
+  and every public or exported property, constant, type and interface, gets a `/** … */` block. Give the purpose,
+  plus units, ranges, defaults and side effects the signature does not show. Add `@param` for every parameter,
+  `@returns` for every non-void result, and `@throws` when it can throw. A comment that only restates the name is
+  not meaningful. Inside function bodies, comment only the non-obvious *why*. Update comments whenever you change
+  the code.
 - **Names that bind to exported data are kept.** Component properties and serialized fields keep their source
-  (C# / Unity) names in camelCase, because the exported metadata binds by name. Give meaningful names to everything
-  you introduce yourself.
+  (C# / Unity) names in camelCase, because the exported metadata binds by name. They still get JSDoc. Give
+  meaningful names to everything you introduce yourself.
 
 **Wrong:**
 
 ```typescript
 private sp: number = 5;
-private v: Vector3 = new Vector3();
 protected update(): void {
     const d = this.getDeltaTime(), h = InputController.GetUserInput(UserInputAxis.Horizontal);
-    this.v.x = h * this.sp * d; if (this.v.x > 0.1) this.transform.position.addInPlace(this.v);
+    if (Math.abs(h) > 0.1) this.transform.position.x += h * this.sp * d;
 }
 ```
 
 **Right:**
 
 ```typescript
+/**
+ * Moves the player horizontally from keyboard or gamepad input.
+ * Attach it to the player root exported from Unity.
+ */
 export class PlayerMover extends ScriptComponent {
+    /** Input below this magnitude is ignored, so a resting stick does not drift. */
     private static readonly MOVE_DEADZONE: number = 0.1;
-    private moveSpeed: number = 5;
-    private readonly frameMovement: Vector3 = new Vector3();
 
+    /** Horizontal movement speed in meters per second. */
+    private moveSpeed: number = 5;
+
+    /**
+     * Applies this frame's horizontal movement.
+     * The toolkit calls it every frame; scaling by delta time keeps the speed frame-rate independent.
+     */
     protected update(): void {
         const deltaTime: number = this.getDeltaTime();
         const horizontalInput: number = InputController.GetUserInput(UserInputAxis.Horizontal);
-        this.frameMovement.x = horizontalInput * this.moveSpeed * deltaTime;
-        if (this.frameMovement.x <= PlayerMover.MOVE_DEADZONE) return;
-        this.transform.position.addInPlace(this.frameMovement);
+        if (Math.abs(horizontalInput) <= PlayerMover.MOVE_DEADZONE) return;
+        this.transform.position.x += horizontalInput * this.moveSpeed * deltaTime;
     }
 }
 ```
 
-**Before finishing:** re-read every file you created or changed against these rules and fix every violation.
+**Right, in JavaScript:**
+
+```javascript
+/** Gravitational acceleration at the Earth's surface, in meters per second squared. */
+const GRAVITY = 9.81;
+
+/**
+ * Returns how far a projectile travels before it lands on flat ground, ignoring air drag.
+ * @param {number} launchSpeed - Launch speed in meters per second. Must be zero or more.
+ * @param {number} launchAngleDegrees - Angle above the horizon, from 0 to 90 degrees.
+ * @returns {number} Horizontal distance in meters.
+ */
+export function calculateProjectileRange(launchSpeed, launchAngleDegrees) {
+    const launchAngleRadians = (launchAngleDegrees * Math.PI) / 180;
+    return (launchSpeed * launchSpeed * Math.sin(2 * launchAngleRadians)) / GRAVITY;
+}
+```
+
+**Before finishing:** re-read every file you created or changed against these rules and fix every violation. A
+missing or meaningless JSDoc block is a violation.
 
 ## 🏗️ Constructor
 

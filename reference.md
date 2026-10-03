@@ -48,7 +48,7 @@ reading the sub-document that automates it.
 | Discipline | You do it yourself with | Read |
 |---|---|---|
 | Frontend, landing pages, splash/preloader, HUD, menus, overlays | React / DOM UI + BabylonJS GUI where it belongs | `ui-design-system.md`, `react-framework.md`, `babylon-gui.md` |
-| Gameplay, physics, AI, animation state machines, vehicles, navigation | TypeScript `ScriptComponent`s on exported metadata | `scene-components.md`, `node-esm.md` |
+| Gameplay, physics, AI, animation state machines, vehicles, navigation | TypeScript or JavaScript `ScriptComponent`s — in the web app, or optionally attached to GameObjects in Unity | `scene-components.md`, `node-esm.md`, `unity-exporter-cli.md` §8.2 (the Unity path) |
 | Custom rendering — Unity Shader Graphs (transpiled at export, driven from code), water, sky, foliage, VAT, wind | The Shader Graph transpiler for anything authored as a graph; GLSL/WGSL shader materials and material plugins for the rest. A Unity terrain is authored, not hand-shaded (`unity-authoring-recipes.md` §10) | `shader-materials.md` |
 | Images, textures, video, music, SFX, ambience, speech/VO | kie generation MCP servers (default) or the Higgsfield CLI, called from the project | `web-kie-servers.md` (default); `web-higgsfield-cli.md` when the user wants Higgsfield or only Higgsfield is set up |
 | Image → 3D GLB meshes (optionally textured/rigged/animated), background removal, upscaling, outpainting | Higgsfield CLI (`higgsfield`) through `scripts/hf-generate.mjs`, like the Unity and Blender CLIs | `web-higgsfield-cli.md` |
@@ -145,14 +145,25 @@ Anything else is work, and work is yours.
 ## Coding Practices — ENFORCED
 
 > **These are requirements, not preferences.** Code that breaks them is not finished. Fix it before you report the
-> task done, the same way you would fix a TypeScript error.
+> task done, the same way you would fix a compile error.
 
 The user and their team read, debug and extend everything you write. Write it for them.
 
-1. **Write good, clean TypeScript.** Strict typing: fully type every variable, parameter and return value, and never
-   use `any` where the type is known. Keep functions small with a single job. Use early returns instead of deep
-   nesting. Name your constants instead of using magic numbers (`const MAX_JUMP_HEIGHT = 2.5`, not a bare `2.5`).
-   Delete dead code, unused imports and commented-out experiments. Do not leave `console.log` debugging behind.
+**TypeScript and JavaScript are both first-class.** Every rule below applies to both. Write in the language the
+project, folder or file already uses. TypeScript is the default only for new code with no precedent and no stated
+preference. Never convert a project, file or snippet from one language to the other unless the user asks. Never tell a
+developer they must use one.
+
+1. **Write good, clean, professional TypeScript or JavaScript.**
+   - **Both:** keep functions small, with a single job. Use early returns instead of deep nesting. Name your constants
+     instead of using magic numbers (`const MAX_JUMP_HEIGHT = 2.5`, not a bare `2.5`). Use `const` by default, `let`
+     only when the value is reassigned, and never `var`. Always compare with strict equality (`===` / `!==`), never loose `==` / `!=`, which converts types first. The one exception is `== null` / `!= null`, the standard check for "null or undefined" (`value != null` means `value !== null && value !== undefined`): it is allowed, and existing uses must not be rewritten. Delete dead code, unused
+     imports and commented-out experiments. Do not leave `console.log` debugging behind.
+   - **TypeScript:** fully type every variable, parameter and return value, and never use `any` where the type is
+     known.
+   - **JavaScript:** use modern ES syntax (classes, modules, arrow functions, `async`/`await`). Carry the types in
+     JSDoc tags (`@param {Vector3} target`, `@returns {boolean}`, `@type {number}`) so editors and `checkJs` can check
+     them.
 2. **Do not obfuscate code. Use meaningful names.** Every class, method, property, variable and parameter name says
    what it holds or does, in full words: `playerSpeed`, `targetRotation`, `spawnEnemyWave()`, `isGrounded`. One- and
    two-letter names (`p`, `v`, `ms`, `tg`, `fn()`, `cb`), cryptic abbreviations (`plyrSpd`, `tmpRt`), and code-golf
@@ -162,26 +173,81 @@ The user and their team read, debug and extend everything you write. Write it fo
    - the axis names `x`, `y`, `z`, `w`, and `u` / `v` / `uv` for texture coordinates
    - established toolkit aliases the sub-documents define (`TOOLKIT`, `IC` for `InputController`)
    - shader math names that read as standard notation (`uv`, `N`, `L`, `V`, `H` in a lighting function)
-3. **Write readable, maintainable code for human developers.** A developer new to the project should understand a
-   file without asking you. Lay it out in a consistent order: fields, lifecycle methods, public methods, private
-   helpers. Group related logic. Break a complex expression into well-named intermediate variables. Add a short
-   comment where the *why* is not obvious (a workaround, a Unity-parity rule, a performance trade-off). Do not
-   comment code that already says what it does. Match the conventions of the code around it.
+3. **Write well-structured, readable, maintainable code for human developers.** A developer new to the project should
+   understand a file without asking you. Lay it out in a consistent order: fields, lifecycle methods, public methods,
+   private helpers. Group related logic. Break a complex expression into well-named intermediate variables. Match the
+   conventions of the code around it.
+4. **Write meaningful JSDoc comments.** In both TypeScript and JavaScript, add a `/** … */` JSDoc block to every
+   class, every function and method (including lifecycle methods you implement), and every public or exported
+   property, constant, type and interface.
+   - **What the block says:** a summary sentence giving the purpose (what it does and why it exists), plus anything a
+     caller cannot see from the signature. That includes units (seconds, meters, degrees), valid ranges, defaults,
+     side effects, and what it requires to be called first.
+   - **Tags:** `@param` for every parameter, `@returns` for every non-void result, and `@throws` when it can throw.
+     Add `@example` for a non-obvious public API. In JavaScript, the tags carry the types (`@param {number} speed`).
+   - **What is not meaningful:** a comment that restates the name (`/** Gets the speed. */` on `getSpeed()`) or the
+     type (`/** The number. */`).
+   - **Inside function bodies:** add short line comments only where the *why* is not obvious, such as a workaround, a
+     Unity-parity rule or a performance trade-off. Never narrate code line by line.
+5. **Keep comments true.** When you change code, update its JSDoc and comments in the same edit. A stale comment
+   is a bug.
+
+```typescript
+/**
+ * Moves the player horizontally from keyboard or gamepad input.
+ * Attach it to the player root exported from Unity.
+ */
+export class PlayerMover extends TOOLKIT.ScriptComponent {
+    /** Input below this magnitude is ignored, so a resting stick does not drift. */
+    private static readonly MOVE_DEADZONE: number = 0.1;
+
+    /** Horizontal movement speed in meters per second. */
+    private moveSpeed: number = 5;
+
+    /**
+     * Applies this frame's horizontal movement.
+     * The toolkit calls it every frame; scaling by delta time keeps the speed frame-rate independent.
+     */
+    protected update(): void {
+        const deltaTime: number = this.getDeltaTime();
+        const horizontalInput: number = TOOLKIT.InputController.GetUserInput(TOOLKIT.UserInputAxis.Horizontal);
+        if (Math.abs(horizontalInput) <= PlayerMover.MOVE_DEADZONE) return;
+        this.transform.position.x += horizontalInput * this.moveSpeed * deltaTime;
+    }
+}
+```
+
+```javascript
+/** Gravitational acceleration at the Earth's surface, in meters per second squared. */
+const GRAVITY = 9.81;
+
+/**
+ * Returns how far a projectile travels before it lands on flat ground, ignoring air drag.
+ * @param {number} launchSpeed - Launch speed in meters per second. Must be zero or more.
+ * @param {number} launchAngleDegrees - Angle above the horizon, from 0 to 90 degrees.
+ * @returns {number} Horizontal distance in meters.
+ */
+export function calculateProjectileRange(launchSpeed, launchAngleDegrees) {
+    const launchAngleRadians = (launchAngleDegrees * Math.PI) / 180;
+    return (launchSpeed * launchSpeed * Math.sin(2 * launchAngleRadians)) / GRAVITY;
+}
+```
 
 **What these rules do not override:**
 - **Names that bind to exported data stay exactly as the source has them.** Script component properties, serialized
   fields and Unity property names are matched by name at runtime (glTF `extras.metadata`, Shader Graph reference
   names, `TOOLKIT.ShaderGlobals`). Renaming them breaks the binding. Give meaningful names to everything you
   introduce yourself, such as locals, private helpers and new classes. When converting source code, keep the
-  source's public names and name your new locals well.
+  source's public names and name your new locals well. Bound names still get JSDoc.
 - **Generated code is not yours to restyle.** Transpiled Shader Graph materials, exporter output and minified
   third-party bundles are never edited (see the sub-documents).
 
 **Enforcement.** Before you report any coding task done:
-- Re-read every file you created or changed against the three rules above, and fix every violation you find.
+- Re-read every file you created or changed against the five rules above, and fix every violation you find. A
+  missing or meaningless JSDoc block is a violation.
 - When a `bt-*` skill runs a verifier or reviewer on your task, it checks these rules too. A violation fails the task.
-- Code you are editing is held to the same standard as new code. If you touch a function, leave it clean. Do not
-  rewrite untouched files unless you are asked to.
+- Code you are editing is held to the same standard as new code. If you touch a function, leave it clean and
+  documented. Do not rewrite untouched files unless you are asked to.
 
 ## Unity Is The 3D Asset Project — Scenes Are Served, Never Copied
 
@@ -204,6 +270,22 @@ the web app **never** holds a copy of it.
   on `localhost`; production = the user's hosted copy on their own domain.** Keep the scene base URL in ONE place in the
   game code so switching from the dev server to the hosted copy is a one-line change. A `localhost` URL in a
   published game cannot load for anyone else — ask the user for the hosted URL before they publish.
+- **Script components have two homes — use either, or both.** Neither one is required.
+  - **In the web app project** (TypeScript or JavaScript): the app that loads the glTF writes its own script
+    components. They find exported nodes (`SceneManager.FindGameObject`, `FindGameObjectWithTag`), get the
+    components already on them with `SceneManager.GetComponent(node, "PROJECT.Klass")` (like Unity's
+    `GetComponent`), and add new components at runtime simply by constructing them on a node
+    (`new PROJECT.Klass(node, scene, properties)` — the constructor registers the component itself). This suits
+    game-wide logic: player, game modes, HUD and UI wiring, networking (`scene-components.md`).
+  - **Optionally, in the Unity project**: when you want to script up objects in one scene — a moving platform, a
+    door, a trigger zone — you can write a C# `EditorScriptComponent` + TypeScript class pair, attach it to the
+    GameObject from the terminal, and export. Its public C# fields become the property bag; the C# itself never
+    runs in the game. The exporter compiles the class into the project script bundle (`scenes/<Product>.js`),
+    just as generated Shader Graph material classes are compiled and auto-loaded. The glTF loader then loads that bundle
+    from beside the scene and instantiates the class on its node automatically, with nothing wired by hand in
+    the web app (`unity-exporter-cli.md` §8.2).
+  - **They work together.** Web-app components reach Unity-attached ones with `GetComponent` like any other
+    component on the node.
 - **In the App Builder**, the projects folder the user picks holds `Apps/` (web apps, one folder per project) and
   `Unity/` (Unity asset projects — the Unity Bridge helper's projects folder) side by side.
 
@@ -225,7 +307,7 @@ row that matches — multiple rows often apply to one task.
 | [Default Agent Skills Instructions](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/skills-repository.md) | agent skills, install skills, `.claude/skills`, `.codex/skills`, plugin, plugin marketplace, bt-spec, bt-plan, bt-execute, bt-design, bt-convert, bt-atlas, Unity skills, `Unity-Technologies/skills`, `npx skills add`, `unity skill install` | Copy each skill's ENTIRE folder, never just its SKILL.md |
 | [Image, Video And Sound Generation](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-kie-servers.md) | MCP, MCP servers, `.mcp.json`, Model Context Protocol, kie.ai, `KIE_KEY`, `KIE_CALLBACK_URL`, `@babylonjs-toolkit/kie`, `kie-image-mcp`, image generation, video generation, texture generation, sound generation, audio generation, sound effects, SFX, ambience, loops, music, background music, speech, text-to-speech, TTS, voiceover, dialogue, Nano Banana, Imagen, Flux, Seedream, Kling, Seedance, Grok Imagine, Veo, Suno, ElevenLabs | ALWAYS install as a local project node module (`--save-dev`), NEVER globally unless explicitly instructed. `generate_sound` with `kind: music` requires a callback URL you control |
 | [Higgsfield CLI](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-higgsfield-cli.md) | Higgsfield, `higgsfield`, `higgs`, `hf`, Higgsfield CLI, `@higgsfield/cli`, `hf-generate.mjs`, `higgsfield generate create`, `higgsfield generate cost`, `higgsfield model get`, `higgsfield upload create`, `higgsfield auth login`, `higgsfield workspace set`, credits, image to 3D, image-to-3D, GLB generation, text to 3D, rigged mesh, animation actions, Tripo, Meshy, Hunyuan3D, remove background, background remover, upscale, outpaint, reframe, dubbing, voice change, `seed_audio`, `voices list`, Soul, z_image, GPT Image 2.5, Nano Banana 2, Seedream, Seedance, Kling, Minimax, Veo, Wan, Higgsfield websites | ALWAYS install as a local dev dependency (`npm i -D @higgsfield/cli`) and generate through `scripts/hf-generate.mjs`, which downloads the result to `--out`; the CLI alone only returns CDN URLs. Run `--cost` before every new model/setting. Sign-in is browser OAuth that the user completes; select a workspace before any other command. Music/SFX stay on kie. No Higgsfield MCP server |
-| [Unity Exporter Instructions](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-exporter-cli.md) | create Unity project, new Unity project, scaffold Unity project, Unity Exporter project, copilot mode, headless Unity, Unity, Unity Editor, Unity CLI, `unity` command, Unity Hub, Unity Pipeline package, `com.unity.pipeline`, install packages into Unity, `package_add`, `unity command eval`, `run_script`, `[CliCommand]`, the shipped `bt_*` CLI bridge (`bt_status`, `bt_refresh`, `bt_export_level`, `bt_export_prefab`, `bt_export_animation`, `bt_build_project`, `bt_devserver_start`, `bt_devserver_status`; `Editor/CLI/` in `com.babylontoolkit.editor` 9.25.1+), `bt-bootstrap.cs`, batch mode, `-executeMethod`, exporting glTF/GLB, game levels, asset containers, prefab export, `CanvasToolsExporter.BuildProject`, `EditorBuildType`, `SuppressDialogs`, `LastBuildResult`, `tsc-errors.txt`, scene metadata, Scene Exporter window, exporter settings, `ExportFileFormat`, `PrefabFileFormat`, development web server, previewing an exported scene in a browser, `localhost:8888`, Pro licence, `license.json`, `GenerateDeveloperLicense` / `HasActiveSubscription` (not live yet) | **YOU drive the Editor — never hand a "open Unity and…" step back to the user.** READ §0, §4B, §11 AND §12 BEFORE TOUCHING A PROJECT; READ THE REST WHEN THE TASK NEEDS IT, then the Unity sub-documents below as the task needs. Export through the `bt_*` commands (level and project builds use `EditorBuildType.Automate`; prefab and animation exports use `Scene`; all suppress dialogs and fail on TypeScript errors) |
+| [Unity Exporter Instructions](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-exporter-cli.md) | create Unity project, new Unity project, scaffold Unity project, Unity Exporter project, copilot mode, headless Unity, Unity, Unity Editor, Unity CLI, `unity` command, Unity Hub, Unity Pipeline package, `com.unity.pipeline`, install packages into Unity, scripting objects in a scene from Unity, attach a script component in Unity, `EditorScriptComponent`, `[Babylon(Class=…)]`, `[Auto]`, `OnUpdateProperties`, editor proxy events, C#/TypeScript script component pair, project script bundle, `scenes/<Product>.js`, auto script loader, `AutoLoadScriptBundles`, `Failed to locate script class`, `package_add`, `unity command eval`, `run_script`, `[CliCommand]`, the shipped `bt_*` CLI bridge (`bt_status`, `bt_refresh`, `bt_export_level`, `bt_export_prefab`, `bt_export_animation`, `bt_build_project`, `bt_devserver_start`, `bt_devserver_status`; `Editor/CLI/` in `com.babylontoolkit.editor` 9.25.1+), `bt-bootstrap.cs`, batch mode, `-executeMethod`, exporting glTF/GLB, game levels, asset containers, prefab export, `CanvasToolsExporter.BuildProject`, `EditorBuildType`, `SuppressDialogs`, `LastBuildResult`, `tsc-errors.txt`, scene metadata, Scene Exporter window, exporter settings, `ExportFileFormat`, `PrefabFileFormat`, development web server, previewing an exported scene in a browser, `localhost:8888`, Pro licence, `license.json`, `GenerateDeveloperLicense` / `HasActiveSubscription` (not live yet) | **YOU drive the Editor — never hand a "open Unity and…" step back to the user.** READ §0, §4B, §11 AND §12 BEFORE TOUCHING A PROJECT; READ THE REST WHEN THE TASK NEEDS IT, then the Unity sub-documents below as the task needs. Export through the `bt_*` commands (level and project builds use `EditorBuildType.Automate`; prefab and animation exports use `Scene`; all suppress dialogs and fail on TypeScript errors) |
 | [Unity Exporter Licensing](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-exporter-licensing.md) | licence, license.json, Pro, EnterprisePartner, companyName, interactive export missing components | Read before your first export, or when components are missing from an export |
 | [Unity Exporter Internals](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-exporter-internals.md) | CanvasToolsExporter.BuildProject, EditorBuildType, DefaultProjectFolder, exporter settings, game level vs asset container | Read on demand — the `bt_*` commands handle all of it |
 | [Unity Editor Commands](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-editor-commands.md) | ANY live Unity Editor operation; `unity command <name>`; command catalog; `create_gameobject`, `find_gameobjects`, `get_scene_hierarchy`, `set_transform`, `add_component`, `set_component_properties`, `set_serialized_field`, `create_scene`, `open_scene`, `save_scene`, `create_prefab`, `instantiate_prefab`, `save_prefab_contents`, `import_asset`, `set_import_settings`, `create_asset`, `find_assets`, `search`, `set_material_properties`, `list_shaders`, `bake_lighting`, `bake_navmesh`, `bake_occlusion_culling`, `set_lighting_settings`, `create_animator_controller`, `add_animator_state`, `create_timeline`, project settings (`set_player_settings`, `set_quality_settings`, `set_physics_settings`, `set_tags_layers`), `package_add`, `package_status`, `run_tests`, `recompile`, `console`, `editor_status`, `blocked_by_dialog`, `capture_game_view`, `capture_scene_view`, `screenshot`, `editor_play`, `set_autotick`, `run_script`, `eval`, `eval_file`, `batch`, `wait_for`, `--result-only`, `--detach`, `unity job`, ObjectRef handles, authoring root, `confirm` / `dry_run` | **A typed command beats code; code goes in a file run by `run_script`; `eval` is for one-liners (no `using`).** Discover with `unity command --query`, never guess a name. Many destructive and settings commands take `confirm=true`, but not all — read the schema and dry-run first |
@@ -245,8 +327,9 @@ Before acting on any Babylon Toolkit task, confirm all of the following:
       Unity, Blender and the browser are all mine to drive (**Agent Authority**, above).
 - [ ] Any question I am about to ask falls into one of the four categories in **The asking rule**.
       If it does not, I make the call myself, state the assumption, and keep going.
-- [ ] Every file I wrote or changed follows the **Coding Practices — ENFORCED** rules: clean, strictly typed
-      TypeScript, meaningful full-word names (no one- or two-letter names, no obfuscation), and code a human
-      developer can read and maintain.
+- [ ] Every file I wrote or changed follows the **Coding Practices — ENFORCED** rules: clean, professional
+      TypeScript or JavaScript in the project's own language, meaningful full-word names (no one- or two-letter
+      names, no obfuscation), well-structured code a human developer can read and maintain, and meaningful JSDoc
+      on every class, function, method and public member.
 
 ---

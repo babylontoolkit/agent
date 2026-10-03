@@ -189,6 +189,15 @@ Treat `TOOLKIT.*` components as the preferred engine-level implementation for fu
 
 Build game-specific behavior through `PROJECT.*` ScriptComponents that orchestrate existing Toolkit systems. Register every project class with `TOOLKIT.SceneManager.RegisterClass("PROJECT.MyClass", MyClass)` so exported metadata can re-hydrate it at load time.
 
+Project script components have two homes, and either is fine:
+
+* **In the web app project** (TypeScript or JavaScript). The app that loads the glTF finds exported nodes (`TOOLKIT.SceneManager.FindGameObject(scene, "Parent/Child")`, `FindGameObjectWithTag`), gets the components already on them with `TOOLKIT.SceneManager.GetComponent(node, "PROJECT.Klass")` (like Unity's `GetComponent`), and adds new components at runtime by constructing them on a node: `new PROJECT.Klass(node, scene, { speed: 4 })`. **The `ScriptComponent` constructor registers the component on its node itself** (under its `alias`, else its class name), so it is immediately findable with `GetComponent` and runs its lifecycle — no further call is needed.
+* **Optionally, in the Unity project**, when you want to script up objects in one scene (a moving platform, a door, a trigger zone). Write the C# `EditorScriptComponent` + TypeScript class pair, attach it to the GameObject, and export. The exporter compiles the class into the project script bundle (just as generated Shader Graph material classes are compiled and auto-loaded), and the glTF loader auto-loads it and instantiates it on that node. Recipe: `unity-exporter-cli.md` §8.2 (https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-exporter-cli.md).
+
+Components from both homes see each other through `GetComponent`, like any other component on a node.
+
+**You do not need `TOOLKIT.SceneManager.AttachScriptComponent` to set up a runtime component** — constructing it is enough. `AttachScriptComponent` is a legacy call kept for the rare case where registration is deliberately deferred: the caller passes `_registerComponentAlias: false` in the properties bag, so the constructor skips registering, and the caller attaches the instance itself later with `AttachScriptComponent(instance, alias)`. The toolkit's special glTF parser works this way (it collects each exported component's preloader tasks before attaching it), as do a few internal systems.
+
 For example:
 
 * Player scripts should calculate desired movement and invoke the existing character controller.

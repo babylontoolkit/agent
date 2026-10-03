@@ -663,7 +663,7 @@ return "ok";' --project-path "$PROJ"
 | PPv2 / HDRP ScreenSpaceReflections | **Direct** → `SSRRenderingPipeline` | PPv2 only on a **Deferred** camera; forward is skipped (warned) unless `TOOLKIT.PostProcessor.ForceScreenSpaceReflections = true` before load. HDRP: only when the HDRP asset supports SSR (`hdrp.features`), with its smoothness, fade, step and thickness fields |
 | PPv2 AutoExposure | **Toolkit** `AutoExposurePlugin` (GPU histogram + eye adaptation) | Built-in only. Needs camera HDR and WebGL2 / WebGPU, else exposure 1 (warned) |
 | HDRP Exposure | **Toolkit** — applied as the scene's **pre-exposure** (`TOOLKIT.HdrpRendering`); Automatic / Automatic Histogram / Curve Mapping run live on `AutoExposurePlugin`'s `hdrp` variant (HDRP's range, metering, histogram, curve and adaptation) | Fixed and UsePhysicalCamera are exact. The first metered frame snaps and the loader is held until the meter settles (≤ 120 frames). Emission with exposure weight < 1 follows the auto-exposure ratio. URP has no auto exposure |
-| HDRP PaniniProjection, ScreenSpaceLensFlare, ScreenSpaceGlobalIllumination | **Toolkit** passes (HDRP only) | SSGI ray marches 4 rays per pixel with a bilateral filter and no temporal accumulation — noisier than HDRP |
+| HDRP PaniniProjection, ScreenSpaceLensFlare, ScreenSpaceGlobalIllumination | **Toolkit** passes (HDRP only) | SSGI follows HDRP's pipeline: one ray per pixel reading the previous frame's colour, HDRP's temporal accumulation (prepass velocity reprojection, depth / normal rejection, reset on cut / resize / edit), diffuse denoiser and optional second pass, bilateral upsample at half resolution; it converges over ~8 frames as HDRP does. Like HDRP it replaces the opaque materials' own probe / ambient / lightmap indirect diffuse, and a ray miss falls back to the scene's HDRP reflection probes, then the sky |
 | HDRP contact shadows, micro-shadowing, shadow tint, receive-SSR off | Reported once, not drawn | |
 | HDRP Ray Tracing / Path Tracing (ray-traced effect modes, the Path Tracing volume) | Not carried yet | Author the effects in their screen-space modes, which are carried |
 | URP PaniniProjection / ScreenSpaceLensFlare, anything unlisted | **Substitute** (warned) — a Babylon post-process or `LensFlareSystem` in a script component | |
@@ -1222,9 +1222,20 @@ or repaired in Blender follow `unity-blender-cli.md`, which edits them in place 
 
 ## 18. Script components — the game logic
 
-All game logic runs in BabylonJS as TypeScript **script components**. Each one is paired with a C#
-**`EditorScriptComponent`** class in Unity that carries its inspector fields. Script components are **not
-licence-gated**. Plain `MonoBehaviour`s are Unity-only and are not exported.
+All game logic runs in BabylonJS as **script components**. They can live in the web app project that loads
+the glTF (written in TypeScript or JavaScript, reaching exported nodes and their components with
+`SceneManager.GetComponent`), or, optionally, be attached to GameObjects in Unity. This section covers the Unity
+path. A Unity-attached script component is a TypeScript class paired with a C# **`EditorScriptComponent`** class
+that carries its inspector fields. Script components are **not licence-gated**. Plain `MonoBehaviour`s are
+Unity-only and are not exported.
+
+**Use the Unity path when you want to script up objects in a particular scene** — a moving platform, a door, a
+trigger zone — and no supplied `TOOLKIT.*` component provides the behaviour. Write the pair and attach it to the
+GameObject yourself. The C# side never runs in the game; only its public fields are exported, as the component's
+property bag. The exporter compiles the TypeScript into the project script bundle (`scenes/<Product>.js`), just
+as generated Shader Graph material classes are compiled and auto-loaded. The glTF loader then loads that bundle and
+instantiates the class on each node automatically (`unity-exporter-cli.md` §8.2 → *How the class reaches the
+browser*).
 
 **How each part is exported:**
 - **Entries.** An enabled `EditorScriptComponent` exports as a `components[]` entry with `klass` and `order`.
