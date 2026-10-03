@@ -207,7 +207,8 @@ The full scene-level key set emitted for a level (for reference when reading exp
 `enablephysics`, `defaultgravity`, `ccdenabled`, `ccdpenetration`, `maxworldsweep`, `deltaworldstep`,
 `subtimestep`, `navigation`, `enableinput`, `userinput`, `usecapture`, `pointerlock`, `contextmenu`,
 `preventdefault`, `trianglenormals`, `freezeactivemeshes`, `performancepriority`, `prewarmup`, `hideloader`,
-`showdebugcolliders`, `collidervisibility`, `collisionwireframe`, `colliderrendergroup`.
+`showdebugcolliders`, `collidervisibility`, `collisionwireframe`, `colliderrendergroup`, and on HDRP the `hdrp` block
+(`version`, `exposure`, `preexposure`, `sky`, `shadows`, `fog`, `lightmapscale`, `indirect`, `features`).
 
 Keys emitted for **both** levels and containers: `gltf`, `license`, `licensee`, `filename`, `script`,
 `project`, `intensity`, `debugging`, `properties`, `disposeroot`, `webptextures`, `webplightmaps`,
@@ -265,7 +266,7 @@ Editor that has already cached `CanvasToolsInfo.Instance` will not see it.
 | `UseSpecularMaterials` | Default `true`: selects the **Specular** export path (metallic-roughness + `KHR_materials_specular`, with URP's factor from the global settings below). `false` selects the Classic path (`Standard (Specular setup)` → `KHR_materials_pbrSpecularGlossiness`) (`unity-authoring-recipes.md` §2) |
 | `SpecularHighlights` / `GlossyReflections` / `SpecularIntensityScale` / `MetallicF0FactorScale` | Material scalars (default 1.0) |
 | `ReflectionProbePower` / `DefaultReflectionFormat` | Reflection-probe intensity for every probe (default 1.0; probe intensity is not read) / `.env` (1, default) or `.dds` |
-| `UseHDRPPhotometricLights` | Default `false`; carry HDRP physical light units |
+| `UseHDRPPhotometricLights` | Default `false`; kept for saved settings only — HDRP physical light units are automatic whenever HDRP is the active pipeline |
 | `BakedLightingMode` | `0` additive (default); `1` multiplies (warned) |
 | `ExportNavigation` | Export the toolkit Recast navmesh (`unity-authoring-recipes.md` §12) |
 | `ExportMeshInstances` | Default `true`: repeated meshes become glTF mesh instances (off for lightmapped meshes) |
@@ -350,7 +351,7 @@ A **prefab export with an explicit `folder`** writes straight into that folder �
 | Prefab export produced no file / odd extension | `PrefabFileFormat` set to a non-enum value (e.g. `2`) | `GLB` is `1` (§13) |
 | Level exported but has no navigation | `NavigationMesh.bin` missing — Unity's `bake_navmesh` is not what the exporter reads | Bake the toolkit Recast surface (`unity-authoring-recipes.md` §12) |
 | Baked lights are not in the node list (`Baked lights` warning) | Expected — a Baked light is carried by its bake (lightmaps + light probes) | Nothing to fix. If a Baked light had children, they were skipped too — re-parent them (`unity-authoring-recipes.md` §3) |
-| Dynamic objects look unlit or flat | No light-probe network: missing `SceneController`, no baked `LightProbeGroup` / APV, or an asset-container export | Fix whichever is missing and re-bake (`unity-authoring-recipes.md` §5) |
+| Dynamic objects look unlit or flat | No light-probe network: no baked `LightProbeGroup` / APV, or an asset-container export (the network is hosted on the `SceneController`, or on the first active exported node without one) | Fix whichever is missing and re-bake (`unity-authoring-recipes.md` §5) |
 | Browser frame differs from the Unity frame of the same camera | A feature carried differently, or a toolkit parity gap | Find the feature's row in `unity-authoring-recipes.md` §0; if none explains it, record a parity gap with both captures (§21) |
 | Sky exported but reflections are sharp / unfiltered (no prefiltered IBL) | IBL source `ReflectionProbe-N.exr` never baked (`SKYBOX: You must generate the scene lighting`) | `bake_lighting` after setting the skybox (`unity-authoring-recipes.md` §7) |
 | `unity pipeline install --version` rejected | Flag collides with global `-V` | Use `--package-version` |

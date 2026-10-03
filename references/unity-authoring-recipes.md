@@ -61,27 +61,31 @@ How to call the typed commands is in `unity-editor-commands.md`. The export itse
 | Unity feature | How it reaches BabylonJS | Notes |
 |---|---|---|
 | Meshes, skinned meshes, blend shapes | **Direct** | ≤ 4 bone influences; blend shapes take the last frame (§13) |
-| URP Lit (Metallic), Complex Lit, Unlit, Built-in Standard, HDRP Lit → glTF PBR + KHR extensions | **Direct** | Author URP Lit in the **Metallic** workflow; Specular workflow and Simple Lit specular are ignored (§2) |
+| URP Lit (Metallic), Complex Lit, Unlit, Built-in Standard → glTF PBR + KHR extensions | **Direct** | Author URP Lit in the **Metallic** workflow; Specular workflow and Simple Lit specular are ignored (§2) |
+| HDRP Lit (every material type), LayeredLit, Unlit, SpeedTree8 | **Direct** (HDRP's own properties) + **Toolkit** `HdrpLitPlugin` / `HdrpLayeredLitMaterial` | Specular workflow, subsurface (diffusion profiles), translucency, anisotropy, refraction, emission by exposure weight; AxF and tessellation are reported (§2) |
 | Detail maps, parallax, premultiply / additive / multiply blending | **Direct** (material extras, rendered) | §2 |
 | Shader Graph (every URP / Built-in / HDRP sub-target, sub-graphs, Custom Function nodes, keywords, globals) | **Toolkit** — transpiled at export to a generated `MY.*` material class | Every export path; per-node polyfills, never a whole-graph fallback (§2, `shader-materials.md`) |
 | Directional / Point / Spot, **Realtime** | **Direct** | §3 |
 | **Mixed** lights | **Direct + Bake** — realtime direct light, baked indirect and shadowmask | The right mode for a sun (§3) |
 | **Baked** lights, Area / Rect / Disc lights | **Bake** — lightmaps light static objects, light probes light dynamic ones | The light node itself is not written, and **its children are skipped too** (§3) |
 | HDRP **Realtime** Rectangle light | **Direct** → Babylon `RectAreaLight` (type 3, `width` / `height`) | WebGL2 / WebGPU only (WebGL1 skips it, warned once); diffuse only; LTC tables load from the Babylon CDN (§3) |
+| HDRP **Realtime** Disc / Tube light | **Direct**, degraded — Disc → 180° spot, Tube → point, no shadows | Reported; Disc lights are baked-only in HDRP 17.5 (§3) |
 | Lightmaps: Baked Indirect, Shadowmask, Subtractive | **Bake** | Distance Shadowmask is approximated (§4) |
 | Directional lightmaps | **Bake** — the direction map ships and the runtime applies Unity's directional decode | Normal-mapped surfaces keep their baked relief (§4) |
 | Emissive surfaces lighting the scene | **Bake** (the emission itself is Direct) | Material GI = Baked (§4) |
-| Light probes / Adaptive Probe Volumes | **Bake** → `TOOLKIT.LightProbeNetwork` | Needs baked probes (Light Probe Group or APV) and an active `SceneController`; works in every ambient mode; levels only (§5) |
+| Light probes / Adaptive Probe Volumes | **Bake** → `TOOLKIT.LightProbeNetwork` | Needs baked probes (Light Probe Group or APV); hosted on the active `SceneController`, else on the first active exported node; works in every ambient mode; levels only (§5) |
 | Reflection probes (Baked / Custom), box projection | **Bake** | One probe per renderer; no blending (§6) |
+| HDRP Planar Reflection Probe | **Toolkit** `TOOLKIT.PlanarReflection` → a live mirror on receivers inside its influence volume | Two per scene; the rest fall back to cubes (reported) (§6) |
 | Reflection probes (**Realtime**) | **Toolkit** `TOOLKIT.RealtimeReflection` → live Babylon `ReflectionProbe` | Pro; same box, resolution, culling mask and refresh mode; renders the scene into a cube every N frames — budget it (§6) |
-| Skybox — Cubemap, 6 Sided, **Procedural** (incl. Default-Skybox), Shader Graph skies; IBL `.env`, spherical-harmonic ambient | **Direct** (sky textures copied; Procedural and Shader Graph skies drawn live) + **Bake** (IBL `.env`) | Levels only; needs a camera with Skybox clear flags. `Skybox/Panoramic` is not carried (§7) |
+| Skybox — Cubemap, 6 Sided, **Procedural** (incl. Default-Skybox), Shader Graph skies; IBL `.env`, spherical-harmonic ambient | **Direct** (sky textures copied; Procedural and Shader Graph skies drawn live) + **Bake** (IBL `.env`) | Levels only; needs a camera with Skybox clear flags. `Skybox/Panoramic` is not carried. HDRP: PhysicallyBasedSky drawn live (`HdrpPhysicallyBasedSky`), every other HDRP sky baked in physical units (§7) |
 | Gradient / Color ambient | **Direct**, approximated with a hemispheric light | Light probes still light probe-lit renderers (§5, §7) |
-| Fog (Linear / Exp / Exp2; HDRP Fog volume) | **Direct** | §8 |
-| Shadows — cascades, distance, resolution, softness | **Direct**, from the URP asset | §3 |
+| Fog (Linear / Exp / Exp2; HDRP Fog volume) | **Direct**; HDRP height fog is a **Toolkit** post pass (`HdrpFogPass`) | §8 |
+| Shadows — cascades, distance, resolution, softness | **Direct**, from the URP asset (HDRP: the scene's HDRP shadow settings) | §3 |
 | URP / HDRP / PPv2 Volumes | **Toolkit** `PostProcessor` + **Bake** (the whole colour grade becomes a LUT) | Pro (§9). Local (Box / Sphere) Volumes blend per frame as the camera walks in and out |
 | Camera — projection, FOV, clip, clear, HDR, physical camera | **Direct** | §9 |
 | Camera anti-aliasing — FXAA / SMAA / TAA / MSAA | **Toolkit** `PostProcessor` plugin passes (MSAA on the chain head, or the canvas) | Pro; per-pipeline gating (§9) |
-| PPv2 Auto Exposure (eye adaptation) | **Toolkit** `AutoExposurePlugin` | Built-in only; HDRP Exposure is a static export value (§9) |
+| PPv2 Auto Exposure (eye adaptation), HDRP Exposure (Automatic / Automatic Histogram / Curve Mapping) | **Toolkit** `AutoExposurePlugin` — one GPU engine, `ppv2` and `hdrp` variants | Built-in and HDRP; URP has no auto exposure (§9) |
+| HDRP physical units and camera exposure | **Toolkit** `TOOLKIT.HdrpRendering` — one **pre-exposure** scalar per scene re-applied to every radiance source; HDR chain | Levels with the `hdrp` scene block; Ray Tracing / Path Tracing are not carried yet (§3, §7, §9) |
 | Terrain — heightmap, ≤ 16 layers, holes, Shader Graph terrain material, trees (LODGroup, SpeedTree), mesh details, texture grass, wind, TerrainCollider, terrain lightmap | **Toolkit** `TerrainBuilder` | Pro. HDRP draws no texture grass (neither does Unity's HDRP). Terrain lightmaps need `.gltf` (§10) |
 | Rigidbody (incl. position and rotation constraints), Box / Sphere / Capsule / Mesh / Terrain / Wheel colliders, physics materials, triggers (mesh triggers as convex hulls), Layer Collision Matrix, `CollisionFilter`, CharacterController | **Direct / Toolkit** (Havok) | Pro (§11) |
 | Physics joints, gravity | **Toolkit** — Starter joint components, `SceneController` gravity | §11 |
@@ -95,7 +99,7 @@ How to call the typed commands is in `unity-editor-commands.md`. The export itse
 | Particle systems (Shuriken, every module; CPU-simulated), incl. Shader Graph particle materials | **Toolkit** `ShurikenParticles` | Pro. Noise, distortion and lit-particle shading approximated (§17) |
 | LineRenderer, TrailRenderer | **Toolkit** `LineRenderer` / `TrailRenderer` (ribbon mesh) | Pro (§17) |
 | SpriteRenderer, TilemapRenderer, 2D lights (for Sprite / Shader Graph materials) | **Toolkit** `SpriteRenderer` / `TilemapRenderer` carriers, `Light2DTexture` | Pro. No 2D physics; SpriteMask not drawn (§17) |
-| DecalProjector, URP Full Screen Pass renderer feature, HDRP fullscreen Custom Pass, Custom Render Textures | **Toolkit** `DecalProjector`, `ShaderGraphPass`, `ShaderGraphRenderTexture` | Their materials are Shader Graphs (`shader-materials.md`) |
+| DecalProjector, URP Full Screen Pass renderer feature, HDRP fullscreen Custom Pass, Custom Render Textures | **Toolkit** `DecalProjector`, `ShaderGraphPass`, `ShaderGraphRenderTexture` | Their materials are Shader Graphs (`shader-materials.md`); an HDRP/Decal material draws as one alpha-blended PBR pass (its mask map is not sampled, reported) |
 | uGUI Canvas (Overlay / Camera / World Space), UI Toolkit `UIDocument` (overlay / world / render-texture panels), TMP and Legacy text | **Toolkit** `UserInterface` → Babylon GUI, laid out in the browser with Unity's rules | Pro (§17) |
 | VideoPlayer (Material Override) | **Toolkit** `WebVideoPlayer` | Pro (§17) |
 | LOD groups | **Direct** — Unity's screen coverages (any FOV, orthographic), group size, Cross Fade / SpeedTree dither fades | Pro (§17) |
@@ -130,7 +134,7 @@ bodies, colliders, lightmaps and reflection probes.
 | Scene saved under `Assets/Scenes/<Level>.unity` | Every bake writes into `Assets/Scenes/<Level>/` (lightmaps, `ReflectionProbe-N.exr`, `NavigationMesh.bin`). An unsaved scene has no folder | `create_scene --path Scenes/Level01 --template default` |
 | A **LightingSettings asset** assigned and **saved into the scene** | Export throws `Lightmapping.lightingSettings is null` otherwise | `unity-exporter-cli.md` §8.1 |
 | `Camera.main` (tag `MainCamera`) with **Skybox** clear flags | No skybox or IBL is exported without it | The `default` scene template provides it |
-| An **active** `SceneController` component (toolkit) | Scene options (gravity, input, imaging, lighting, max lights) **and the light-probe network** — without it no `LightProbeNetwork` is emitted | `add_component --type SceneController` |
+| An **active** `SceneController` component (toolkit) | Scene options (gravity, input, imaging, lighting, max lights) **and the light-probe network** host — without it the `LightProbeNetwork` lands on the first active exported node | `add_component --type SceneController` |
 | GPU Resident Drawer off; URP renderer on **Forward** (not Forward+) | The drawer is Unity-only batching the export never uses. Left on, a failed registration makes Unity camera captures render only the sky. The toolkit recommends the standard Forward path | `eval 'return RenderPathTools.DisableResidentDrawerReport();'` (dialog-free; the §4B scaffold does it) |
 
 Create it in one go:
@@ -182,7 +186,7 @@ No material or texture feature is licence-gated.
 | `Standard (Specular setup)`, glTF spec-gloss shaders | `_SpecColor` carried |
 | URP Lit **Specular workflow**, URP **Simple Lit** | ⚠️ take the metallic path — `_SpecColor` / `_SpecGlossMap` are **ignored**. Author URP Lit in the **Metallic** workflow |
 | URP **Baked Lit** | ⚠️ exported as lit PBR — use Unlit with lighting in the albedo, or Lit + a lightmap |
-| HDRP Lit | Generic path (warned) that still carries `_BaseColorMap`, `_MaskMap` (metallic/roughness + AO), `_NormalScale`, `_EmissiveColor`, and the `_MaterialID` features. Subsurface scattering is dropped; HDRP Unlit's `_UnlitColor` is not read |
+| HDRP Lit, LitTessellation, LayeredLit, Unlit, SpeedTree8 | Their own family, read with HDRP's properties: `_BaseColor` (`_UnlitColor` on Unlit), `_MaskMap` (metallic / AO / smoothness), `_EmissiveColor` with its exposure weight, the specular workflow, and the `_MaterialID` features. At runtime `TOOLKIT.HdrpLitPlugin` adds mask-map smoothness, subsurface scattering with HDRP's shape parameters (up to four diffusion profiles; an unassigned profile uses HDRP's default, reported), translucency tinted by albedo and HDRP anisotropy; LayeredLit draws as `TOOLKIT.HdrpLayeredLitMaterial`. Refraction on transparent surfaces exports as `transmission` / `volume`. AxF and tessellation are reported once |
 | Unrecognised shaders | Generic PBR by property sniffing, warned *"unrecognised shader … map it or give it a SHADER_CONTROLLER block"* |
 | **Shader Graph** | `customMaterial: "MY.<Graph>"` + a generated TypeScript material class, transpiled on **every** export path (levels, selections, prefabs / asset containers, terrain prototypes and templates) for the active pipeline's target. Unsupported nodes are polyfilled or neutralised one by one and reported; plain PBR only for an unreadable graph or a device compile failure. With *Allow Material Override* off, the graph's own surface / alpha / cull settings win. **Read `shader-materials.md` → Unity Shader Graphs** before scripting one |
 | `Babylon/…`, `Babylon/Custom/…`, `Custom/…` | Toolkit custom shader (`SHADER_CONTROLLER` block), falling back to `UniversalShaderMaterial` with a warning |
@@ -258,12 +262,12 @@ exports at its imported size (§10).
 | Key | Carries |
 |---|---|
 | `type` | 0 directional, 1 point, 2 spot, 3 rectangle (HDRP Realtime Rectangle only) |
-| `color`, `intensity` | Unity intensity × π on URP/Built-in, × the toolkit's per-type scale (default 1). Colour temperature is applied |
+| `color`, `intensity` | Unity intensity × π on URP/Built-in, × the toolkit's per-type scale (default 1). HDRP: the light type's native physical unit (candela, lux or nits), rendered under the scene's pre-exposure. Colour temperature is applied |
 | `intensitymode` | Point lights use inverse-square falloff |
 | `range`, `spotangle` / `innerspotangle` | Range and cone |
-| Shadows | `generateshadows`, `softshadows` (PCF), `shadowstrength`. Cascades, split, distance and `shadowmapsize` come from the **URP pipeline asset** (map size = the main-light resolution, used for every light). Babylon bias = Unity bias × 0.1 |
+| Shadows | `generateshadows`, `softshadows` (PCF), `shadowstrength`. Cascades, split, distance and `shadowmapsize` come from the **URP pipeline asset** (map size = the main-light resolution, used for every light). Babylon bias = Unity bias × 0.1. HDRP: distance from the scene's HDRP shadow settings, always soft |
 | `lightmapmode`, `occlusionmaskchannel` | Mixed-light bake data |
-| `renderlist` | From the culling mask |
+| `renderlist` | From the culling mask. HDRP light and rendering layers are honoured (an instance on another layer than its source mesh becomes a geometry-sharing clone) |
 | `width`, `height` | Rectangle size (type 3), from the light's area size |
 
 Extra Babylon shadow knobs come from the toolkit **`LightSettings`** component on the same GameObject. At
@@ -277,6 +281,7 @@ runtime, shadows are created only at render quality High or Medium. A material t
 | **Baked** | **Bake** — the light node is not written; its direct and indirect light live in the **lightmaps** (static objects) and the **light probes** (dynamic objects) | Fill, bounce and practical lights. They cost nothing at runtime. They give no specular highlight and no realtime shadow on dynamic objects |
 | Area / Disc / Rectangle (URP, Built-in) | **Bake** — Unity bakes them only; carried by lightmaps and probes | Soft window light, panels, signage |
 | HDRP **Realtime** Rectangle | **Direct** — a Babylon `RectAreaLight` facing the light's forward, same size, colour, range; intensity passes through in nits (factor 1.0, like every HDRP light) | Soft panels and windows that must light dynamic objects at runtime |
+| HDRP **Realtime** Disc / Tube | **Direct**, degraded — a Disc becomes a 180° spot, a Tube a point light, both without shadows (each reported). Disc lights are baked-only in HDRP 17.5 | Prefer Rectangle or Point / Spot for realtime HDRP panels |
 | Any other Rectangle (Mixed / Baked, or Realtime on URP / Built-in) | **Bake** — not exported, **always warned** ("Rectangle lights" in the export summary) | Carried by the lightmaps and probes; a Realtime one on URP / Built-in lights nothing in Unity either |
 
 **Author it:**
@@ -297,7 +302,8 @@ than `MinSunlightDistance` (50) is raised to that height.
   subtree**, so children vanish from the export.
 - A Baked light's warning ("Baked lights") in the export summary is expected. It is not a failure.
 - Cookies are not carried. Add `SpotLight.projectionTexture` from a script component.
-- HDRP physical light units carry over only with `UseHDRPPhotometricLights` on (default off, warned).
+- HDRP lights always export in their physical units (automatic on HDRP; `UseHDRPPhotometricLights` is kept only for
+  saved settings). Under Distance Shadowmask, HDRP static renderers still cast realtime shadows, as HDRP draws them.
 - **Rectangle lights need WebGL2 or WebGPU.** A WebGL1 context skips them with one warning. They are **diffuse only**:
   Babylon 9.29's rect-area specular misuses the light colour as Fresnel F0 and explodes above intensity 1, so the
   runtime zeroes it. Babylon loads the area-light LTC tables once per scene from `assets.babylonjs.com` — an
@@ -323,13 +329,15 @@ than `MinSunlightDistance` (50) is raised to that height.
 - **Scene keys:** `lightmapbakemode`, `shadowmaskmode`, `subtractiveshadowcolor`, `renderpipeline`
   (`birp`/`urp`/`hdrp`).
 - **Diffuse IBL:** lightmapped materials suppress it, because the lightmap already holds the indirect light.
+- **HDRP:** one scene lightmap scale puts lightmaps (terrain lightmaps too) in physical units, so they follow the
+  scene's pre-exposure like every other radiance source.
 
 | Mixed Lighting mode | Fidelity in BabylonJS |
 |---|---|
 | **Baked Indirect** | The most exact. Mixed lights give full realtime direct light and shadows |
 | **Shadowmask** | Exact within **four overlapping Mixed lights** per area; the runtime combines `min(realtime, baked)` shadowing |
 | **Subtractive** | For a single main directional light. Non-realtime direct light is removed from lightmapped surfaces and the main light's shadow is subtracted |
-| Distance Shadowmask | **Approximated.** Behaviour past the shadow distance differs from Unity — prefer Shadowmask |
+| Distance Shadowmask | **Approximated.** Behaviour past the shadow distance differs from Unity — prefer Shadowmask. On HDRP, static renderers cast realtime shadows, as HDRP draws them |
 
 **Author it:**
 
@@ -400,8 +408,8 @@ setting loses range and is warned.
 
 **Required, or the network never loads:**
 - baked probes (`bake_lighting`);
-- an **active `SceneController`** (it hosts the `TOOLKIT.LightProbeNetwork` component; without one the
-  `<scene>.probe.bin` is written but never loaded);
+- a host for the `TOOLKIT.LightProbeNetwork` component: the **active `SceneController`**, or — in a scene without
+  one — the first active exported node;
 - a **level** export — light probes never ship in asset containers.
 
 The ambient mode does not matter. Under Gradient or Color ambient, probe-lit meshes use the probe SH and drop the
@@ -442,6 +450,11 @@ cost one draw. It is exported as the `showdebug` property of the `TOOLKIT.LightP
   every frame (time slicing: every 9 frames for All Faces At Once, 14 for Individual Faces), Via Scripting renders
   once and then on the component's `render()`. The optional toolkit `RealtimeReflection` editor component's list
   adds extra render-list entries. Render quality Low skips realtime probes (receivers keep the scene IBL, warned once).
+- **HDRP probes:** Baked / Custom HDRP probes export through the same per-renderer path from their HDProbe texture
+  (each renderer takes the probe whose influence volume contains it), in physical units under pre-exposure. HDRP
+  **Planar Reflection Probes** render as `TOOLKIT.PlanarReflection` mirrors on the receivers inside their influence
+  volume, captured without sky reflection as HDRP captures — the two largest per scene (`TOOLKIT.PlanarReflection.Budget`); the
+  rest fall back to cubes with one report.
 - **Probe blending is not carried** (warned). Place one probe per area.
 - The runtime applies reflection probes at render quality High / Medium.
 
@@ -483,7 +496,8 @@ unity command bake_lighting --project-path "$PROJ"     # baked probes bake with 
 
 **Requirements:**
 - a camera with **Skybox clear flags**: `Camera.main`, or the first enabled camera when none is tagged MainCamera
-  (HDRP ignores clear flags; its Visual Environment decides);
+  (HDRP: the camera's Background Type — Sky shows the background colour only when the scene has no sky, Color /
+  None hide the sky, and a camera without HD camera data uses its legacy clear flags);
 - a skybox material in `RenderSettings.skybox`;
 - **Reflections Source = Skybox** (`RenderSettings.defaultReflectionMode`);
 - a lighting bake.
@@ -497,9 +511,8 @@ the camera check.
 | `Skybox/6 Sided`, `Mobile/Skybox`, `Skybox/Babylon Toolkit` | Six faces. PNG or `_rgbd`-named sources are copied as they are; anything else is re-encoded (warned *"Must encode PNG skybox textures"*) |
 | `Skybox/Procedural` (also Unity's stock **Default-Skybox**) | A `procedural` block (sun disk / size / convergence, atmosphere thickness, sky tint, ground colour, exposure, the `RenderSettings.sun` name). Drawn **live** by `TOOLKIT.ProceduralSkyMaterial` on Unity's own sky mesh, following the sun every frame. No texture |
 | A **Shader Graph** skybox material | The generated class draws the sky through `TOOLKIT.ShaderGraphSky` (class must be in the bundle — no class, no sky) |
-| HDRP `HDRISky` | Its cubemap through the `Skybox/Cubemap` path, exposure from the sky's intensity mode. No baked `.env` IBL unless Reflections Source = Custom. HDRP sky brightness parity is open |
-| HDRP `PhysicallyBasedSky` in Material mode with a PBR Sky graph | Graph sky, as above; the atmosphere itself is not emulated |
-| HDRP plain PhysicallyBased, Gradient, legacy Procedural sky | No sky (warned *"procedural skies have no cubemap to export"*) |
+| HDRP `PhysicallyBasedSky` | Drawn **live** by `TOOLKIT.HdrpPhysicallyBasedSky`, a port of HDRP's own sky (HDRP's LUTs and coefficients, up to four sun disks, CloudLayer, physical units × pre-exposure). It is captured into the scene's reflection cube and, in Dynamic ambient mode, its SH, re-captured by HDRP's update rules when the sun or sky changes; aerial perspective joins the fog. Material rendering mode draws the default live atmosphere (warned). Falls back to the bake below with VolumetricClouds, on WebGL1 or without half-float targets |
+| HDRP `HDRISky`, `GradientSky` and every other HDRP sky | **Baked** at export through HDRP's own baked-probe route (sky only, CloudLayer included) into a physical-units skybox `.env` and a prefiltered environment `.env` plus one `physicalscale`; drawn and lit under the scene's pre-exposure |
 | `Skybox/Panoramic` and anything else | No sky and no `.env` IBL (warned *"shader type is unsupported"*); ambient SH still ships. Re-import the panorama as a cubemap (`textureShape` 2) and use `Skybox/Cubemap` |
 
 | Ambient mode | Result |
@@ -561,7 +574,8 @@ mat.createEnvironmentProbe(sky, 128);     // only when the scene has no baked .e
   the exporter linearises it, so author the value Unity shows and never compensate by hand.
 - Every procedural-sky level writes its IBL to the same `assets/procedural_skybox_ibl.env`; export two such levels to
   separate folders.
-- Known gaps: the procedural sun disc renders brighter than Unity's; HDRP sky / exposure parity is open.
+- Known gaps: the procedural sun disc renders brighter than Unity's. The live HDRP PhysicallyBasedSky uses HDRP's
+  camera-space sky-view path in both rendering spaces and has no CloudLayer self-shadowing.
 
 ---
 
@@ -576,8 +590,12 @@ mat.createEnvironmentProbe(sky, 128);     // only when the scene has no baked .e
 
 The runtime sets the linear fog end to **twice** the exported value. The sky is never fogged.
 
-An HDRP Fog volume becomes exponential fog with height, albedo and anisotropy keys. Volumetrics are flagged, not
-reproduced. Local volumetric fog is not carried. Compare fog at a browser checkpoint (§21).
+An HDRP Fog volume becomes HDRP's height fog, rendered by `TOOLKIT.HdrpFogPass` as a post pass over the prepass depth
+(mean free path, base / maximum height, mip fog, albedo, anisotropy), composited with a live PhysicallyBasedSky's
+aerial perspective; Babylon scene fog is off on HDRP. Transparent materials get the height fog through a material
+plugin (no mip fog or aerial perspective), particles are fogged at the opaque depth behind them, and terrain and Shader
+Graphs follow the same fog. Volumetric fog has no shadowed shafts; Local Volumetric Fog is reported, not drawn.
+Compare fog at a browser checkpoint (§21).
 
 ```bash
 unity command eval 'UnityEngine.RenderSettings.fog = true;
@@ -600,8 +618,11 @@ return "ok";' --project-path "$PROJ"
   balance, channel mixer, lift/gamma/gain, shadows/midtones/highlights, split toning, curves and ColorLookup.
   - **HDR path:** PPv2 `HighDefinitionRange` / `External` and every URP volume, on an HDR camera — a LogC strip with
     the tonemapper inside, applied by `ColorGradingHdrPlugin`, post-exposure a runtime uniform.
-  - **LDR path:** PPv2 `LowDefinitionRange`, a camera without HDR, and every HDRP export — the strip goes through
-    Babylon image processing. PPv2 LDR ignores the tonemapper, as Unity does.
+  - **HDRP path:** every HDRP camera runs an HDR chain (`allowhdr: true`, no final clamp, a head pass that bounds
+    values and removes NaN). The strip is baked in HDRP's own grading space with HDRP's tonemappers (Custom curve and
+    External LUT included); post exposure is a runtime uniform.
+  - **LDR path:** PPv2 `LowDefinitionRange`, a camera without HDR, and legacy HDRP exports (re-export warned) — the
+    strip goes through Babylon image processing. PPv2 LDR ignores the tonemapper, as Unity does.
 - **Tonemapping inheritance (URP).** A volume that does not override Tonemapping inherits it from the pipeline
   defaults — not from a lower-priority scene Volume. A scene Volume that sets a different tonemapper than the
   pipeline default is therefore not inherited by a local Volume's bake: keep the tonemapper in the pipeline default,
@@ -624,25 +645,28 @@ return "ok";' --project-path "$PROJ"
   - Only fields the Inspector can edit re-blend per frame (intensity, colour, smoothness, centre, post exposure,
     bloom threshold / scatter, …); enum switches (tonemapper, modes, quality) keep the union value.
 - **Pipeline defaults.** URP's two **default volume profiles** (global at priority -20000, quality asset at -10000)
-  are exported onto `Camera.main`, so the look matches Unity with no scene Volume. HDRP: only the default-settings
-  volume's Exposure and Tonemapping are exported, into the scene's image processing (levels only); its other effects
-  need a scene Volume.
+  are exported onto `Camera.main`, so the look matches Unity with no scene Volume. HDRP's default volume profiles
+  (global default + quality asset) export the same way, as pipeline-default volumes, so a scene with no Volume still
+  gets HDRP's bloom and tonemapper. HDRP's Exposure is the evaluated stack, exported in the scene's `hdrp` block.
 
 | Unity effect | Reaches BabylonJS as | Notes |
 |---|---|---|
 | Tonemapping, ColorAdjustments / ColorGrading, WhiteBalance, ChannelMixer, LiftGammaGain, ShadowsMidtonesHighlights, SplitToning, ColorCurves, ColorLookup | **Bake** → the LUT strip | Texture3D LUTs are refused |
-| Bloom | **Toolkit** `ColoredBloomPlugin` (PPv2 pyramid, URP Gaussian ladder). HDRP: native pipeline bloom unless tinted or a vignette is active | URP Kawase / Dual render as Gaussian (warned). Dirt and anamorphic are not carried |
-| Vignette (Classic) | **Toolkit** `VignettePlugin` (follows lens distortion) | Masked mode is ignored (warned) |
+| Bloom | **Toolkit** `ColoredBloomPlugin` (PPv2 pyramid; URP and HDRP Gaussian ladder, HDRP with its own prefilter and composite) | URP Kawase / Dual render as Gaussian (warned). HDRP lens dirt, tint and anamorphic are carried; PPv2 / URP dirt is not |
+| Vignette (Classic) | **Toolkit** `VignettePlugin` (follows lens distortion) | HDRP Masked renders (mask × opacity); PPv2 Masked is ignored (warned) |
 | ChromaticAberration | **Toolkit** `ChromaticAberrationPlugin` (spectral LUT exported) | |
-| Grain / FilmGrain | **Toolkit** `GrainPlugin` | URP grain runs after grading, as in Unity |
+| Grain / FilmGrain | **Toolkit** `GrainPlugin` | URP grain runs after grading, as in Unity. HDRP grain uses the texture of its type (or Custom) with `response` |
 | LensDistortion | **Toolkit** `LensDistortionPlugin` | |
-| DepthOfField | **Direct** → pipeline bokeh DOF | URP Gaussian approximated (warned). HDRP Manual → midpoint of the in-focus band; HDRP UsePhysicalCamera needs the camera's Physical Properties |
-| MotionBlur | **Direct** → `MotionBlurPostProcess` | URP CameraAndObjects = object-based |
-| PPv2 AmbientOcclusion, HDRP ScreenSpaceAmbientOcclusion | **Direct** → `SSAO2RenderingPipeline` | |
-| PPv2 / HDRP ScreenSpaceReflections | **Direct** → `SSRRenderingPipeline` | PPv2 only on a **Deferred** camera; forward is skipped (warned) unless `TOOLKIT.PostProcessor.ForceScreenSpaceReflections = true` before load |
+| DepthOfField | **Direct** → pipeline bokeh DOF | URP Gaussian approximated (warned). HDRP quality → blur level; HDRP Manual → focus between the near and far ranges, f-stop fitted so blur peaks at Far End; HDRP UsePhysicalCamera needs the camera's Physical Properties |
+| MotionBlur | **Direct** → `MotionBlurPostProcess` | URP CameraAndObjects = object-based. HDRP intensity and sample count carried |
+| PPv2 AmbientOcclusion, HDRP ScreenSpaceAmbientOcclusion (GTAO) | **Direct** → `SSAO2RenderingPipeline` | HDRP radius (metres), intensity and step count carried |
+| PPv2 / HDRP ScreenSpaceReflections | **Direct** → `SSRRenderingPipeline` | PPv2 only on a **Deferred** camera; forward is skipped (warned) unless `TOOLKIT.PostProcessor.ForceScreenSpaceReflections = true` before load. HDRP: only when the HDRP asset supports SSR (`hdrp.features`), with its smoothness, fade, step and thickness fields |
 | PPv2 AutoExposure | **Toolkit** `AutoExposurePlugin` (GPU histogram + eye adaptation) | Built-in only. Needs camera HDR and WebGL2 / WebGPU, else exposure 1 (warned) |
-| HDRP Exposure | **Bake** → static scene exposure | Fixed is exact. Automatic / Histogram / Curve / Physical are a one-time export estimate, no adaptation (warned). URP has no auto exposure |
-| PaniniProjection, ScreenSpaceLensFlare, anything unlisted | **Substitute** (warned) — a Babylon post-process or `LensFlareSystem` in a script component | |
+| HDRP Exposure | **Toolkit** — applied as the scene's **pre-exposure** (`TOOLKIT.HdrpRendering`); Automatic / Automatic Histogram / Curve Mapping run live on `AutoExposurePlugin`'s `hdrp` variant (HDRP's range, metering, histogram, curve and adaptation) | Fixed and UsePhysicalCamera are exact. The first metered frame snaps and the loader is held until the meter settles (≤ 120 frames). Emission with exposure weight < 1 follows the auto-exposure ratio. URP has no auto exposure |
+| HDRP PaniniProjection, ScreenSpaceLensFlare, ScreenSpaceGlobalIllumination | **Toolkit** passes (HDRP only) | SSGI ray marches 4 rays per pixel with a bilateral filter and no temporal accumulation — noisier than HDRP |
+| HDRP contact shadows, micro-shadowing, shadow tint, receive-SSR off | Reported once, not drawn | |
+| HDRP Ray Tracing / Path Tracing (ray-traced effect modes, the Path Tracing volume) | Not carried yet | Author the effects in their screen-space modes, which are carried |
+| URP PaniniProjection / ScreenSpaceLensFlare, anything unlisted | **Substitute** (warned) — a Babylon post-process or `LensFlareSystem` in a script component | |
 | HDRP Fog / sky / IndirectLightingController inside a profile | Not post-processing — read from the scene (§7, §8) | |
 | URP renderer features | **Full Screen Pass** (Shader Graph material) and **Decal** are carried (`shader-materials.md`). The SSAO feature and others are **Substitute** (SSAO warned) — add `SSAO2RenderingPipeline` from a script | |
 
@@ -735,9 +759,9 @@ Recipes for common looks (all with ACES tonemapping):
 | | Built-in (PPv2) | URP | HDRP |
 |---|---|---|---|
 | Camera renders volumes | Enabled `PostProcessLayer`; its Volume Layer includes the volume's layer | Post Processing ticked; Volume Mask | Postprocess frame setting on; Volume Mask |
-| HDR | Camera Allow HDR — needed for the HDR grading pass, auto-exposure and the half-float chain | Camera Allow HDR | Always exported LDR |
-| Grading mode | HighDefinitionRange (default) = Unity-exact LUT including the tonemapper | Asset Grading Mode honoured | Tonemapping / Exposure usually come from the default-settings volume |
-| SSR | Camera Rendering Path = Deferred | No SSR volume in URP | Volume SSR |
+| HDR | Camera Allow HDR — needed for the HDR grading pass, auto-exposure and the half-float chain | Camera Allow HDR | Always an HDR chain |
+| Grading mode | HighDefinitionRange (default) = Unity-exact LUT including the tonemapper | Asset Grading Mode honoured | Baked in HDRP's grading space; the default volume profiles supply bloom / tonemapping when the scene has no Volume |
+| SSR | Camera Rendering Path = Deferred | No SSR volume in URP | Volume SSR, enabled in the HDRP asset |
 | Local volume | Box or Sphere Collider on the same GameObject | same | same |
 
 **Camera anti-aliasing (Pro).** The mode Unity actually renders is exported per camera; the camera gets a
@@ -757,9 +781,9 @@ Recipes for common looks (all with ACES tonemapping):
   morphs and VAT (warned) — expect ghosting there.
 - The exporter's `EnableAntiAliasing` (canvas MSAA) only affects cameras with no post chain.
 
-**Known gaps:** HDRP runs an 8-bit chain (no HDR grading
-pass, no auto-exposure), uses PPv2 / URP effect maths and is the least verified pipeline. Each effect warns once for
-every overridden parameter it cannot carry. The runtime API (toggle an effect, change a value in Unity units, switch
+**Known gaps:** legacy HDRP exports (no `hdrp` scene block) keep the old 8-bit chain until re-exported (warned). On
+HDRP cameras an Inspector toggle neutralises a family rather than detaching it. Each effect warns once for every
+overridden parameter it cannot carry. The runtime API (toggle an effect, change a value in Unity units, switch
 AA mode, reset TAA history, the Inspector's *Unity Post Processing* section) is in `10-ProComponents.md`.
 
 ---
@@ -1326,7 +1350,7 @@ few lines in a script component:
 | VFX Graph | Babylon `GPUParticleSystem` / Node Particle Editor from a script, or Starter `PROJECT.FxParticleSystem` (plays a Babylon particle-system JSON, CPU or GPU). Shuriken systems are carried (§17) |
 | Light cookies | `SpotLight.projectionTexture` |
 | Realtime GI (Enlighten) | Bake the GI (§4) |
-| URP renderer features other than Full Screen Pass / Decal (e.g. the SSAO feature), Panini, Screen Space Lens Flare | `SSAO2RenderingPipeline`, custom `PostProcess`, `LensFlareSystem` |
+| URP renderer features other than Full Screen Pass / Decal (e.g. the SSAO feature), URP Panini and Screen Space Lens Flare (HDRP's are carried, §9) | `SSAO2RenderingPipeline`, custom `PostProcess`, `LensFlareSystem` |
 | Render scale | `engine.setHardwareScalingLevel` |
 | Occlusion culling | `mesh.occlusionType` / occlusion queries |
 | Navmesh areas, obstacles | The runtime `SceneManager` navigation-area API. Off-mesh links are carried (§12) |

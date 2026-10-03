@@ -1,6 +1,6 @@
 # Pro Components Reference
 
-> This document covers: `PostProcessor`, `TerrainBuilder`, `ShurikenParticles`, `LineRenderer` / `TrailRenderer`, `WebVideoPlayer`, `UserInterface` (exported Unity UI), and the legacy Unity GUI controls (`UnitySlider`, `UnityScrollBar`, `UnityDropdownMenu`).
+> This document covers: `PostProcessor`, the HDRP rendering classes (`HdrpRendering`, `HdrpPhysicallyBasedSky`, `PlanarReflection`), `TerrainBuilder`, `ShurikenParticles`, `LineRenderer` / `TrailRenderer`, `WebVideoPlayer`, `UserInterface` (exported Unity UI), and the legacy Unity GUI controls (`UnitySlider`, `UnityScrollBar`, `UnityDropdownMenu`).
 >
 > All of these are **created by the exporter** from Unity components (Pro licence). Find them with `TOOLKIT.SceneManager.FindScriptComponent`, then tune them — never rebuild what they already render. Shader Graph material APIs (`setFloat`, `TOOLKIT.ShaderGlobals`) are in the Custom Shader Code Instructions (`references/shader-materials.md`).
 
@@ -20,7 +20,7 @@ import * as TOOLKIT from "@babylonjs-toolkit/next";
 ## TOOLKIT.PostProcessor
 
 > **Namespace:** `TOOLKIT`  
-> **Role:** One component per exported Volume (Built-in PPv2, URP, HDRP), plus a camera-owner component for cameras with anti-aliasing work. The volumes are blended per camera and rendered as Babylon pipelines plus toolkit plugin passes (colour-grading LUT, bloom, vignette, chromatic aberration, grain, lens distortion, FXAA / SMAA / TAA, auto-exposure) in Unity's pass order. What each Unity effect becomes is in `unity-authoring-recipes.md` §9.
+> **Role:** One component per exported Volume (Built-in PPv2, URP, HDRP), plus a camera-owner component for cameras with anti-aliasing work. The volumes are blended per camera and rendered as Babylon pipelines plus toolkit plugin passes (colour-grading LUT, bloom, vignette, chromatic aberration, grain, lens distortion, FXAA / SMAA / TAA, PPv2 and HDRP auto-exposure; on HDRP also Panini, Screen Space Lens Flare, SSGI and height fog) in Unity's pass order. What each Unity effect becomes is in `unity-authoring-recipes.md` §9.
 
 ### Runtime API
 
@@ -57,8 +57,28 @@ Static switches, set **before** the scene loads: `TOOLKIT.PostProcessor.ForceScr
 - An effect authored at intensity 0 creates no pass. Author it above 0 in Unity and disable it at start.
 - **Never** enable the pipeline's own bloom / chromatic aberration / grain / `imageProcessing.vignette*` / `colorGradingTexture` on a camera with exported volumes — toolkit passes already render those, so you get a second copy (or nothing: the toolkit turns Babylon's vignette off). Edit through `GetEffectListing` instead. Direct pipeline properties are fine for depth of field, sharpen, or a scene with no volumes.
 - `PostProcessor` reuses an existing `DefaultRenderingPipeline` on the camera (e.g. `DefaultCameraSystem`'s) and overrides it.
+- On HDRP cameras `SetEffectEnabled(…, false)` neutralises the family's passes instead of detaching them.
 
 **Inspector:** `TOOLKIT.WindowManager.ShowInspector` / `ToggleDebug` / `PopupDebug` add a **"Unity Post Processing"** section to the Babylon Inspector: select a camera for per-effect ON/OFF switches and Unity-unit fields, the AA mode dropdown and every TAA knob.
+
+---
+
+## HDRP rendering — TOOLKIT.HdrpRendering, HdrpPhysicallyBasedSky, PlanarReflection
+
+> **Role:** An HDRP level (exported with the `hdrp` scene block) renders in HDRP's physical units under one camera **pre-exposure** per scene, which `TOOLKIT.HdrpRendering` re-applies to every radiance source (lights, emission by HDRP's exposure weight, environment, sky, probes, lightmaps, particles, Shader Graph `g_sgExposure`) in the same frame. HDRP auto exposure drives it through `AutoExposurePlugin`'s `hdrp` variant. All of it is exporter-driven; what each HDRP feature becomes is in `unity-authoring-recipes.md` §3–§9.
+
+| Call | Does |
+|---|---|
+| `TOOLKIT.HdrpRendering.IsParity(scene)` | `true` for a scene exported with the `hdrp` block (decided by the exported pipeline, never by names) |
+| `TOOLKIT.HdrpRendering.GetPreExposure(scene)` / `SetPreExposure(scene, pe)` | Read / set the scene pre-exposure; a set re-applies every binding at once (1 on non-HDRP scenes) |
+| `TOOLKIT.HdrpRendering.OnPreExposureChanged` | `Observable<Scene>` raised after every pre-exposure change |
+| `TOOLKIT.HdrpPhysicallyBasedSky.Get(scene)` | The live PhysicallyBasedSky, or `null` (other sky types, or the baked fallback) |
+| `TOOLKIT.HdrpPhysicallyBasedSky.RequestEnvironmentUpdate(scene)` / `OnEnvironmentUpdated` | Re-capture the reflection cube and SH from the live sky / raised after each capture |
+| `TOOLKIT.PlanarReflection` (component) | One per HDRP Planar Reflection Probe: `getMirror()` (`BABYLON.MirrorTexture`), `getReceivers()`. Static `Budget` (default 2) caps live mirrors per scene; set it before load |
+
+**Rules:**
+- Never multiply exposure into an HDRP material, light or sky by hand — it is already pre-exposed. HDRP/Unlit base colour and overlay UI are never exposed.
+- Rotating the sun under a live PhysicallyBasedSky re-captures the environment by HDRP's update rules; no call is needed.
 
 ---
 
