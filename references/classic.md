@@ -56,7 +56,7 @@ not override, are in **Coding Practices — ENFORCED** in the router `reference.
   (`i`, `j`, `k`), axis and texture names (`x`, `y`, `z`, `w`, `uv`) and the `TOOLKIT` / `BABYLON` namespaces.
 - **Write well-structured code for human developers.** Order a class as fields, lifecycle methods, public methods,
   then private helpers. Split complex expressions into well-named variables.
-- **Write meaningful JSDoc comments.** Every class, function and method (including lifecycle methods you implement),
+- **Write meaningful JSDoc comments — always, but never as a gate.** Every class, function and method (including lifecycle methods you implement),
   and every public or exported property, constant, type and interface, gets a `/** … */` block. Give the purpose,
   plus units, ranges, defaults and side effects the signature does not show. Add `@param` for every parameter,
   `@returns` for every non-void result, and `@throws` when it can throw. A comment that only restates the name is
@@ -121,8 +121,9 @@ function calculateProjectileRange(launchSpeed, launchAngleDegrees) {
 }
 ```
 
-**Before finishing:** re-read every file you created or changed against these rules and fix every violation. A
-missing or meaningless JSDoc block is a violation.
+**Before finishing:** re-read every file you created or changed against these rules and fix every violation of the
+code, naming and structure rules. Add any JSDoc you missed, but a missing or thin JSDoc block (including JavaScript
+type tags) never fails a test, a verification or an Acceptance criterion.
 
 ## 🏗️ Constructor
 

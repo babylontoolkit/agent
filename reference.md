@@ -144,8 +144,9 @@ Anything else is work, and work is yours.
 
 ## Coding Practices — ENFORCED
 
-> **These are requirements, not preferences.** Code that breaks them is not finished. Fix it before you report the
-> task done, the same way you would fix a compile error.
+> **These are requirements, not preferences.** Code that breaks rules 1–3 is not finished. Fix it before you report
+> the task done, the same way you would fix a compile error. Rules 4–5 (JSDoc and comments) are always practised,
+> but they **never block**: a missing or thin comment never fails a test, a verification, a hard gate or an Acceptance criterion.
 
 The user and their team read, debug and extend everything you write. Write it for them.
 
@@ -163,7 +164,7 @@ developer they must use one.
      known.
    - **JavaScript:** use modern ES syntax (classes, modules, arrow functions, `async`/`await`). Carry the types in
      JSDoc tags (`@param {Vector3} target`, `@returns {boolean}`, `@type {number}`) so editors and `checkJs` can check
-     them.
+     them. Like all JSDoc, missing type tags never block (rule 4).
 2. **Do not obfuscate code. Use meaningful names.** Every class, method, property, variable and parameter name says
    what it holds or does, in full words: `playerSpeed`, `targetRotation`, `spawnEnemyWave()`, `isGrounded`. One- and
    two-letter names (`p`, `v`, `ms`, `tg`, `fn()`, `cb`), cryptic abbreviations (`plyrSpd`, `tmpRt`), and code-golf
@@ -177,9 +178,10 @@ developer they must use one.
    understand a file without asking you. Lay it out in a consistent order: fields, lifecycle methods, public methods,
    private helpers. Group related logic. Break a complex expression into well-named intermediate variables. Match the
    conventions of the code around it.
-4. **Write meaningful JSDoc comments.** In both TypeScript and JavaScript, add a `/** … */` JSDoc block to every
-   class, every function and method (including lifecycle methods you implement), and every public or exported
-   property, constant, type and interface.
+4. **Write meaningful JSDoc comments — always, but never as a gate.** In both TypeScript and JavaScript, add a
+   `/** … */` JSDoc block to every class, every function and method (including lifecycle methods you implement),
+   and every public or exported property, constant, type and interface. Keep writing them on every task. A missing,
+   thin or imperfect JSDoc block is something to add or improve when you notice it, and it never fails a test, a verification, a hard gate or an Acceptance criterion.
    - **What the block says:** a summary sentence giving the purpose (what it does and why it exists), plus anything a
      caller cannot see from the signature. That includes units (seconds, meters, degrees), valid ranges, defaults,
      side effects, and what it requires to be called first.
@@ -189,8 +191,8 @@ developer they must use one.
      type (`/** The number. */`).
    - **Inside function bodies:** add short line comments only where the *why* is not obvious, such as a workaround, a
      Unity-parity rule or a performance trade-off. Never narrate code line by line.
-5. **Keep comments true.** When you change code, update its JSDoc and comments in the same edit. A stale comment
-   is a bug.
+5. **Keep comments true.** When you change code, update its JSDoc and comments in the same edit, so they never
+   mislead the next developer. Like rule 4, this is practised, never a gate.
 
 ```typescript
 /**
@@ -243,9 +245,11 @@ export function calculateProjectileRange(launchSpeed, launchAngleDegrees) {
   third-party bundles are never edited (see the sub-documents).
 
 **Enforcement.** Before you report any coding task done:
-- Re-read every file you created or changed against the five rules above, and fix every violation you find. A
-  missing or meaningless JSDoc block is a violation.
-- When a `bt-*` skill runs a verifier or reviewer on your task, it checks these rules too. A violation fails the task.
+- Re-read every file you created or changed against rules 1–3, and fix every violation you find. Add or improve
+  any JSDoc you missed while you are there.
+- When a `bt-*` skill runs a verifier or reviewer on your task, it checks rules 1–3 too, and a violation of them
+  fails the task. **JSDoc and comments (rules 4–5) are never a failure**: a reviewer may list gaps as non-blocking
+  notes, but they never fail a test, a verification, a hard gate or an Acceptance criterion.
 - Code you are editing is held to the same standard as new code. If you touch a function, leave it clean and
   documented. Do not rewrite untouched files unless you are asked to.
 
@@ -329,7 +333,8 @@ Before acting on any Babylon Toolkit task, confirm all of the following:
       If it does not, I make the call myself, state the assumption, and keep going.
 - [ ] Every file I wrote or changed follows the **Coding Practices — ENFORCED** rules: clean, professional
       TypeScript or JavaScript in the project's own language, meaningful full-word names (no one- or two-letter
-      names, no obfuscation), well-structured code a human developer can read and maintain, and meaningful JSDoc
-      on every class, function, method and public member.
+      names, no obfuscation), and well-structured code a human developer can read and maintain. I wrote
+      meaningful JSDoc on every class, function, method and public member (always practised; never a reason to
+      fail a task).
 
 ---
