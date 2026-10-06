@@ -6,7 +6,7 @@
 >    never just its `SKILL.md`. Some skills fail at runtime without their assets.
 > 2. **INSTALL GLOBALLY BY DEFAULT, INTO BOTH LOCATIONS.** Always prefer the GLOBAL
 >    (per-user home) locations unless the user explicitly asks to install into the
->    project. You MUST install **ALL 11 SKILLS** into **BOTH** of these directories —
+>    project. You MUST install **ALL 12 SKILLS** into **BOTH** of these directories —
 >    never just one:
 >    - `~/.claude/skills/` — Claude Code
 >    - `~/.agents/skills/` — cross-agent standard read by VS Code / GitHub Copilot,
@@ -46,6 +46,7 @@ and some skills ship **additional required asset files** (scripts, references, t
 | [`bt-spec`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file on a new git branch. | `SKILL.md` |
 | [`bt-plan`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec. | `SKILL.md` |
 | [`bt-execute`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task (or all remaining tasks) from a plan/spec. | `SKILL.md` |
+| [`bt-recon`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-recon/SKILL.md) | `/bt-recon` | Deep-dive existing code (a subsystem or the whole codebase) into an evidence-cited grounding spec plus a user guide. | `SKILL.md` |
 | [`bt-convert`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-convert/SKILL.md) | `/bt-convert` | Convert source code to Babylon Toolkit TypeScript. | `SKILL.md` |
 | [`bt-copycat`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-copycat/SKILL.md) | `/bt-copycat` | Re-create the specified website adapted to specified genre. | `SKILL.md` |
 | [`bt-landing`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-landing/SKILL.md) | `/bt-landing` | Re-design the landing page, splash screen, preloader and custom overlays. | `SKILL.md` |
@@ -79,6 +80,8 @@ skills/
 ├── bt-plan/
 │   └── SKILL.md
 ├── bt-execute/
+│   └── SKILL.md
+├── bt-recon/
 │   └── SKILL.md
 ├── bt-convert/
 │   └── SKILL.md
@@ -137,10 +140,10 @@ skills/
 - `bt-design/templates/3d-hero-scroll/hero-scroll.html`
 - `bt-design/templates/3d-hero-scroll/hero-scroll.js`
 
-All other skills (`bt-spec`, `bt-plan`, `bt-execute`, `bt-convert`, `bt-copycat`, `bt-landing`,
+All other skills (`bt-spec`, `bt-plan`, `bt-execute`, `bt-recon`, `bt-convert`, `bt-copycat`, `bt-landing`,
 `bt-prototype`, `bt-hero`, `bt-gauntlet`) are `SKILL.md`-only.
 
-> **THERE ARE 11 SKILLS TOTAL.** ALL 11 must be installed into EVERY target location.
+> **THERE ARE 12 SKILLS TOTAL.** ALL 12 must be installed into EVERY target location.
 > A partial install is a FAILED install.
 
 ## Installation
@@ -421,8 +424,8 @@ list to the actual target locations (GLOBAL paths shown by default; use the proj
 MISSING=""
 # Edit this list to EVERY location you installed to (GLOBAL paths shown; works in bash and zsh):
 for dir in ~/.claude/skills ~/.agents/skills; do
-  # ALL 11 skills must exist in EVERY location.
-  for skill in bt-spec bt-plan bt-execute bt-convert bt-copycat bt-landing bt-prototype bt-design bt-hero bt-atlas bt-gauntlet; do
+  # ALL 12 skills must exist in EVERY location.
+  for skill in bt-spec bt-plan bt-execute bt-recon bt-convert bt-copycat bt-landing bt-prototype bt-design bt-hero bt-atlas bt-gauntlet; do
     [ -f "$dir/$skill/SKILL.md" ] || MISSING="$MISSING $dir/$skill/SKILL.md"
   done
   for f in composite_skin.py preview.py uv_island_mask.py requirements.txt; do
@@ -455,8 +458,8 @@ $missing = @()
 # Edit this list to EVERY location you installed to (GLOBAL paths shown):
 $dirs = @("$env:USERPROFILE\.claude\skills", "$env:USERPROFILE\.agents\skills")
 foreach ($dir in $dirs) {
-  # ALL 11 skills must exist in EVERY location.
-  foreach ($skill in "bt-spec","bt-plan","bt-execute","bt-convert","bt-copycat","bt-landing","bt-prototype","bt-design","bt-hero","bt-atlas","bt-gauntlet") {
+  # ALL 12 skills must exist in EVERY location.
+  foreach ($skill in "bt-spec","bt-plan","bt-execute","bt-recon","bt-convert","bt-copycat","bt-landing","bt-prototype","bt-design","bt-hero","bt-atlas","bt-gauntlet") {
     if (-not (Test-Path "$dir\$skill\SKILL.md")) { $missing += "$dir\$skill\SKILL.md" }
   }
   foreach ($f in "composite_skin.py","preview.py","uv_island_mask.py","requirements.txt") {
