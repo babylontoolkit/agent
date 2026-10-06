@@ -714,7 +714,7 @@ export default function Play() {
 | --- | --- | --- | --- |
 | Scene download (`OnLoadProgress`) | Loading Scene 45% | — | file percent |
 | Asset preloader (3) | Loading terrain 45% · Loading skins 20% · Loading animations · Loading navigation · Loading water · Loading ray tracing | Loading 12 of 25 assets (before any heavy system starts) · then the stage the system is waiting on, e.g. Loading terrain textures (steady, forward only) | one combined scene fraction |
-| Preparing scene view (4) | Compiling shaders 67% | 140 of 210 ready | shader fraction |
+| Preparing scene view (4) | Compiling shaders 67% · then Starting scene | 140 of 210 shaders compiled · then All 210 shaders compiled | shader fraction (full at Starting scene) |
 
 **You have full creative freedom.** These are the states the runtime reports, and the default splash screens show
 them as a status line, a bar and a corner detail line. A custom splash may present them in any way that fits the

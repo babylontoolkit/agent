@@ -283,7 +283,7 @@ Implement on a component to hook into the asset loading pipeline.
 // One scene loader status update (SceneManager.OnLoaderStatusObservable). Null fields are unchanged since the last update.
 interface ILoaderStatus {
     status: string;     // status line, e.g. "LOADING TERRAIN 45%" or "COMPILING SHADERS 67%"
-    details: string;    // detail line, e.g. "LOADING TERRAIN TEXTURES", "LOADING 3 OF 7 ASSETS" or "140 OF 210 READY"
+    details: string;    // detail line, e.g. "LOADING TERRAIN TEXTURES", "LOADING 3 OF 7 ASSETS" or "140 OF 210 SHADERS COMPILED"
     progress: number;   // progress of the current loading state, 0 to 1 (null when the update carries none)
     state: number;      // TOOLKIT.Utilities loading state (0 load content, 1 parse transforms, 2 parse metadata, 3 asset preloader, 4 prepare viewport)
 }
