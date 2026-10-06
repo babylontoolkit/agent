@@ -164,6 +164,31 @@ static HideSplashScreen(scene?: BABYLON.Scene, delayMs?: number): void
 static UpdateSplashScreenStatus(text: string): void
 ```
 
+### Scene Loading Progress and the Ready Gate
+```typescript
+// Every loader status update after the scene download: asset preloader (state 3), shader compile (state 4)
+static OnLoaderStatusObservable: BABYLON.Observable<TOOLKIT.ILoaderStatus>
+// Resolves true once every toolkit scene load in flight finished its asset preloader and shader stage and the
+// scene rendered smooth frames; false on timeout (timeoutMs <= 0 uses SCENE_READY_TIMEOUT_MS = 120000) or disposal. Never rejects.
+static WhenSceneReady(scene: BABYLON.Scene, timeoutMs?: number): Promise<boolean>
+// Shows the render canvas under the splash, then calls done after `frames` consecutive smooth frames or maxMs
+static WaitForSmoothFrames(scene: BABYLON.Scene, frames: number, maxMs: number, done: () => void): void
+```
+
+The `SceneController` splash waits for `WhenSceneReady(scene, sceneReadyTimeoutMs)`; `scenePrewarmDurationMs` is only the minimum time it stays up.
+
+Per-system loading jobs (Terrain, Skins, Animations, Navigation, Water, Ray tracing) are tracked by `TOOLKIT.LoadingProgress`:
+```typescript
+// One update per job report: title, stageLabel, jobProgress, groupProgress, sceneProgress, complete
+static readonly OnProgressObservable: BABYLON.Observable<TOOLKIT.ILoadingJobProgress>
+// Weighted progress of every loading job of the scene, 0 to 1 (what the default splash bar shows)
+static GetSceneProgress(scene: BABYLON.Scene): number
+// Combined progress of every job with this title ("Terrain", "Skins", ...), 0 to 1
+static GetGroupProgress(scene: BABYLON.Scene, title: string): number
+```
+
+The states, their example text and the creative freedom a custom splash has: `references/ui-design-system.md`, section *Loading progress you can show*.
+
 ---
 
 ## Scene Query Functions

@@ -193,7 +193,7 @@ Framework flow:
 3. SceneController instantiated + attached (BEFORE scene load)
 4. If sceneUrl provided: BABYLON.ImportMeshAsync() loads the GLTF
 5. ► gameMode.createScene(auxiliaryData) called  ◄  ← YOUR CODE HERE
-6. Splash screen hidden (after scenePrewarmDurationMs)
+6. Splash screen hidden (once SceneManager.WhenSceneReady resolves; scenePrewarmDurationMs is the minimum)
 ```
 
 ### Accessing Scene and Helpers
@@ -790,7 +790,13 @@ Scene starts loading
     ├── createScene() called
     │     └── GameManager.PostProgressStatus("Loading Player ...") — custom messages
     │
-    └── TOOLKIT.SceneManager.HideSplashScreen() — after scenePrewarmDurationMs
+    ├── Asset preloader (state 3) — SceneManager.OnLoaderStatusObservable
+    │     └── "LOADING TERRAIN 45%" / "LOADING TERRAIN TEXTURES" — one weighted bar for the scene
+    ├── Preparing scene view (state 4) — SceneManager.OnLoaderStatusObservable
+    │     └── "COMPILING SHADERS 67%" / "140 OF 210 READY"
+    │
+    └── TOOLKIT.SceneManager.HideSplashScreen() — once SceneManager.WhenSceneReady(scene) resolves
+          (preloader done, shaders compiled, smooth frames), never before scenePrewarmDurationMs
 ```
 
 ### Customizing Loading Messages
@@ -804,7 +810,7 @@ protected async createScene(data?: any): Promise<void> {
     await loadStep2();
 
     GameManager.PostProgressStatus("Starting game ...");
-    // Splash hides automatically after scenePrewarmDurationMs (default 3000ms)
+    // Splash hides automatically once the scene is ready (scenePrewarmDurationMs, default 2500 ms, is the minimum)
 }
 ```
 
@@ -813,13 +819,30 @@ protected async createScene(data?: any): Promise<void> {
 ```typescript
 constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties: any = {}) {
     super(transform, scene, properties);
-    this.scenePrewarmDurationMs = 1500; // Shorten or lengthen the splash display
+    this.scenePrewarmDurationMs = 1500; // Minimum splash display; the splash still waits for WhenSceneReady
+    this.sceneReadyTimeoutMs = 60000;   // Upper bound: hide the splash anyway after this many ms
 }
 ```
 
 ### Custom Splash Screen
 
-Replace `custom/splash.tsx` with a branded version. The component subscribes to `GameManager.EventBus.OnMessage("OnLoadProgress", ...)` automatically.
+Replace `custom/splash.tsx` with a branded version. The component subscribes to `GameManager.EventBus.OnMessage("OnLoadProgress", ...)` (the scene download) and to `TOOLKIT.SceneManager.OnLoaderStatusObservable` (everything after the download), and removes both on cleanup.
+
+### Loading Progress You Can Show
+
+| Stage (state) | Status line (example) | Detail line (example) | Progress |
+| --- | --- | --- | --- |
+| Scene download (`OnLoadProgress`) | Loading Scene 45% | — | file percent |
+| Asset preloader (3) | Loading terrain 45% · Loading skins 20% · Loading animations · Loading navigation · Loading water · Loading ray tracing | Loading 12 of 25 assets (before any heavy system starts) · then the stage the system is waiting on, e.g. Loading terrain textures (steady, forward only) | one combined scene fraction |
+| Preparing scene view (4) | Compiling shaders 67% | 140 of 210 ready | shader fraction |
+
+**You have full creative freedom.** These are the states the runtime reports, and the default splash screens show
+them as a status line, a bar and a corner detail line. A custom splash may present them in any way that fits the
+design — different wording, layout, animation, illustration, a single combined bar, per-system indicators, or none
+of the raw text at all. Do give the player a sense of real progress during heavy loading: show something that moves
+with the load (a bar, stage names, counts), never an endless "please wait".
+
+Full details — every event, the example splash handler and the finer-grained `TOOLKIT.LoadingProgress` events: [`ui-design-system.md`](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/ui-design-system.md), section *Loading progress you can show*.
 
 ---
 

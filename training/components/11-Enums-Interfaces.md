@@ -275,6 +275,53 @@ Implement on a component to hook into the asset loading pipeline.
 
 ---
 
+## Loading Progress Interfaces
+
+### `ILoaderStatus`
+
+```typescript
+// One scene loader status update (SceneManager.OnLoaderStatusObservable). Null fields are unchanged since the last update.
+interface ILoaderStatus {
+    status: string;     // status line, e.g. "LOADING TERRAIN 45%" or "COMPILING SHADERS 67%"
+    details: string;    // detail line, e.g. "LOADING TERRAIN TEXTURES", "LOADING 3 OF 7 ASSETS" or "140 OF 210 READY"
+    progress: number;   // progress of the current loading state, 0 to 1 (null when the update carries none)
+    state: number;      // TOOLKIT.Utilities loading state (0 load content, 1 parse transforms, 2 parse metadata, 3 asset preloader, 4 prepare viewport)
+}
+```
+
+### `ILoadingJobProgress`
+
+```typescript
+// One loading-job update, published on LoadingProgress.OnProgressObservable
+interface ILoadingJobProgress {
+    scene: BABYLON.Scene;   // the scene being loaded
+    key: string;            // unique job key within the scene, e.g. "terrain:Terrain_0_0" or "skins"
+    title: string;          // display group: "Terrain", "Skins", "Animations", "Navigation", "Water" or "Ray tracing"
+    stageLabel: string;     // what the job is doing now, e.g. "Loading terrain textures"
+    jobProgress: number;    // progress of this job, 0 to 1 (never goes back)
+    groupProgress: number;  // combined progress of every job with this title, 0 to 1
+    sceneProgress: number;  // weighted progress of every job in the scene, 0 to 1 (what the splash bar shows)
+    complete: boolean;      // true on the job's final update
+}
+```
+
+### `ITerrainLoadProgress`
+
+```typescript
+// One terrain loading update (TerrainBuilder.onLoadProgressObservable per terrain, TerrainBuilder.OnLoadProgressObservable for all)
+interface ITerrainLoadProgress {
+    terrain: TOOLKIT.TerrainBuilder;  // the terrain reporting
+    stage: string;          // heightmap, collision, textures, surface, trees, details, settle, shaders or complete
+    label: string;          // readable stage label, e.g. "Loading terrain textures"
+    stageProgress: number;  // progress inside the stage, 0 to 1
+    progress: number;       // progress of this terrain's whole load, 0 to 1 (never goes back)
+    complete: boolean;      // true on the final update (loaded, failed or disposed)
+    failed: boolean;        // true when the terrain could not be built (complete is true as well)
+}
+```
+
+---
+
 ## Unity-Exported Data Interfaces
 
 These interfaces describe how Unity component references are serialized into script property bags.

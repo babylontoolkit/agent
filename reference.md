@@ -47,7 +47,7 @@ reading the sub-document that automates it.
 
 | Discipline | You do it yourself with | Read |
 |---|---|---|
-| Frontend, landing pages, splash/preloader, HUD, menus, overlays | React / DOM UI + BabylonJS GUI where it belongs | `ui-design-system.md`, `react-framework.md`, `babylon-gui.md` |
+| Frontend, landing pages, splash/preloader, loading progress, splash states, HUD, menus, overlays | React / DOM UI + BabylonJS GUI where it belongs | `ui-design-system.md`, `react-framework.md`, `babylon-gui.md` |
 | Gameplay, physics, AI, animation state machines, vehicles, navigation | TypeScript or JavaScript `ScriptComponent`s — in the web app, or optionally attached to GameObjects in Unity | `scene-components.md`, `node-esm.md`, `unity-exporter-cli.md` §8.2 (the Unity path) |
 | Custom rendering — Unity Shader Graphs (transpiled at export, driven from code), water, sky, foliage, VAT, wind | The Shader Graph transpiler for anything authored as a graph; GLSL/WGSL shader materials and material plugins for the rest. A Unity terrain is authored, not hand-shaded (`unity-authoring-recipes.md` §10) | `shader-materials.md` |
 | Images, textures, video, music, SFX, ambience, speech/VO | kie generation MCP servers (default) or the Higgsfield CLI, called from the project | `web-kie-servers.md` (default); `web-higgsfield-cli.md` when the user wants Higgsfield or only Higgsfield is set up |

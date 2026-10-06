@@ -706,6 +706,24 @@ export default function Play() {
 }
 ```
 
+### Loading progress you can show
+
+`DefaultBabylonPreloader` covers the React Suspense download; the splash inside `BabylonSceneViewer` then shows the scene loading states below, from `GameManager.EventBus` `"OnLoadProgress"` (scene download) and `TOOLKIT.SceneManager.OnLoaderStatusObservable` (everything after). The splash stays up until `TOOLKIT.SceneManager.WhenSceneReady(scene)` resolves; `scenePrewarmDurationMs` is only its minimum.
+
+| Stage (state) | Status line (example) | Detail line (example) | Progress |
+| --- | --- | --- | --- |
+| Scene download (`OnLoadProgress`) | Loading Scene 45% | — | file percent |
+| Asset preloader (3) | Loading terrain 45% · Loading skins 20% · Loading animations · Loading navigation · Loading water · Loading ray tracing | Loading 12 of 25 assets (before any heavy system starts) · then the stage the system is waiting on, e.g. Loading terrain textures (steady, forward only) | one combined scene fraction |
+| Preparing scene view (4) | Compiling shaders 67% | 140 of 210 ready | shader fraction |
+
+**You have full creative freedom.** These are the states the runtime reports, and the default splash screens show
+them as a status line, a bar and a corner detail line. A custom splash may present them in any way that fits the
+design — different wording, layout, animation, illustration, a single combined bar, per-system indicators, or none
+of the raw text at all. Do give the player a sense of real progress during heavy loading: show something that moves
+with the load (a bar, stage names, counts), never an endless "please wait".
+
+Full details and the example splash handler: [`ui-design-system.md`](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/ui-design-system.md), section *Loading progress you can show*.
+
 ## Next Configuration File
 
 * Always prefer NEXT.JS 16 or greater which uses webpack by default. You MUST always force the use of webpack instead of turbopack for the react framework submodule to work properly.

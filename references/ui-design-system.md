@@ -105,12 +105,12 @@ export { babylonLogo, spinnerImage };
 
 **File:** `src/chrome/splash.tsx` + `src/chrome/splash.css`
 
-**What it is:** The `SplashScreen` is the full-screen animated loading screen shown *inside* the `BabylonSceneViewer` while the engine initializes, the GLTF scene loads from CDN/S3, the physics engine starts, and the `SceneController.createScene()` method runs. It subscribes to `GameManager.EventBus.OnMessage("OnLoadProgress", ...)` and shows live progress messages.
+**What it is:** The `SplashScreen` is the full-screen animated loading screen shown *inside* the `BabylonSceneViewer` while the engine initializes, the GLTF scene loads from CDN/S3, the physics engine starts, and the `SceneController.createScene()` method runs. It subscribes to `GameManager.EventBus.OnMessage("OnLoadProgress", ...)` (the scene download) and to `TOOLKIT.SceneManager.OnLoaderStatusObservable` (everything after the download — the asset preloader, then the shader compile) and shows live progress messages.
 
 **When it appears:**
 - Immediately after the Babylon engine is created (replaces the preloader)
 - Covers the canvas at `z-index 9999` for the full duration of asset loading
-- Auto-hidden by `TOOLKIT.SceneManager.HideSplashScreen()` after `scenePrewarmDurationMs` (default 2500ms) once `createScene()` completes
+- Stays up until `TOOLKIT.SceneManager.WhenSceneReady(scene)` resolves: the asset preloader finished (terrains, skins, animations, navigation, water, ray tracing, probes, audio, video, post-processing), then the scene's shaders compiled, then the scene rendered a few smooth frames. `SceneController.scenePrewarmDurationMs` (default 2500 ms) is only the **minimum** time the splash stays up; `sceneReadyTimeoutMs` (default 120000 ms) is the upper bound after which it is hidden anyway. The `SceneController` then calls `TOOLKIT.SceneManager.HideSplashScreen()` for you
 
 **Progress message flow:**
 ```
@@ -120,8 +120,11 @@ export { babylonLogo, spinnerImage };
 "Loading Scene 100%"
 "Preparing game world ..."    ← your custom messages via GameManager.PostProgressStatus()
 "Spawning enemies ..."
-"Starting game ..."
+"LOADING TERRAIN 45%"         ← asset preloader (state 3) via SceneManager.OnLoaderStatusObservable
+"COMPILING SHADERS 67%"       ← preparing scene view (state 4) via SceneManager.OnLoaderStatusObservable
 ```
+
+The runtime posts the loader status in upper case (like the engine.html loader); the default React splash converts it to sentence case. See *Loading progress you can show* below for every state.
 
 **Design intent:** This is the full branded in-engine loading screen. It should feel like a AAA game intro — animated, atmospheric, building suspense. Use it to:
 - Show animated logo reveal
@@ -134,20 +137,46 @@ export { babylonLogo, spinnerImage };
 ```tsx
 // src/chrome/splash.tsx
 import { useEffect, useState } from 'react';
-import GameManager from '../globals';
+import GameManager from '../babylon/globals';
+import { SceneManager } from '@babylonjs-toolkit/next/scenemanager';
 import './splash.css';
 
+/** Scene download progress posted on GameManager.EventBus "OnLoadProgress". */
+type LoadProgressMessage = { message?: string; percent?: number; overallPercent?: number };
+
+/** TOOLKIT.ILoaderStatus from SceneManager.OnLoaderStatusObservable (null fields are unchanged since the last update). */
+type LoaderStatus = { status: string | null; details: string | null; progress: number | null; state: number };
+
+/** Clamps a progress value to the 0..1 range. */
+const clampFraction = (value: number): number => Math.max(0, Math.min(1, value));
+
 function SplashScreen({ visible }: { visible: boolean }) {
-  const [message, setMessage] = useState('Initializing...');
-  const [progress, setProgress] = useState(0);
+  const [message, setMessage] = useState<string>('Initializing...');
+  const [details, setDetails] = useState<string>('');
+  const [progress, setProgress] = useState<number>(0);
 
   useEffect(() => {
-    const handler = (data: { message: string; percent?: number }) => {
-      setMessage(data.message);
-      if (data.percent != null) setProgress(data.percent);
+    // 1. the scene download (glTF + bin)
+    const onLoadProgress = (data: LoadProgressMessage): void => {
+      if (data == null) return;
+      if (data.message != null) setMessage(data.message);
+      const percent: number | undefined = data.overallPercent ?? data.percent;
+      if (typeof percent === 'number' && isFinite(percent)) setProgress(clampFraction(percent / 100));
     };
-    GameManager.EventBus.OnMessage('OnLoadProgress', handler);
-    return () => GameManager.EventBus.RemoveHandler('OnLoadProgress', handler);
+    // 2. everything after the download: the asset preloader (state 3), then the shader compile (state 4).
+    //    progress is the fraction of the current state, so the bar starts over when data.state changes
+    const onLoaderStatus = (data: LoaderStatus): void => {
+      if (data == null) return;
+      if (data.status != null && data.status !== '') setMessage(data.status);
+      if (data.details != null) setDetails(data.details);
+      if (typeof data.progress === 'number' && isFinite(data.progress)) setProgress(clampFraction(data.progress));
+    };
+    GameManager.EventBus.OnMessage('OnLoadProgress', onLoadProgress);
+    const loaderObserver = SceneManager.OnLoaderStatusObservable.add(onLoaderStatus);
+    return () => {
+      GameManager.EventBus.RemoveHandler('OnLoadProgress', onLoadProgress);
+      SceneManager.OnLoaderStatusObservable.remove(loaderObserver);
+    };
   }, []);
 
   if (!visible) return null;
@@ -158,9 +187,10 @@ function SplashScreen({ visible }: { visible: boolean }) {
         <img src="/babylon.png" alt="Game Logo" />
       </div>
       <div className="splash-progress-bar">
-        <div className="splash-progress-fill" style={{ width: `${progress}%` }} />
+        <div className="splash-progress-fill" style={{ width: `${Math.round(progress * 100)}%` }} />
       </div>
       <p className="splash-message">{message}</p>
+      <p className="splash-details">{details}</p>
     </div>
   );
 }
@@ -172,9 +202,31 @@ export default SplashScreen;
 ```typescript
 constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties: any = {}) {
   super(transform, scene, properties);
-  this.scenePrewarmDurationMs = 2000; // ms after createScene() completes
+  this.scenePrewarmDurationMs = 2000; // minimum ms the splash stays up; it still waits for WhenSceneReady
+  this.sceneReadyTimeoutMs = 60000;   // upper bound: hide the splash anyway after this many ms
 }
 ```
+
+#### Loading progress you can show
+
+| Stage (state) | Status line (example) | Detail line (example) | Progress |
+| --- | --- | --- | --- |
+| Scene download (`OnLoadProgress`) | Loading Scene 45% | — | file percent |
+| Asset preloader (3) | Loading terrain 45% · Loading skins 20% · Loading animations · Loading navigation · Loading water · Loading ray tracing | Loading 12 of 25 assets (before any heavy system starts) · then the stage the system is waiting on, e.g. Loading terrain textures (steady, forward only) | one combined scene fraction |
+| Preparing scene view (4) | Compiling shaders 67% | 140 of 210 ready | shader fraction |
+
+**You have full creative freedom.** These are the states the runtime reports, and the default splash screens show
+them as a status line, a bar and a corner detail line. A custom splash may present them in any way that fits the
+design — different wording, layout, animation, illustration, a single combined bar, per-system indicators, or none
+of the raw text at all. Do give the player a sense of real progress during heavy loading: show something that moves
+with the load (a bar, stage names, counts), never an endless "please wait".
+
+**Where each value comes from:**
+- `GameManager.EventBus.OnMessage("OnLoadProgress", ...)` — the scene download (`message`, `percent` / `overallPercent`), plus your own `GameManager.PostProgressStatus()` messages.
+- `TOOLKIT.SceneManager.OnLoaderStatusObservable` — every `TOOLKIT.ILoaderStatus` after the download: `status` (status line), `details` (detail line), `progress` (0..1 fraction of the current state, or `null`) and `state` (the loading state: 3 asset preloader, 4 preparing scene view). Text arrives in upper case.
+- During the asset preloader the status line names one heavy system at a time (Terrain, Skins, Animations, Navigation, Water, Ray tracing) for at least 750 ms unless it completes; the bar is one weighted fraction of every heavy system in the scene. Small assets (light probes, audio, video, ordinary files) never get their own stage — they only count in "Loading n of m assets", which shows until the first heavy system starts.
+- For per-system indicators, subscribe to `TOOLKIT.LoadingProgress.OnProgressObservable` (`TOOLKIT.ILoadingJobProgress`: `title`, `stageLabel`, `jobProgress`, `groupProgress`, `sceneProgress`, `complete`) or read `TOOLKIT.LoadingProgress.GetSceneProgress(scene)` / `GetGroupProgress(scene, title)`; a terrain's own stages arrive on `TOOLKIT.TerrainBuilder.OnLoadProgressObservable` (`TOOLKIT.ITerrainLoadProgress`).
+- Game code can await the same gate the splash uses: `await TOOLKIT.SceneManager.WhenSceneReady(scene, timeoutMs)` resolves `true` when the scene really finished, `false` on timeout or disposal, and never rejects.
 
 * Important: The `preloader` and `splash screen` **SHOULD** look very similar if not the same. The only differene is the preloader should be less animated than the splash screen because it is the `React Suspense` or downloading state.
 
