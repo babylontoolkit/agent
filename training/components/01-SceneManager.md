@@ -166,8 +166,12 @@ static UpdateSplashScreenStatus(text: string): void
 
 ### Scene Loading Progress and the Ready Gate
 ```typescript
-// Every loader status update after the scene download: asset preloader (state 3), shader compile (state 4)
+// Every loader status update after the scene download: building the scene (state 1), setting up the scene (state 2),
+// asset preloader (state 3), shader compile (state 4, ending on "STARTING SCENE")
 static OnLoaderStatusObservable: BABYLON.Observable<TOOLKIT.ILoaderStatus>
+// Set true by a splash that hands its status line and bar to the toolkit once the scene file is in (default engine.html and
+// React splashes); false (default) posts only the detail line during states 1 and 2
+static HostDefersSceneStatus: boolean
 // Resolves true once every toolkit scene load in flight finished its asset preloader and shader stage and the
 // scene rendered smooth frames; false on timeout (timeoutMs <= 0 uses SCENE_READY_TIMEOUT_MS = 120000) or disposal. Never rejects.
 static WhenSceneReady(scene: BABYLON.Scene, timeoutMs?: number): Promise<boolean>

@@ -790,14 +790,21 @@ Scene starts loading
     ├── createScene() called
     │     └── GameManager.PostProgressStatus("Loading Player ...") — custom messages
     │
+    ├── Building the scene (state 1) — SceneManager.OnLoaderStatusObservable
+    │     └── "BUILDING SCENE 40%" / "BUILDING 1200 OF 3908 MESHES", then "LOADING 120 OF 177 TEXTURES"
+    ├── Setting up the scene (state 2) — "SETTING UP SCENE" / "CREATING SCENE COMPONENTS"
     ├── Asset preloader (state 3) — SceneManager.OnLoaderStatusObservable
-    │     └── "LOADING TERRAIN 45%" / "LOADING TERRAIN TEXTURES" — one weighted bar for the scene
+    │     └── "LOADING ASSETS 40%" / "LOADING 12 OF 25 ASSETS", then "LOADING TERRAIN 45%" / "LOADING TERRAIN TEXTURES" — one weighted bar for the scene
     ├── Preparing scene view (state 4) — SceneManager.OnLoaderStatusObservable
     │     └── "COMPILING SHADERS 67%" / "140 OF 210 SHADERS COMPILED", then "STARTING SCENE" / "ALL 210 SHADERS COMPILED"
     │
     └── TOOLKIT.SceneManager.HideSplashScreen() — once SceneManager.WhenSceneReady(scene) resolves
           (preloader done, shaders compiled, smooth frames), never before scenePrewarmDurationMs
 ```
+
+The default splash sets `SceneManager.HostDefersSceneStatus = true` and ignores `"OnLoadProgress"` once the toolkit reports a
+`state` of 1 or higher, so it moves from "Loading Scene 100%" straight to "Building scene". A custom splash keeps that wiring
+(see `references/ui-design-system.md`, *Loading progress you can show*).
 
 ### Customizing Loading Messages
 

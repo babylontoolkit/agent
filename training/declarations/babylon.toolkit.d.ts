@@ -35,6 +35,13 @@ declare namespace TOOLKIT {
         static LostRenderContext: boolean;
         /** Set the preload auto update progress flag */
         static AutoUpdateProgress: boolean;
+        /**
+         * Set by a page splash screen that hands its status line and progress bar to the toolkit once the scene file has downloaded
+         * (the default engine.html and React splash screens do, and stop showing their download percent once the toolkit posts).
+         * Then the toolkit posts "BUILDING SCENE NN%" and "SETTING UP SCENE" with a real fraction while it builds the scene;
+         * otherwise it posts only the detail line there, so a page still showing its own download percent never fights it.
+         */
+        static HostDefersSceneStatus: boolean;
         /** Set the capsule collider shape type */
         static PhysicsCapsuleShape: number;
         /** The animation start mode. Defaults to NONE. */
@@ -117,6 +124,8 @@ declare namespace TOOLKIT {
         static OnRebuildContextObservable: BABYLON.Observable<BABYLON.AbstractEngine>;
         /** Register asset manager progress event (engine.html) */
         static OnAssetManagerProgress: (event: ProgressEvent) => void;
+        /** Every scene loader status update (preloader counts, terrain build stages, splash status text). Lets a page splash screen (React SplashScreen) show what the window.update* loader globals show on engine.html. */
+        static OnLoaderStatusObservable: BABYLON.Observable<ILoaderStatus>;
         /** All layer mask value */
         static readonly AllLayerMask: number;
         /** Default layer mask value */
@@ -233,8 +242,39 @@ declare namespace TOOLKIT {
         static ShowSplashScreen(): void;
         /** Hide the splash screen with optional delay and fade effect */
         static HideSplashScreen(scene?: BABYLON.Scene, delayMs?: number): void;
-        /** Update the status text on the splash screen (Direct Access Hack) */
+        /** Update the status text on the splash screen. A splash that listens to OnLoaderStatusObservable (React) renders it itself, so the DOM is only written when nobody listens. */
         static UpdateSplashScreenStatus(text: string): void;
+        /** Default upper bound of WhenSceneReady (milliseconds). */
+        static SCENE_READY_TIMEOUT_MS: number;
+        /** Consecutive smooth frames (each under SCENE_SMOOTH_FRAME_MS) WhenSceneReady waits for after the ready point. */
+        static SCENE_SMOOTH_FRAMES: number;
+        /** A frame counts as smooth when it follows the previous one within this many milliseconds. */
+        static SCENE_SMOOTH_FRAME_MS: number;
+        /** Upper bound (milliseconds) of the smooth-frame wait after the ready point. */
+        static SCENE_SMOOTH_MAX_MS: number;
+        /**
+         * Shows the render canvas under the splash screen, then calls done once the scene has rendered `frames` consecutive frames each within SCENE_SMOOTH_FRAME_MS of the previous
+         * one (shader compiles and first-draw uploads finished), or after maxMs, or at once when the scene is disposed.
+         */
+        static WaitForSmoothFrames(scene: BABYLON.Scene, frames: number, maxMs: number, done: () => void): void;
+        /** @hidden Counts one toolkit scene load (glTF with scene metadata) that has not reached its scene ready point yet; the first load in flight forgets the previous load's LoadingProgress jobs. */
+        static NoteSceneLoadStarted(scene: BABYLON.Scene): void;
+        /** @hidden The toolkit scene load reached its scene ready point (asset preloader finished, ready() called). */
+        static NoteSceneLoadFinished(scene: BABYLON.Scene): void;
+        /** True when no toolkit scene load is in flight for the scene (every asset preloader task has finished). */
+        static IsSceneLoadComplete(scene: BABYLON.Scene): boolean;
+        /**
+         * Splash-screen gate: resolves once every toolkit scene load in flight for the scene has finished its asset preloader
+         * (terrains built, skins uploaded, probe data and audio loaded, components ready) and one more frame rendered — or
+         * when the timeout expires, whichever comes first. NEVER rejects and NEVER hangs: resolves true when the scene really
+         * finished, false on timeout or disposal. A scene with no toolkit load in flight resolves at once.
+         *
+         *      TOOLKIT.SceneManager.WhenSceneReady(scene).then(() => TOOLKIT.SceneManager.HideSplashScreen(scene));
+         *
+         * @param scene The scene to wait on.
+         * @param timeoutMs Hard deadline in milliseconds (values <= 0 use SCENE_READY_TIMEOUT_MS).
+         */
+        static WhenSceneReady(scene: BABYLON.Scene, timeoutMs?: number): Promise<boolean>;
         private static SceneLoaderFileNames;
         private static SceneLoaderPropertyBag;
         private static SceneLoaderHandledFlag;
@@ -633,6 +673,22 @@ declare namespace TOOLKIT {
         static OnNavMeshReadyObservable: BABYLON.Observable<BABYLON.Mesh>;
         /** Fires right before the navigation mesh data is destroyed, so crowds/agents can release themselves. */
         static OnNavMeshDestroyObservable: BABYLON.Observable<BABYLON.Scene>;
+        /** Longest time (ms) the asset preloader (the splash) waits for the pre-baked navigation mesh; the mesh keeps loading after it. */
+        static NAVIGATION_PRELOAD_TIMEOUT_MS: number;
+        /** LoadingProgress job key of the pre-baked navigation mesh load. */
+        private static readonly NAVIGATION_JOB_KEY;
+        /** LoadingProgress group title of the pre-baked navigation mesh load ("LOADING NAVIGATION NN%"). */
+        private static readonly NAVIGATION_JOB_TITLE;
+        /** Detail label while the navigation mesh binary downloads. */
+        private static readonly NAVIGATION_DOWNLOAD_LABEL;
+        /** Detail label while the navigation mesh is built from the downloaded binary. */
+        private static readonly NAVIGATION_BUILD_LABEL;
+        /** Share of the navigation job taken by the download (the build is the rest). */
+        private static readonly NAVIGATION_DOWNLOAD_SHARE;
+        /** Navigation job progress reported while a download of unknown size runs. */
+        private static readonly NAVIGATION_UNKNOWN_SIZE_PROGRESS;
+        /** Pre-baked navigation mesh loads waiting to join their scene's asset preloader, keyed by scene.uniqueId. */
+        private static PendingNavigationLoads;
         private static NavMeshPlugin;
         private static NavMeshSurface;
         private static NavMeshDebugger;
@@ -660,6 +716,35 @@ declare namespace TOOLKIT {
          * @param createDebugMesh Whether to show a debug mesh
          */
         static LoadNavigationMeshDataAsync(scene: BABYLON.Scene, binaryUrl: string, heightMesh?: BABYLON.Mesh, createDebugMesh?: boolean): Promise<void>;
+        /**
+         * Registers the scene's pre-baked navigation mesh load so the asset preloader (the splash) waits for it. CanvasTools calls
+         * it while parsing the scene and takes it back (TakePendingNavigationLoad) right before the preloader starts. The entry is
+         * dropped when the scene is disposed.
+         * @param scene The scene being loaded
+         * @param load The load; it must never reject
+         */
+        static SetPendingNavigationLoad(scene: BABYLON.Scene, load: Promise<void>): void;
+        /**
+         * Returns and clears the scene's registered pre-baked navigation mesh load.
+         * @param scene The scene being loaded
+         * @returns The load, or null when none is registered (or it was already taken)
+         */
+        static TakePendingNavigationLoad(scene: BABYLON.Scene): Promise<void>;
+        /**
+         * Downloads the navigation mesh binary through the scene's file loader, reporting "Downloading navigation mesh" on the job.
+         * @param scene The scene that owns the request
+         * @param binaryUrl The navigation mesh binary url
+         * @param job The scene's navigation loading job
+         * @returns The downloaded bytes; rejects when the request fails
+         */
+        private static DownloadNavigationMeshAsync;
+        /**
+         * Progress of the navigation job while its binary downloads: the download is NAVIGATION_DOWNLOAD_SHARE of the job and the
+         * build the rest; a download of unknown size reports NAVIGATION_UNKNOWN_SIZE_PROGRESS.
+         * @param event The request progress event
+         * @returns Job progress, 0 to NAVIGATION_DOWNLOAD_SHARE
+         */
+        private static GetNavigationDownloadProgress;
         /** Build the navigation mesh from binary data.
          * @param scene The Babylon.js scene
          * @param binaryData The navigation mesh binary data
@@ -1204,6 +1289,17 @@ declare namespace TOOLKIT {
     /**
      * Interface for tween options
      */
+    /** One scene loader status update (SceneManager.OnLoaderStatusObservable). Null fields are unchanged since the last update. */
+    interface ILoaderStatus {
+        /** Main status line (engine.html loader label), e.g. "LOADING TERRAIN 45%". */
+        status: string;
+        /** Detail line (engine.html loader details), e.g. "LOADING TERRAIN TEXTURES" or "LOADING 3 OF 7 ASSETS". */
+        details: string;
+        /** Progress of the current loading phase, 0 to 1 (null when the update carries none). */
+        progress: number;
+        /** TOOLKIT.Utilities loading state (0 load content, 1 parse transforms, 2 parse metadata, 3 asset preloader, 4 prepare viewport). */
+        state: number;
+    }
     interface ITweenOptions {
         /** Duration in seconds (default: 1) */
         duration?: number;
@@ -1485,8 +1581,10 @@ declare namespace TOOLKIT {
         autoHideSplashScreen: boolean;
         /** Delay in milliseconds to trigger the createScene function on the script component. Note: This is required to ensure the scene is fully initialized before createScene is called. Default is 500 milliseconds. */
         postCreateSceneDelayMs: number;
-        /** Prewarm the scene and optionally hide the splash screen after a delay. Note: This is required to trigger the createScene function on the script component. Default is 2500 milliseconds. */
+        /** Minimum time in milliseconds the splash screen stays up after createScene. The splash also waits for the scene's asset preloader (terrains, skins, probes, audio) via SceneManager.WhenSceneReady. Default is 2500 milliseconds. */
         scenePrewarmDurationMs: number;
+        /** Upper bound in milliseconds the splash screen waits for the asset preloader before it is hidden anyway. Default is 120000 milliseconds. */
+        sceneReadyTimeoutMs: number;
         /**
          * @param transform The transform node associated with this scene controller.
          * @param scene The Babylon.js scene instance.
@@ -2454,6 +2552,27 @@ declare namespace TOOLKIT {
         readonly name: string;
         /** hdrp-complete-parity T25: the most frames the scene loader overlay waits for a dynamic HDRP exposure to meter (default: 120) */
         static HideLoaderSettleFrames: number;
+        /**
+         * Builds the mesh primitives of a toolkit scene one task each (vertex data, materials, textures), so the page paints between
+         * them instead of building every mesh of the scene in one block that locks the page for seconds on a large scene. The meshes
+         * themselves are still created in glTF order. Default true; false builds every primitive at once (diagnostics).
+         */
+        static SliceSceneParse: boolean;
+        /**
+         * Fetches each external image file once per toolkit scene load: glTF image entries that name the same uri share one
+         * download (scenes exported before the exporter de-duplicated its images list a file once per material using it).
+         * Default true; false fetches every image entry on its own (diagnostics).
+         */
+        static ShareImageDownloads: boolean;
+        /** Image file extensions and the mime type their downloaded bytes are decoded as (the glTF loader passes the same). */
+        private static readonly IMAGE_MIME_TYPES;
+        /**
+         * texture-image-deduplication: per scene, the finished image downloads a toolkit load hands to its components, by absolute
+         * url. A component that names an image file in its metadata (a Shader Graph block texture, a terrain lightmap) builds its
+         * texture during scene setup, after the glTF downloads finished; it takes the bytes from here instead of fetching the file
+         * again. Each load releases its entries at its ready point.
+         */
+        private static readonly ComponentImageDownloads;
         /** A tiny value used for diffuse IBL adjustments (default: 0.001) */
         static readonly IBL_TINY_VALUE: number;
         /** A factor used for specular IBL adjustments (default: 1.0) */
@@ -2520,6 +2639,24 @@ declare namespace TOOLKIT {
         static ToHalf(value: number): number;
         /** True when a custom sampler holds linear data and must not be loaded as an sRGB color texture. */
         static IsNonColorDataSampler(samplerName: string): boolean;
+        /**
+         * texture-image-deduplication: creates the texture of a scene image file, decoding the bytes the toolkit scene load already
+         * downloaded for that file when the load still holds them for its components (scene setup), so the file is not fetched a
+         * second time. Otherwise it is exactly `new BABYLON.Texture(url, scene, options)`. Either way the texture reports ready
+         * once its image is decoded, and a failed shared download falls back to loading the url.
+         * @param scene The scene the texture belongs to.
+         * @param url The url of the image file (absolute, or relative to the page).
+         * @param options The texture creation options (mip maps, invertY, sampling mode, sRGB buffer).
+         * @returns The new texture.
+         */
+        static CreateTextureSharingDownload(scene: BABYLON.Scene, url: string, options: BABYLON.ITextureCreationOptions): BABYLON.Texture;
+        /**
+         * The absolute form of a url, relative urls resolving against the page: the key of the downloads a load hands to its
+         * components, so the loader's `rootUrl + uri` and a component's resolved url meet whatever their spelling.
+         * @param url The url to resolve.
+         * @returns The absolute url, or the url unchanged where no page base exists.
+         */
+        private static AbsoluteUrl;
         private static _boxProjectionShaderPatched;
         /**
          * Installs a Unity-faithful per-pixel containment test into Babylon's shared `parallaxCorrectNormal`
@@ -2546,6 +2683,28 @@ declare namespace TOOLKIT {
         enabled: boolean;
         private _webgpu;
         private _loader;
+        /** Releases this load's count in SceneManager.WhenSceneReady (once; at the ready point or on a load error). */
+        private _releaseSceneLoad;
+        private _primitiveQueue;
+        private _primitivePumpScheduled;
+        private _primitiveChannel;
+        private _primitiveGate;
+        /** This load's external image downloads by uri, shared by every image entry naming the uri (null outside a load). */
+        private _imageDownloads;
+        /** Ends the image download cache when the load's scene is disposed mid-load; removed when the cache ends first. */
+        private _imageDownloadsObserver;
+        /** The glTF image uris this load's node components name in their metadata (collected before the downloads start). */
+        private _componentImageUris;
+        /** The downloads this load handed to its components, by absolute url, and the scene they are registered on. */
+        private _componentImageDownloads;
+        private _componentImageScene;
+        private _buffersLoaded;
+        private _primitivesTotal;
+        private _primitivesBuilt;
+        private _texturesMaxPending;
+        private _buildFraction;
+        private _buildPosted;
+        private _buildTimer;
         private _babylonScene;
         private _metadataParser;
         private _loaderScene;
@@ -2618,6 +2777,25 @@ declare namespace TOOLKIT {
         onReady(): void;
         /** @hidden */
         onComplete(): void;
+        /**
+         * Posts a scene-build stage (states 1 and 2, between the scene file download and the asset preloader). The status line and
+         * bar go to the page loader only when the page hands them over (SceneManager.HostDefersSceneStatus); the detail line always.
+         */
+        private static PostSceneStage;
+        /** Calls `action` once the page painted a frame (requestAnimationFrame, then a task), or after 100 ms when no frame comes (hidden tab). */
+        private static AfterNextPaint;
+        /** How often (ms) the scene-build stage is posted while the glTF builds (BUILDING SCENE NN%). */
+        static BuildStatusIntervalMs: number;
+        /** Starts posting the scene-build stage (geometry download, meshes built, textures loaded) until onComplete. */
+        private _startBuildStatus;
+        private _stopBuildStatus;
+        /**
+         * One scene-build post: "BUILDING SCENE NN%" with the stage the build waits on - the scene geometry download, then
+         * "BUILDING n OF m MESHES" (glTF primitives built), then "LOADING n OF m TEXTURES" (textures still loading before the loader
+         * completes). The fraction is meshes 0.65 + textures 0.35 x meshes (the texture total grows while meshes build, so its share
+         * counts in step with them) and never goes back.
+         */
+        private _postBuildStatus;
         getScriptBundleTag(): string;
         getScriptBundleUrl(): string;
         finishComplete(): void;
@@ -2627,6 +2805,15 @@ declare namespace TOOLKIT {
         onCleanup(): void;
         /** @hidden */
         setupLoader(): void;
+        /**
+         * A SceneShaderWarmup progress callback that posts the shader stage to the page loader: "COMPILING SHADERS NN%" with
+         * "<ready> OF <total> SHADERS COMPILED" while it runs, then "STARTING SCENE" with "ALL <total> SHADERS COMPILED" once
+         * every unit is ready, so the splash shows a clear end state for the last moments before the reveal. The bar and percentage are
+         * the warm-up's overall fraction (never going back), else the ready fraction. Posts only while AutoUpdateProgress is on and only
+         * when the counts or the percentage changed.
+         * @returns The callback for SceneShaderWarmup.RunAsync.
+         */
+        private static CreateShaderProgressPoster;
         /** @hidden */
         startParsing(): void;
         /** hdrp-complete-parity D11: a parity HDRP camera clears to its background when no sky renders (bound with HDRP's background exposure weight, 0). */
@@ -2637,6 +2824,16 @@ declare namespace TOOLKIT {
         /** @hidden */
         loadSceneAsync(context: string, scene: BABYLON.GLTF2.Loader.IScene): Promise<void> | null;
         private _loadSceneInternalAsync;
+        /**
+         * Downloads the scene's external buffers before its nodes load (SliceSceneParse): every primitive reads the same buffer, and
+         * primitives waiting on a buffer still downloading would all resume - and build - together the moment it arrives. Never
+         * rejects: a buffer that fails reports through the normal load path.
+         */
+        private _preloadSceneBuffers;
+        /** Runs `build` in its own task, after every primitive queued before it (SliceSceneParse); the result settles with build's. */
+        private _queuePrimitive;
+        /** Schedules the next queued primitive as a new task (MessageChannel: no timer clamping; the page renders between tasks). */
+        private _schedulePrimitiveTask;
         private _loadSceneExAsync;
         /** @hidden */
         loadNodeAsync(context: string, node: BABYLON.GLTF2.Loader.INode, assign: (babylonMesh: BABYLON.TransformNode) => void): Promise<BABYLON.TransformNode> | null;
@@ -2646,7 +2843,55 @@ declare namespace TOOLKIT {
          * skipped on the nested call by the loader's own re-entry guard) and gets TextureSampling.ApplyExtras before it is assigned.
          */
         _loadTextureAsync(context: string, texture: any, assign: (babylonTexture: BABYLON.BaseTexture) => void): Promise<BABYLON.BaseTexture>;
+        /**
+         * texture-image-deduplication: one download per external image uri during a scene load. On a miss the loader's own fetch
+         * is called synchronously - no await before it, so Babylon's re-entry guard still holds and the nested call skips this
+         * hook - and its promise is shared with every later image entry naming the same uri, in flight or finished. Data URIs,
+         * buffers and every non-image property load exactly as before (null = not handled).
+         * @param context The loader context of the property being loaded.
+         * @param property The glTF property that names the uri (an image entry, a buffer, ...).
+         * @param uri The relative or data uri to load.
+         * @returns The shared download for an external image uri, or null to let the loader fetch it itself.
+         */
+        _loadUriAsync(context: string, property: any, uri: string): Promise<ArrayBufferView>;
+        /** Starts this load's shared image download cache (see _loadUriAsync); a scene disposed mid-load ends it. */
+        private _beginImageDownloads;
+        /** Ends this load's shared image download cache (complete, ready point, load error or loader dispose); safe to call twice. */
+        private _endImageDownloads;
+        /**
+         * The external uris of the glTF images list (data uris and bufferView images excluded).
+         * @param images The glTF images list (may be missing).
+         * @returns The set of external image uris.
+         */
+        private _imageUrisOf;
+        /**
+         * Records every glTF image uri a node component names anywhere in its properties (a Shader Graph block texture url, a terrain
+         * lightmap uri): such a component loads the file itself during scene setup, after the glTF downloads finished.
+         * Arrays of numbers (heightfields, instance data) and typed arrays are skipped.
+         * @param value A component property value (walked recursively).
+         * @param imageUris The external image uris of the glTF images list.
+         */
+        private _collectComponentImageUris;
+        /**
+         * texture-image-deduplication: hands the finished downloads of the image files this load's components name to those
+         * components (CreateTextureSharingDownload), registered on the scene by absolute url until the load's ready point. Every
+         * other download is released with the image download cache, so the load holds no bytes it will not use again.
+         */
+        private _shareComponentImageDownloads;
+        /**
+         * Releases the downloads this load handed to its components, at the load's ready point or on a load error (a disposed scene
+         * drops its entry with it); safe to call twice.
+         */
+        private _releaseComponentImageDownloads;
         loadMaterialPropertiesAsync(context: string, material: BABYLON.GLTF2.Loader.IMaterial, babylonMaterial: BABYLON.Material): BABYLON.Nullable<Promise<void>>;
+        /**
+         * The glTF material the loader reads properties from. A generated Shader Graph class drives its surface - clearcoat,
+         * sheen, iridescence, transmission, specular - from the graph itself (it enables those Babylon blocks when its graph
+         * has them), so the KHR_materials_* extensions the exporter also scraped for the plain-PBR stand-in must not apply on
+         * top of it. Every other material, the stand-in included, reads the glTF material as is. The copy shares the loader's
+         * per-property re-entry state, and every KHR_materials_* loader runs after this extension (order 100 < 170).
+         */
+        static GraphMaterialSource(material: BABYLON.GLTF2.Loader.IMaterial, babylonMaterial: BABYLON.Material): BABYLON.GLTF2.Loader.IMaterial;
         private _getCachedMaterialByIndex;
         private _getCachedLightmapByIndex;
         /** Registers the shadowmask on a toolkit material as a RAW sampler (plan lbm D18).
@@ -3584,6 +3829,12 @@ declare namespace TOOLKIT {
          * `mesh` (optional) pre-compiles the clone's effect so the first fade does not hitch.
          */
         static AcquireClone(material: BABYLON.Material, level: number, mesh?: BABYLON.AbstractMesh): BABYLON.Material;
+        /**
+         * material.clone() with the source's own texture objects: Babylon's clone makes a new Texture per texture slot (a large
+         * scene's thousands of fade clones made ~20,000 texture objects). A fade clone must draw exactly like its source, so it
+         * shares them - a UV offset animated on the source then reaches the clone too.
+         */
+        private static CloneSharingTextures;
         getClassName(): string;
         isCompatible(shaderLanguage: BABYLON.ShaderLanguage): boolean;
         prepareDefines(defines: BABYLON.MaterialDefines, scene: BABYLON.Scene, mesh: BABYLON.AbstractMesh): void;
@@ -3676,6 +3927,62 @@ declare namespace TOOLKIT {
 }
 /** Babylon Toolkit Namespace */
 declare namespace TOOLKIT {
+    /** HDRP transmission state carried by HdrpLitPlugin (hdrp-raster-parity-followup D5-D8). */
+    interface IHdrpTransmission {
+        /** Diffusion profile scattering distance x multiplier, millimetres (RGB). */
+        distanceMm: number[];
+        /** Profile transmission tint (RGB, not premultiplied). */
+        tint: number[];
+        /** Profile thickness remap [minimum, maximum], millimetres. */
+        thicknessRemap: number[];
+        /** `_Thickness` (0-1), used without a thickness map. */
+        thicknessValue: number;
+        /** HDRP thickness map, sampled in its R channel; null without one. */
+        thicknessTexture: BABYLON.BaseTexture;
+        /** HDRP transmission mode. */
+        mode: "thin" | "thick";
+        /** `_TransmissionMask` (0-1). */
+        mask: number;
+        /** The transmission mask texture, or null. */
+        maskTexture: BABYLON.BaseTexture;
+        /** Which channel of `maskTexture` holds the mask: "r" (HDRP `_TransmissionMaskMap`) or "a" (SpeedTree8 metallic alpha). */
+        maskChannel: "r" | "a";
+        /** The scene's directional transmission multiplier (thick mode, HDShadowSettings.directionalTransmissionMultiplier). */
+        directionalMultiplier: number;
+    }
+    /** The exported `hdrprefraction` block (hdrp-raster-parity-followup D10). */
+    interface IHdrpRefractionBlock {
+        /** HDRP refraction model. */
+        model: "planar" | "sphere" | "thin";
+        /** Index of refraction. */
+        ior: number;
+        /** Thickness, metres. */
+        thickness: number;
+        /** Linear transmittance colour at `atdistance` (RGB). */
+        transmittancecolor: number[];
+        /** Absorption reference distance, metres. */
+        atdistance: number;
+    }
+    /** HDRP refraction state carried by HdrpLitPlugin (hdrp-raster-parity-followup D11). */
+    interface IHdrpRefraction {
+        /** 1 = planar / thin (HDRP RefractionModelBox), 2 = sphere (RefractionModelSphere). */
+        model: number;
+        /** Index of refraction. */
+        ior: number;
+        /** Thickness, metres. */
+        thickness: number;
+        /** Per-channel absorption coefficient, 1/m (RGB). */
+        absorption: number[];
+    }
+    /** The exit of a view ray through an HDRP refraction model (HdrpLitMaterials.RefractionExit). */
+    interface IHdrpRefractionExit {
+        /** Where the refracted ray leaves the shape (world space). */
+        position: number[];
+        /** The direction of the ray after it leaves the shape (unit length unless the exit refraction fails). */
+        direction: number[];
+        /** The distance travelled inside the shape, metres (drives the absorption). */
+        distance: number;
+    }
     /**
      * hdrp-complete-parity D18 - the shader half of an HDRP/Lit material on a stock Babylon PBR material.
      *
@@ -3695,6 +4002,16 @@ declare namespace TOOLKIT {
         static readonly PluginName: string;
         static readonly Priority: number;
         static readonly DetailSampler: string;
+        /** The HDRP thickness map sampler (R channel, transmission). */
+        static readonly ThicknessSampler: string;
+        /** The HDRP transmission mask sampler (R channel, or A for the SpeedTree8 packed surface). */
+        static readonly TransmissionMaskSampler: string;
+        /** HDRP's Lit transmission uniforms (vec4 each, see bindTransmission). */
+        static readonly TransmissionUniforms: string[];
+        /** HDRP's Lit refraction uniforms (vec4 each): (ior, thickness m, model, unused), absorption (rgb), proxy sphere (world centre, radius). */
+        static readonly RefractionUniforms: string[];
+        /** The rendering view-projection (mat4) the refraction's on-screen test projects its sample with (the PBR fragment declares none of its own on every path). */
+        static readonly RefractionViewProjection: string;
         /** "flip" | "mirror" | "none" (flip never needs the plugin). */
         normalMode: string;
         /** The HDRP detail map (linear data: R albedo, A+G normal, B smoothness). */
@@ -3711,18 +4028,39 @@ declare namespace TOOLKIT {
         anisotropicIbl: boolean;
         /** The pre-exposure factor applied to `unlitEmissive` (driven by an HdrpRendering binding). */
         unlitEmissiveScale: number;
+        /** HDRP Disney transmission (D5-D7), or null when the material does not transmit. */
+        transmission: TOOLKIT.IHdrpTransmission;
+        /** HDRP refraction (D11), or null when the material keeps Babylon's own refraction (or does not refract). */
+        refraction: TOOLKIT.IHdrpRefraction;
+        /**
+         * Creates the plugin on a PBR material (use `Attach`). hardBindForSubMesh (the per-mesh refraction proxy) is an extra event, read
+         * when the plugin is enabled, so the plugin is constructed disabled, registers for extra events, then enables itself.
+         * @param material The PBR material.
+         */
         constructor(material: BABYLON.Material);
-        /** Attach (or return the existing) plugin and apply `keys` ({ normalmode, detail: { texture, masked, params, st }, unlitemissive }). PBR only. */
+        /** Attach (or return the existing) plugin and apply `keys` ({ normalmode, detail: { texture, masked, params, st }, unlitemissive, anisotropicibl, transmission, refraction }). PBR only. */
         static Attach(material: BABYLON.Material, keys: any): TOOLKIT.HdrpLitPlugin;
         /** The plugin on this material, or null. */
         static Get(material: BABYLON.Material): TOOLKIT.HdrpLitPlugin;
         /** Set the detail texture once it has loaded (the defines are re-evaluated). */
         setDetailTexture(texture: BABYLON.BaseTexture): void;
+        /**
+         * Sets the transmission thickness and mask textures once they have loaded (the defines are re-evaluated). Either may be null,
+         * which keeps the texture already assigned.
+         * @param thickness The HDRP thickness map (R channel), or null.
+         * @param mask The transmission mask texture, or null.
+         */
+        setTransmissionTextures(thickness: BABYLON.BaseTexture, mask: BABYLON.BaseTexture): void;
         getClassName(): string;
         isCompatible(shaderLanguage: BABYLON.ShaderLanguage): boolean;
         private detailActive;
+        /**
+         * The transmission textures in use (thickness map, mask), each only when present.
+         * @returns The loaded transmission textures; empty without transmission.
+         */
+        private transmissionTextures;
         isReadyForSubMesh(defines: BABYLON.MaterialDefines, scene: BABYLON.Scene, engine: BABYLON.AbstractEngine, subMesh: BABYLON.SubMesh): boolean;
-        /** The detail UV varying reads the mesh UV attribute, so ask PBR for UVs before it resolves its attributes. */
+        /** The detail and transmission UV varyings read the mesh UV attribute, so ask PBR for UVs before it resolves its attributes. */
         prepareDefinesBeforeAttributes(defines: BABYLON.MaterialDefines, scene: BABYLON.Scene, mesh: BABYLON.AbstractMesh): void;
         /**
          * HDRP's anisotropic GGX for direct light is Babylon's LEGACY anisotropy: roughnessT/B = roughness * (1 +/- anisotropy)
@@ -3734,11 +4072,42 @@ declare namespace TOOLKIT {
          */
         static UseHdrpAnisotropy(material: BABYLON.Material, enabled: boolean): void;
         prepareDefines(defines: BABYLON.MaterialDefines, scene: BABYLON.Scene, mesh: BABYLON.AbstractMesh): void;
+        /**
+         * The value of TK_HDRP_REFRACTION: 0 without HDRP refraction (or when Babylon's refraction is off), else the model
+         * (1 box / thin, 2 sphere).
+         * @returns The refraction model define.
+         */
+        private refractionModel;
         getSamplers(samplers: string[]): void;
         getActiveTextures(activeTextures: BABYLON.BaseTexture[]): void;
         hasTexture(texture: BABYLON.BaseTexture): boolean;
         getUniforms(shaderLanguage?: BABYLON.ShaderLanguage): any;
         bindForSubMesh(uniformBuffer: BABYLON.UniformBuffer, scene: BABYLON.Scene, engine: BABYLON.AbstractEngine, subMesh: BABYLON.SubMesh): void;
+        /**
+         * Every draw: the HDRP refraction proxy sphere, centred on the drawn mesh's world bounding sphere with HDRP's infinite
+         * projection radius (HdrpLitMaterials.RefractionInfiniteProjection). HDRP intersects the refracted ray with the reflection
+         * probe's proxy, and a probe without a proxy volume (every HDRP bed's realtime probe) or the sky projects to
+         * minProjectionDistance 65504, so the sample lands where the exit ray points. Also the rendering view-projection, for the
+         * shader's on-screen test (a probe or shadow pass renders with its own). Written per draw, not in bindForSubMesh, which keeps
+         * the first mesh's value for every mesh sharing the material.
+         * @param uniformBuffer The material's uniform buffer.
+         * @param scene The scene.
+         * @param engine The engine.
+         * @param subMesh The sub-mesh being drawn.
+         */
+        hardBindForSubMesh(uniformBuffer: BABYLON.UniformBuffer, scene: BABYLON.Scene, engine: BABYLON.AbstractEngine, subMesh: BABYLON.SubMesh): void;
+        /**
+         * Writes the refraction uniforms (Interfaces table): (ior, thickness m, model, unused) and the per-channel absorption 1/m.
+         * @param uniformBuffer The material's uniform buffer being bound for the sub-mesh.
+         */
+        private bindRefraction;
+        /**
+         * Writes the transmission uniforms (Interfaces table): shape = HDRP S per mm (xyz) + thickness mm without a map (w), tint =
+         * tint x 0.25 (xyz) + the directional transmission multiplier (w), remap = (remap0, remap1 - remap0, unused, mask), ST = the
+         * base map's tiling and offset (HDRP samples the thickness and mask maps with the base UV mapping).
+         * @param uniformBuffer The material's uniform buffer being bound for the sub-mesh.
+         */
+        private bindTransmission;
         getCustomCode(shaderType: string, shaderLanguage?: BABYLON.ShaderLanguage): any;
         /** Every injected shader string, for the source-invariant tests (no `;` inside `//` comments). */
         static AllCode(): string[];
@@ -3775,6 +4144,74 @@ declare namespace TOOLKIT {
          * direct lights, the BRDF lookup and every later use of alphaG keep the material roughness.
          */
         static AnisoIbl(wgsl: boolean): string;
+        /** Per light, PBR branch of `lightFragment`: the Lambert line of a punctual or directional light (group 2 = the light index). */
+        static readonly TransmissionDiffusePoint: string;
+        /** Per directional light, `lightFragment`: the start of its pre-lighting call. */
+        static readonly TransmissionDirectionalPoint: string;
+        /** Per light, `lightFragment`: the shadowed direct-diffuse accumulation. */
+        static readonly TransmissionShadowPoint: string;
+        /** `pbrBlockFinalUnlitComponents`: the direct-diffuse definition (GLSL `vec3`, WGSL `var : vec3f`). */
+        static readonly TransmissionFinalDiffusePoint: string;
+        /** `pbrBlockFinalLitComponents`: the indirect-diffuse definition (GLSL `vec3`, WGSL `var : vec3f`). */
+        static readonly TransmissionIrradiancePoint: string;
+        /** The transmission UV varying (base UV set, tiled in the fragment by tkHdrpTransmissionST). */
+        static TransmissionVertexDefinitions(wgsl: boolean): string;
+        /** Writes the transmission UV varying from the mesh's first UV set (0 without one). */
+        static TransmissionVertexMainEnd(wgsl: boolean): string;
+        /**
+         * Module-scope transmission state and functions (D6):
+         * - tkHdrpTransmittanceDisney: HDRP ComputeTransmittanceDisney (DiffusionProfile.hlsl), tint already x 0.25.
+         * - tkHdrpTransmitLight: one light's transmitted diffuse W(-NdotL) x T x lightColor x attenuation / PI, W = HDRP's
+         *   wrapped Lambert with TRANSMISSION_WRAP_LIGHT = sin 15 degrees. Albedo is applied once, later, by finalDiffuse x surfaceAlbedo.
+         * - tkHdrpTransmissionShadow: thin mode keeps the light's shadow; thick mode replaces it on the back of a directional light
+         *   by the scene's directional transmission multiplier.
+         * - tkHdrpBackIrradiance: the environment irradiance along -N, scaled as Babylon scales the front irradiance.
+         */
+        static TransmissionDefinitions(wgsl: boolean): string;
+        /**
+         * Before the lights: the pixel's HDRP transmittance (thickness from the map's R through the profile remap, else the baked
+         * thickness; x `_TransmissionMask`, x the mask map's R or A) and the per-pixel accumulators reset.
+         */
+        static TransmissionSetup(wgsl: boolean): string;
+        /** Per light: its transmitted diffuse, right after Babylon's Lambert line (identical in GLSL and WGSL). */
+        static TransmissionDiffuse(): string;
+        /** Per directional light: flags it for the thick-mode shadow rule (identical in GLSL and WGSL). */
+        static TransmissionDirectional(): string;
+        /**
+         * Per light: accumulates the transmitted diffuse with its shadow rule, then resets the light's state. The reset also covers
+         * hemispheric and area lights, which never reach the Lambert anchor.
+         */
+        static TransmissionShadow(wgsl: boolean): string;
+        /** The transmitted direct light joins diffuseBase before Babylon applies the albedo (identical in GLSL and WGSL). */
+        static TransmissionFinalDiffuse(): string;
+        /**
+         * HDRP keeps the front irradiance and adds the back irradiance x T (Lit.hlsl). Ray-traced GI replaces indirect diffuse, as HDRP's
+         * RTGI does, so the back term is skipped under TK_RTGI (identical in GLSL and WGSL).
+         */
+        static TransmissionIrradiance(): string;
+        /** `pbrBlockSubSurface` (inside subSurfaceBlock): the start of Babylon's single refraction sample, up to its view argument. */
+        static readonly RefractionSamplePoint: string;
+        /**
+         * Module-scope refraction state and functions (D11, HDRP core Refraction.hlsl):
+         * - tkHdrpRefractionProxyDistance: the far root of a ray against the proxy sphere (centre xyz, radius w), 0 on a miss.
+         * - tkHdrpRefractionModel: HDRP's RefractionModelSphere (TK_HDRP_REFRACTION 2) or RefractionModelBox (1) - the exit point,
+         *   the exit ray, the hit distance against the proxy sphere (HDRP's infinite projection around the mesh) and the absorption
+         *   exp(-absorption x distance inside). A proxy hit behind the camera or off screen samples at the exit point instead (hit
+         *   distance 0): HDRP rejects the first (ScreenSpaceProxyRaycastRefraction) and fades the second to zero weight
+         *   (EdgeOfScreenFade), where Babylon would read a mirrored or edge-clamped texel.
+         *   A sphere exit whose refraction fails (zero-thickness sphere) keeps the entry ray.
+         */
+        static RefractionDefinitions(wgsl: boolean): string;
+        /** Before the lights: the pixel's HDRP refraction exit, from the final shading normal, the view direction and the position. */
+        static RefractionSetup(wgsl: boolean): string;
+        /**
+         * HDRP's model replaces Babylon's single refraction (identical in GLSL and WGSL). The sample starts at the exit point and goes
+         * the hit distance along the exit ray: passing -direction as both the normal and the view vector makes Babylon's
+         * refract(-view, normal, 1.0) return the exit ray itself (screen-space: P1 + R2 x hit distance projected, cube: R2).
+         */
+        static RefractionSample(): string;
+        /** HDRP absorbs the refracted light by exp(-absorption x distance inside) and never tints it by the albedo. */
+        static RefractionAbsorption(wgsl: boolean): string;
         /** HDRP/Unlit emission, added to the final colour (already pre-exposure scaled on the CPU). */
         static UnlitEmissive(wgsl: boolean): string;
     }
@@ -3803,11 +4240,94 @@ declare namespace TOOLKIT {
          * loadTextureInfoAsync); without it, texture keys are skipped.
          */
         static Apply(material: BABYLON.PBRMaterial, constant: any, scene: BABYLON.Scene, loadTexture?: (info: any, linear: boolean, assign: (texture: BABYLON.BaseTexture) => void) => void): void;
+        /** HDRP RefractionModelBox: the planar and thin models (TK_HDRP_REFRACTION 1). */
+        static readonly RefractionModelBox: number;
+        /** HDRP RefractionModelSphere (TK_HDRP_REFRACTION 2). */
+        static readonly RefractionModelSphere: number;
+        /**
+         * HDRP's projection distance for a reflection probe without a proxy volume, and for the sky (EnvLightData
+         * minProjectionDistance, VolumeProjection.hlsl): the refraction proxy radius, metres.
+         */
+        static readonly RefractionInfiniteProjection: number;
+        /** The smallest transmittance and distance the absorption conversion divides by or takes the log of. */
+        private static readonly RefractionEpsilon;
+        /** HDRP's guard on the box model's cos(refracted ray, -normal). */
+        private static readonly RefractionBoxMinimumCosine;
+        /** The smallest squared length normalised as the sphere model's exit normal (HDRP SafeNormalize). */
+        private static readonly RefractionMinimumSquaredLength;
+        /** A squared exit-ray length below this means the exit refraction failed (total internal reflection or a zero normal). */
+        private static readonly RefractionFailedRaySquaredLength;
+        /**
+         * Applies an exported `hdrprefraction` block (D11): HDRP absorbs by its transmittance colour and never by the albedo, so Babylon's
+         * albedo and volume tints are neutral; Babylon's refraction samples at the plugin's hit distance (thickness as depth), and the
+         * plugin carries HDRP's model and absorption.
+         * @param material The PBR material, refraction already enabled by its glTF transmission.
+         * @param block The exported block.
+         */
+        static ApplyRefraction(material: BABYLON.PBRMaterial, block: TOOLKIT.IHdrpRefractionBlock): void;
+        /**
+         * Converts the exported block to the plugin's refraction state: planar and thin map to HDRP's box model, sphere to the sphere
+         * model, and the transmittance colour at its distance to an absorption coefficient.
+         * @param block The exported `hdrprefraction` block.
+         * @returns The plugin's refraction state.
+         */
+        static RefractionFromBlock(block: TOOLKIT.IHdrpRefractionBlock): TOOLKIT.IHdrpRefraction;
+        /**
+         * HDRP TransmittanceColorAtDistanceToAbsorption: absorption = -ln(max(T, 1e-6)) / max(distance, 1e-6) per channel.
+         * @param transmittance The linear transmittance colour at `atDistance` (RGB).
+         * @param atDistance The absorption reference distance, metres.
+         * @returns The absorption coefficient, 1/m (RGB).
+         */
+        static RefractionAbsorption(transmittance: number[], atDistance: number): number[];
+        /**
+         * HDRP refraction model exit (core Refraction.hlsl) - the CPU mirror of the shader's tkHdrpRefractionModel.
+         * - Sphere: R1 = refract(-V, N, 1/ior), C = P - N x thickness / 2, dist = -dot(N, R1) x thickness, P1 = P + R1 x dist,
+         *   R2 = refract(R1, normalize(C - P1), ior) (the entry ray when that exit refraction fails).
+         * - Box: R = refract(-V, N, 1/ior), dist = thickness / max(dot(R, -N), 1e-5), P1 = P + R x dist, R2 = -V.
+         * @param model 1 box (planar / thin) or 2 sphere.
+         * @param position The surface position (world space).
+         * @param normal The unit surface normal.
+         * @param view The unit vector from the surface to the eye.
+         * @param ior The index of refraction.
+         * @param thickness The model's thickness, metres.
+         * @returns The exit position, the exit direction and the distance travelled inside.
+         */
+        static RefractionExit(model: number, position: number[], normal: number[], view: number[], ior: number, thickness: number): TOOLKIT.IHdrpRefractionExit;
+        /**
+         * GLSL / WGSL refract(incident, normal, eta): 0 on total internal reflection.
+         * @param incident The unit incident direction.
+         * @param normal The unit normal.
+         * @param eta The ratio of indices of refraction.
+         * @returns The refracted direction, or the zero vector.
+         */
+        private static Refract;
+        /**
+         * The dot product of two 3-vectors.
+         * @param left The first vector.
+         * @param right The second vector.
+         * @returns left . right
+         */
+        private static Dot;
+        /**
+         * A 3-vector scaled.
+         * @param vector The vector.
+         * @param scale The scale.
+         * @returns vector x scale
+         */
+        private static ScaleVector;
+        /**
+         * A 3-vector plus another scaled.
+         * @param origin The base vector.
+         * @param offset The vector to add.
+         * @param scale The scale of `offset`.
+         * @returns origin + offset x scale
+         */
+        private static AddScaledVector;
         /**
          * HDRP/Nature/SpeedTree8's TransmissionMask (saturate(_SubsurfaceScale x luminance(_SubsurfaceTex)), baked by the exporter into
-         * the metallic-roughness texture's ALPHA): Babylon's translucency intensity texture is that texture with glTF-style channels
-         * (intensity from alpha), bound once it loads. `mask: false` is HDRP's black default map - no transmission at all. A generated
-         * graph class is left alone: it evaluates the graph's own TransmissionMask.
+         * the metallic-roughness texture's ALPHA): it becomes the HDRP transmission mask texture (channel "a"), bound once the
+         * metallic-roughness texture loads. `mask: false` is HDRP's black default map - nothing transmits, so the transmission is
+         * dropped. A generated graph class is left alone: it evaluates the graph's own TransmissionMask.
          */
         static ApplyTranslucencyMask(material: BABYLON.PBRMaterial, translucency: any): void;
         /** Fresnel0 of a dielectric of index `ior` (Babylon's own reflectivity default). */
@@ -3819,8 +4339,6 @@ declare namespace TOOLKIT {
          * the dielectric F0 scaled to the profile's through metallicReflectanceColor - which keeps Babylon's f90 at 1 like HDRP.
          */
         static ApplyProfileSpecular(material: BABYLON.PBRMaterial, sss: any): void;
-        /** HDRP translucency colour = diffuse albedo x transmission tint: translucencyColor = albedoColor x tint, translucencyColorTexture = the albedo map (bound once it loads). */
-        static ApplyTranslucencyAlbedo(material: BABYLON.PBRMaterial, tint: number[]): void;
         /**
          * Babylon's SSS pass is HDRP's (EvalBurleyDiffusionProfile, the 0.997 filter radius) but uploads the profile colour itself as
          * the shape parameter S, where HDRP uses S = 1 / scatteringDistance (DiffusionProfileSettings.cs:129, clamped to 2^24).
@@ -3832,6 +4350,43 @@ declare namespace TOOLKIT {
         static WriteHdrpShape(config: any, index: number, distance: BABYLON.Color3): void;
         /** HDRP shape parameter per channel: min(2^24, 1 / scatteringDistance). */
         static ShapeParam(distance: number[]): number[];
+        /** HDRP uploads the profile transmission tint x 0.25 (DiffusionProfileSettings: the Disney transmittance's 1/4 folded in). */
+        static readonly TransmissionTintScale: number;
+        /** HDRP TRANSMISSION_WRAP_LIGHT = cos(PI / 2 - TRANSMISSION_WRAP_ANGLE) = sin 15 degrees. */
+        static readonly TransmissionWrapLight: number;
+        /**
+         * HDRP Disney transmittance (DiffusionProfile.hlsl:9-19): T = tint x 0.25 x e x (e^2 + 3), e = exp(-S x thickness / 3),
+         * S = min(2^24, 1 / distance) per channel.
+         * @param distanceMm The profile's scattering distance x multiplier, millimetres (RGB).
+         * @param tint The profile's transmission tint (RGB, not premultiplied).
+         * @param thicknessMm The remapped thickness, millimetres.
+         * @returns The transmittance (RGB).
+         */
+        static TransmittanceDisney(distanceMm: number[], tint: number[], thicknessMm: number): number[];
+        /**
+         * HDRP's transmission wrap W(x) = saturate((x + w) / (1 + w)^2), w = sin 15 degrees (ComputeWrappedDiffuseLighting).
+         * @param negativeNdotL x = -NdotL (signed): positive on the side facing away from the light.
+         * @returns The wrapped Lambert weight (0-1, without the 1 / PI).
+         */
+        static TransmissionWrap(negativeNdotL: number): number;
+        /**
+         * One light's transmitted diffuse (D6): W(-NdotL) x T x lightColor x attenuation / PI, RGB - the CPU mirror of the shader's
+         * tkHdrpTransmitLight. The albedo is applied once, afterwards, as Babylon applies it to all direct diffuse.
+         * @param ndotL The signed N.L of the light.
+         * @param transmittance The pixel's transmittance (RGB).
+         * @param lightColor The light colour x intensity (RGB).
+         * @param attenuation The light's distance / cone attenuation (1 for a directional light).
+         * @returns The transmitted light (RGB).
+         */
+        static TransmittedLight(ndotL: number, transmittance: number[], lightColor: number[], attenuation: number): number[];
+        /**
+         * Builds the HDRP transmission state from an `hdrpsss` block (D6, D8): the profile's distance, tint and remap, the material's
+         * baked thickness and mask, the profile's transmission mode and the scene's directional transmission multiplier.
+         * @param sss The exported `hdrpsss` block.
+         * @param scene The scene (its `hdrp` block carries the directional multiplier).
+         * @returns The transmission state, textures not yet assigned.
+         */
+        static TransmissionFromBlock(sss: any, scene: BABYLON.Scene): TOOLKIT.IHdrpTransmission;
         /** HDRP's default diffusion profile as uploaded (DiffusionProfileSettings.UpdateCache): multipliers 1 / 1, lobe mix 0.5, diffuse power 1 - 1. */
         static readonly DefaultTubeProfile: number[];
         /**
@@ -3844,8 +4399,21 @@ declare namespace TOOLKIT {
         static ApplyTubeProfile(material: BABYLON.Material, dualLobe: any): void;
         /** Per channel 1 when HDRP's SSS kernel carries it (scattering distance above HDRP's 1 / 2^24 clamp), else 0. */
         static ScatteredChannels(distance: number[]): number[];
-        /** HDRP SSS / Translucent: prepass subsurface scattering with one diffusion profile per HDRP profile, and Burley translucency. */
+        /** HDRP SSS / Translucent: prepass subsurface scattering with one diffusion profile per HDRP profile, and HDRP transmission (ApplyTransmission). */
         static ApplySubsurface(material: BABYLON.PBRMaterial, sss: any, scene: BABYLON.Scene, loadTexture?: (info: any, linear: boolean, assign: (texture: BABYLON.BaseTexture) => void) => void): void;
+        /**
+         * True for a transpiled Shader Graph class (its constructor carries `SgInfo`): such a class evaluates its graph's own
+         * translucency and transmission mask, so the HDRP/Lit transmission intake leaves it alone.
+         * @param material The material being loaded.
+         * @returns True for a generated graph class.
+         */
+        static IsGeneratedGraphClass(material: BABYLON.Material): boolean;
+        /**
+         * HDRP transmission (D5): HdrpLitPlugin evaluates HDRP's Disney transmittance per light and on the back irradiance, and
+         * Babylon's own translucency stays off (its ambient composition drops the front irradiance, which HDRP keeps). A generated
+         * graph class keeps its transpiled translucency. Without a profile colour nothing transmits (one report).
+         */
+        static ApplyTransmission(material: BABYLON.PBRMaterial, sss: any, scene: BABYLON.Scene, loadTexture?: (info: any, linear: boolean, assign: (texture: BABYLON.BaseTexture) => void) => void): void;
     }
 }
 /** Babylon Toolkit Namespace */
@@ -3993,6 +4561,55 @@ declare namespace TOOLKIT {
         private static SceneMetadata;
         private static State;
         private static ApplyBinding;
+    }
+    /**
+     * hdrp-raster-parity-followup D1: closes a baked HDRP sky's gamma round trip in the shader.
+     *
+     * StandardMaterial gamma-encodes a linear reflection (`IS_REFLECTION_LINEAR`) before it multiplies by the level, and
+     * converts back to linear only under `IMAGEPROCESSING` / `IMAGEPROCESSINGPOSTPROCESS`. A parity scene grades through
+     * the toolkit LUT chain instead, so without this plugin the sky stays gamma-encoded and reads too bright. The plugin
+     * re-linearizes the colour exactly when neither image-processing branch will, which makes
+     * `HdrpRendering.StandardReflectionLevel` correct in every mode. Attach it before the material's first compile.
+     */
+    class HdrpBakedSkyPlugin extends BABYLON.MaterialPluginBase {
+        /** The plugin's registered name. */
+        static readonly PluginName: string;
+        /** Runs after every built-in StandardMaterial plugin. */
+        static readonly Priority: number;
+        /**
+         * Registers the plugin on `material`. Use `HdrpBakedSkyPlugin.Attach`, which never attaches a second copy.
+         * @param material The baked-sky StandardMaterial.
+         */
+        constructor(material: BABYLON.StandardMaterial);
+        /**
+         * Attaches the plugin to `material` once.
+         * @param material The baked-sky StandardMaterial (before its first compile).
+         * @returns The plugin now on the material - the existing one when it was already attached.
+         */
+        static Attach(material: BABYLON.StandardMaterial): TOOLKIT.HdrpBakedSkyPlugin;
+        /**
+         * The guarded re-linearization injected at `CUSTOM_FRAGMENT_BEFORE_FOG`, where StandardMaterial's output is `color`.
+         * @param wgsl True for the WGSL body (WGSL's `toLinearSpace` takes a scalar, so it uses `toLinearSpaceVec3`).
+         * @returns The shader snippet.
+         */
+        static FragmentCode(wgsl: boolean): string;
+        /** @returns The plugin's class name. */
+        getClassName(): string;
+        /**
+         * The plugin injects GLSL and WGSL alike.
+         * @param shaderLanguage The material's shader language.
+         * @returns True for GLSL and WGSL.
+         */
+        isCompatible(shaderLanguage: BABYLON.ShaderLanguage): boolean;
+        /**
+         * Supplies the fragment re-linearization; the vertex stage is untouched.
+         * @param shaderType "vertex" or "fragment".
+         * @param shaderLanguage The material's shader language.
+         * @returns The custom code map, or null for the vertex stage.
+         */
+        getCustomCode(shaderType: string, shaderLanguage?: BABYLON.ShaderLanguage): {
+            [pointName: string]: string;
+        };
     }
 }
 declare namespace TOOLKIT {
@@ -4160,6 +4777,22 @@ declare namespace TOOLKIT {
         /** Keys already warned about, so a per-parse or per-frame code path reports each problem once. */
         private static Warned;
         /**
+         * Records the scene's realtime shadow distance fade, exported per light as `shadowfade` = [scale, bias] (URP's
+         * ShadowUtils.GetScaleAndBiasForLinearDistanceFade from the asset's shadow distance and last cascade border). URP fades
+         * every realtime shadow - main and additional lights alike - by `saturate(distanceToCamera² * scale + bias)` with the
+         * same pair, so one value per scene serves every light. ShadowmaskPlugin applies it to each light's `shadow`.
+         * @param scene The scene being loaded.
+         * @param fade The exported [scale, bias]; anything else leaves the scene unchanged.
+         */
+        static SetShadowFade(scene: BABYLON.Scene, fade: any): void;
+        /**
+         * The scene's realtime shadow distance fade as (scale, bias, 0, 0) over the squared camera distance, or null when the
+         * export carries none (shadows then end at the shadow distance as before).
+         * @param scene The scene.
+         * @returns The fade, or null.
+         */
+        static GetShadowFade(scene: BABYLON.Scene): BABYLON.Vector4;
+        /**
          * shadergraph-transpiler-complete-coverage T8 fix loop: Unity PANCAKES directional shadow casters - a caster between the
          * light and a cascade is clamped onto the cascade's near plane (the URP / Built-in ShadowCaster pass clamps to
          * UNITY_NEAR_CLIP_VALUE), so each cascade's depth range is the cascade itself. Babylon's CascadedShadowGenerator without
@@ -4209,10 +4842,62 @@ declare namespace TOOLKIT {
          *    sphere dropped it).
          * A mesh whose bounds Babylon itself does not trust for culling (alwaysSelectAsActiveMesh: skinned, particle and
          * terrain instancing hosts) and anything without a bounding box always stays, the same rule the camera's frustum culling
-         * applies. The result is the same shadow map. Directional lights keep Babylon's own path (their casters toward the
-         * light still matter). A list installed earlier (e.g. the terrain's per-pass culling) is chained in front.
+         * applies. The result is the same shadow map.
+         *
+         * A directional light (each cascade of a CascadedShadowGenerator, or its single map) is culled like Unity culls a
+         * cascade's casters: a caster is dropped only when its box lies entirely outside one of the pass's four SIDE planes or
+         * beyond its FAR plane - the near side stays open, so every caster between the light and the cascade still casts (the
+         * cascades clamp, LightingConversions.ApplyUnityCascadeClamp). Without it every scene caster - rocks hundreds of metres
+         * away, kilometre-sized skybox mountains - was drawn into all four cascades. Casters that cull themselves per pass
+         * (`_tkOwnCasterCulling`, the terrain's) pass through untouched. A list installed earlier is chained in front.
          */
         static ApplyUnityCasterCulling(generator: BABYLON.ShadowGenerator): void;
+        /**
+         * Fragment-stage cascade coordinates for every receiver of a CascadedShadowGenerator. Babylon's shadowsVertex projects
+         * EACH vertex into ALL cascades (4 mat4 transforms) and ships 4 light-space positions, 4 depth metrics and the view
+         * position to the fragment stage (9 varyings, ~24 floats per vertex) although a pixel samples one cascade. On
+         * vertex-dense receivers - terrain detail grass - that per-vertex work and varying traffic was ~3 ms of a 2880x1620
+         * frame. These `!`-regex replacements (applied by ShadowmaskPlugin on every toolkit PBR material and by
+         * TerrainGrassPlugin on the texture grass, matched against the include-expanded shader where {X} is already the light
+         * index) drop the vertex block and the varyings, and project the pixel's world position into the SELECTED cascade only:
+         * `lightMatrix[index] * vec4(vPositionW, 1)`. A cascade projection is affine, so the interpolated per-vertex value
+         * equals the per-pixel one - the shadow is unchanged. Text that is not present (no CSM light) matches nothing.
+         * @param shaderType "vertex" or "fragment".
+         * @param wgsl True for WGSL, false for GLSL.
+         * @returns Regex keys (with the leading `!`) and their replacements.
+         */
+        static FragmentCascadeRewrites(shaderType: string, wgsl: boolean): {
+            [key: string]: string;
+        };
+        /** The fragment definitions the cascade rewrite reads (FragmentCascadeRewrites): the camera depth and the depth metric. */
+        static FragmentCascadeDefinitions(wgsl: boolean): string;
+        private static _viewDepthRow;
+        /**
+         * The view matrix's depth row (view-space z = dot(row.xyz, world) + row.w) of the scene's current view, written into the
+         * material's `tkViewZ` uniform for the GLSL cascade selection (FragmentCascadeBeforeLights). Correct in either handedness.
+         * @param material The material carrying a `tkViewZ` vec4 uniform.
+         * @param scene The scene whose current view matrix is used.
+         */
+        static SetViewDepthRow(material: any, scene: BABYLON.Scene): void;
+        /** The per-pixel camera depth for cascade selection (Babylon's vPositionFromCamera.z), once before the lights. */
+        static FragmentCascadeBeforeLights(wgsl: boolean): string;
+        /** World-space slack added to every directional culling plane: the filter footprint and normal bias reach just past a pass's box. */
+        static readonly DIRECTIONAL_CASTER_MARGIN: number;
+        private static _directionalPlanes;
+        /**
+         * The casters of `renderList[0..count)` that can write into one directional pass (ApplyUnityCasterCulling), into `out`:
+         * the pass is the cascade's transform (CascadedShadowGenerator.getCascadeTransformMatrix) or the single map's; a caster
+         * whose world box lies entirely outside a side plane or beyond the far plane (each widened by DIRECTIONAL_CASTER_MARGIN)
+         * is dropped. Casters with untrusted bounds (alwaysSelectAsActiveMesh, no bounding box) and casters that cull themselves
+         * (`_tkOwnCasterCulling`) always stay; disabled or hidden ones are dropped, as the render target would skip them anyway.
+         * @param generator The directional shadow generator.
+         * @param pass The cascade index (0 for a single map).
+         * @param renderList The shadow map's render list, or the list a chained custom list returned.
+         * @param count How many entries of renderList to consider.
+         * @param out The reused output array for this pass (cleared first).
+         * @returns out, filled with the casters to draw in this pass.
+         */
+        static CullDirectionalCasters(generator: any, pass: number, renderList: BABYLON.AbstractMesh[], count: number, out: BABYLON.AbstractMesh[]): BABYLON.AbstractMesh[];
         private static _cullPlanes;
         private static _cullLightPos;
         /** The casters of `renderList[0..count)` a spot / point light's shadow map can receive (ApplyUnityCasterCulling), into `out`. */
@@ -4331,6 +5016,228 @@ declare namespace TOOLKIT {
 /** Babylon Toolkit Namespace */
 declare namespace TOOLKIT {
     /**
+     * Cooperative time slicing for heavy load work (terrain heightfields, texture-array mip chains): a job runs until its slice
+     * budget is used, then gives the page a task boundary (input, paint, other jobs) before it continues. The work and its order
+     * are unchanged, only spread over tasks, so a load never holds the page for one long block.
+     *
+     *     const slicer = new TOOLKIT.LoadSlicer();
+     *     for (...) { ...; if (slicer.expired) await slicer.next(); }
+     *
+     * @class LoadSlicer - All rights reserved (c) 2024 Mackey Kinard
+     */
+    class LoadSlicer {
+        /** Default time budget (ms) of one slice. */
+        static SliceMs: number;
+        private static _channel;
+        private static _waiting;
+        private _budget;
+        private _start;
+        /** A slicer whose first slice starts now. `budgetMs` defaults to LoadSlicer.SliceMs. */
+        constructor(budgetMs?: number);
+        /** Milliseconds from performance.now() (Date.now() where performance is missing). */
+        static Now(): number;
+        /** True once the current slice has used its budget. */
+        get expired(): boolean;
+        /** Ends the current slice: resolves in a new task, where the next slice starts. */
+        next(): Promise<void>;
+        /** Ends the current slice only when it has used its budget (else resolves at once, in the same task). */
+        breathe(): Promise<void>;
+        /**
+         * Resolves in a new task: a MessageChannel message (not clamped like nested setTimeout(0)), else setTimeout, else at once
+         * (no timers: headless tests).
+         */
+        static NextTask(): Promise<void>;
+    }
+}
+/** Babylon Toolkit Namespace */
+declare namespace TOOLKIT {
+    /** One loading-job update, published on LoadingProgress.OnProgressObservable (custom splash screens may subscribe). */
+    interface ILoadingJobProgress {
+        /** The scene being loaded. */
+        scene: BABYLON.Scene;
+        /** Unique job key within the scene, e.g. "terrain:Terrain_0_0" or "skins". */
+        key: string;
+        /** Display group, e.g. "Terrain" ("LOADING TERRAIN 45%"). */
+        title: string;
+        /** What the job is doing now, e.g. "Loading terrain textures". */
+        stageLabel: string;
+        /** Progress of this job, 0 to 1 (never goes back). */
+        jobProgress: number;
+        /** Combined progress of every job with this title in the scene, 0 to 1. */
+        groupProgress: number;
+        /** Weighted progress of every job in the scene, 0 to 1 (what the splash bar shows). */
+        sceneProgress: number;
+        /** True on the job's final update. */
+        complete: boolean;
+    }
+    /** One weighted part of a job's progress (LoadingProgress.Blend). */
+    interface ILoadingProgressPart {
+        /** Share of the job, 0 to 1 (the parts of one job add up to 1). */
+        weight: number;
+        /** Units done. */
+        done: number;
+        /** Units in total; 0 means nothing to do (the part counts as complete). */
+        total: number;
+    }
+    /** @hidden Per-scene posting state of LoadingProgress. */
+    interface ILoadingPostState {
+        /** Title on the status line now ("" before the first post). */
+        shownTitle: string;
+        /** When shownTitle was first shown (ms, LoadingProgress.Clock). */
+        shownSince: number;
+        /** When the loader was last posted to (ms). */
+        lastPostTime: number;
+        /** Signature of the last post (status|details|progress per mille). */
+        lastPosted: string;
+        /** Stage label of the newest report of the shown group (the detail line once the whole group is complete). */
+        latestDetails: string;
+        /** Stage label on the detail line now ("" before the shown group's first label). */
+        shownDetails: string;
+        /** When shownDetails was first shown (ms, LoadingProgress.Clock). */
+        shownDetailsSince: number;
+        /** Labels the shown group already showed and left (the detail line never returns to them; reset when the group changes). */
+        leftDetails: string[];
+        /** Pending trailing post, or null. */
+        pendingTimer: ReturnType<typeof setTimeout>;
+        /** Pending post for when a held detail label may change, or null. */
+        detailTimer: ReturnType<typeof setTimeout>;
+    }
+    /**
+     * One heavy loading job of a scene (a terrain, the scene's skins, the navigation mesh, ...). Created by LoadingProgress.BeginJob.
+     * The job keeps the highest progress it has reported, fires LoadingProgress.OnProgressObservable on every update and, while the
+     * scene's asset preloader owns it, posts the scene's combined state to the page loader / splash screen.
+     */
+    class LoadingJob {
+        /** Unique key within the scene. */
+        readonly key: string;
+        /** Display group title. */
+        readonly title: string;
+        /** Share of the scene total (LoadingProgress.WEIGHTS). */
+        readonly weight: number;
+        /** The scene the job belongs to. */
+        readonly scene: BABYLON.Scene;
+        /** True when the job posts to the page loader / splash. */
+        readonly postsToLoader: boolean;
+        private _progress;
+        private _stageLabel;
+        private _isComplete;
+        /** @hidden Use LoadingProgress.BeginJob. */
+        constructor(scene: BABYLON.Scene, key: string, title: string, weight: number, postsToLoader: boolean);
+        /** Progress of this job, 0 to 1 (monotonic). */
+        get progress(): number;
+        /** The stage label of the last report. */
+        get stageLabel(): string;
+        /** True once complete() was called. */
+        get isComplete(): boolean;
+        /**
+         * Reports a stage and its progress; the job keeps the highest fraction it has reported. Ignored once the job is complete.
+         * @param stageLabel - What the job is doing now (sentence style, e.g. "Decoding skin textures").
+         * @param fraction - Progress of the whole job, 0 to 1 (clamped; non-numbers count as 0).
+         */
+        report(stageLabel: string, fraction: number): void;
+        /**
+         * Marks the job complete (progress 1) and posts a final update immediately. Calling it again does nothing.
+         * @param stageLabel - Final label (default title + " ready").
+         */
+        complete(stageLabel?: string): void;
+        /** Fires OnProgressObservable with the job's state, then posts to the page loader when this job owns it. */
+        private publish;
+    }
+    /**
+     * Per-scene registry of heavy loading jobs that drives the splash screen during the asset preloader. The status line names one
+     * group at a time ("LOADING TERRAIN 45%"), the detail line shows the stage of that group's least-advanced job (held for
+     * DETAIL_HOLD_MS, forward only) and the bar is always the weighted progress of every job of the scene. Entries are dropped on scene dispose and when a new toolkit scene load starts.
+     */
+    class LoadingProgress {
+        /** Every job update of every scene. */
+        static readonly OnProgressObservable: BABYLON.Observable<TOOLKIT.ILoadingJobProgress>;
+        /** Minimum time (ms) a group keeps the status line unless it completes. */
+        static GROUP_HOLD_MS: number;
+        /** Minimum time (ms) between two posts to the page loader per scene. */
+        static POST_INTERVAL_MS: number;
+        /** Minimum time (ms) the detail line keeps a stage label unless the shown group completes. */
+        static DETAIL_HOLD_MS: number;
+        /** Job weights by title. */
+        static readonly WEIGHTS: {
+            readonly [title: string]: number;
+        };
+        /** Page loading state of the asset preloader (Utilities.GetLoadingState): the only state the tracker posts in. */
+        private static readonly PRELOADER_LOADING_STATE;
+        /** Weight of a job whose title is not in WEIGHTS. */
+        private static readonly DEFAULT_WEIGHT;
+        /** Clock in milliseconds (tests replace it). */
+        static Clock: () => number;
+        private static Jobs;
+        private static PostStates;
+        private static DisposeHooks;
+        /**
+         * Opens (or returns the job already opened with this key in the current load) a job for the scene.
+         * @param scene - The scene being loaded.
+         * @param key - Unique key within the scene.
+         * @param title - Display group title (a WEIGHTS key; unknown titles weigh 1).
+         * @param postsToLoader - True while the scene's asset preloader owns the job (default: a toolkit scene load is in flight).
+         * @returns The job.
+         */
+        static BeginJob(scene: BABYLON.Scene, key: string, title: string, postsToLoader?: boolean): TOOLKIT.LoadingJob;
+        /** True when the scene has at least one job in the current load. */
+        static HasJobs(scene: BABYLON.Scene): boolean;
+        /** Weighted progress of every job of the scene, 0 to 1 (1 when there are none). */
+        static GetSceneProgress(scene: BABYLON.Scene): number;
+        /** Combined progress of the scene's jobs with this title, 0 to 1 (1 when there are none). */
+        static GetGroupProgress(scene: BABYLON.Scene, title: string): number;
+        /** The scene's jobs of the current load (a copy; empty when there are none). */
+        static GetJobs(scene: BABYLON.Scene): TOOLKIT.LoadingJob[];
+        /** Forgets the scene's jobs and posting state (called by SceneManager.NoteSceneLoadStarted when no load is in flight). */
+        static Reset(scene: BABYLON.Scene): void;
+        /**
+         * Weighted fraction of a job made of parts: Σ weight × (total > 0 ? min(done / total, 1) : 1).
+         * @param parts - The job's parts.
+         * @returns 0 to 1.
+         */
+        static Blend(parts: TOOLKIT.ILoadingProgressPart[]): number;
+        /** @hidden Posts the scene's current loading state to the page loader, at most once per POST_INTERVAL_MS (latest values win). */
+        static PostScene(scene: BABYLON.Scene, reportingTitle: string, details: string, forceNow: boolean): void;
+        /**
+         * Posts the scene's current loading state to the page loader at once (no throttle), for when the asset preloader starts and
+         * reports made before it were held back. Does nothing without posting jobs, when AutoUpdateProgress is off or outside the
+         * preloader state.
+         * @param scene - The scene being loaded.
+         */
+        static FlushScene(scene: BABYLON.Scene): void;
+        /** @hidden The scene's posting state (created on first use). */
+        static GetPostState(scene: BABYLON.Scene): TOOLKIT.ILoadingPostState;
+        /** Clears the detail line and its history (the shown group changed). */
+        private static ResetShownDetails;
+        /**
+         * Moves the detail line to the shown group's candidate label when the rules allow it: the label differs, it was not shown and
+         * left before, and the group is complete, nothing is shown yet or the current label has been shown for DETAIL_HOLD_MS. A change
+         * held back by the hold time schedules a trailing post for when the hold ends, so the line does not stall once reports stop.
+         */
+        private static UpdateShownDetails;
+        /**
+         * The label the group is waiting on: the stage of its least-advanced incomplete posting job that has reported a label (ties go
+         * to the earliest opened job); the given fallback (the reporting job's final label) when the whole group is complete.
+         */
+        private static GetDetailCandidate;
+        /** Schedules one post of the scene's latest state for when the detail hold ends (delay in ms) unless one is already pending. */
+        private static ScheduleHeldDetailPost;
+        /** The scene's posting job with the lowest progress (ties go to the earliest opened), or null when it has none. */
+        private static GetLeastCompletePostingJob;
+        /** Σ(weight × progress) / Σ(weight) over the jobs; 1 when there are none. */
+        private static WeightedProgress;
+        /** The weight of a title (WEIGHTS, or DEFAULT_WEIGHT for unknown titles). */
+        private static GetWeight;
+        /** The scene's live job list (created, with its dispose hook, on first use). */
+        private static GetOrCreateJobList;
+        /** Registers (once per scene) the dispose observer that drops the scene's entries. */
+        private static HookSceneDispose;
+        /** Drops the scene's jobs and posting state and cancels pending trailing / held-detail posts. */
+        private static ForgetScene;
+    }
+}
+/** Babylon Toolkit Namespace */
+declare namespace TOOLKIT {
+    /**
      * Babylon toolkit metadata parser class (Internal use only)
      * @class MetadataParser - All rights reserved (c) 2024 Mackey Kinard
      */
@@ -4340,6 +5247,8 @@ declare namespace TOOLKIT {
         private _freezeList;
         private _scriptList;
         private _babylonScene;
+        /** A cascade blend at or below this fraction is treated as no blending (Babylon's SHADOWCSMNOBLEND path). */
+        static readonly CascadeBlendEpsilon: number;
         constructor(scene: BABYLON.Scene);
         /** Unity `Light.shadowStrength` (0 = no shadow, 1 = full) -> Babylon shadow-generator DARKNESS
          *  (1 = black, 0 = the light's contribution fully removed), scaled by
@@ -4350,6 +5259,14 @@ declare namespace TOOLKIT {
          *  `strength = 0` still means "no shadow" at every scale and only the depth of a real shadow moves.
          *  Both the strength and the product are clamped, so no scale can produce a darkness outside 0..1. */
         static GetShadowDarkness(shadowstrength: number): number;
+        /**
+         * A URP spot light's caster bias (`urpshadowbias`, [depth, normal] in metres from ShadowUtils.GetShadowBias) as Babylon's.
+         * Babylon's normal bias is already in world units. Its depth bias is added to the depth metric, which spans the light's
+         * shadow depth range linearly (`(z + minZ) / (minZ + maxZ)` over a projection from shadowMinZ to shadowMaxZ, one unit =
+         * maxZ - minZ metres on WebGL and WebGPU alike), so the depth bias is the metres over that span. The legacy factor
+         * (Unity bias x 0.1) read a Depth Bias of 10 as 1.0, the whole range, and the light cast no shadow at all.
+         */
+        static ApplyUrpShadowBias(generator: BABYLON.ShadowGenerator, light: BABYLON.ShadowLight, urpshadowbias: number[]): void;
         /**
          * hdrp-complete-parity T16 (D26, D27): the HDRP light keys of a parity export. `hdrplightlayers` rides on the light for the
          * light selector (HdrpRendering.LayersOverlap), affect diffuse / specular off blacken that term (the live PhysicallyBasedSky
@@ -4597,6 +5514,226 @@ declare namespace TOOLKIT {
          */
         static BindDiffusionProfile(material: BABYLON.Material, hashValue: number): boolean;
         getCustomCode(shaderType: string, shaderLanguage: BABYLON.ShaderLanguage): any;
+    }
+}
+/** Babylon Toolkit Namespace */
+declare namespace TOOLKIT {
+    /** Result of a scene shader warm-up (SceneShaderWarmup.RunAsync). */
+    interface ISceneShaderWarmupResult {
+        /** Units ready when the warm-up ended. */
+        ready: number;
+        /** Units counted. */
+        total: number;
+        /** True when the warm-up stopped at its timeout. */
+        timedOut: boolean;
+    }
+    /**
+     * Compiles every effect the scene's first frames need (meshes with their shadow passes and levels of detail, camera post
+     * processes) and counts them, so the splash screen can show a real "Compiling shaders" stage instead of a fixed wait.
+     * A unit is one enabled, visible mesh with a material (ready when `mesh.isReady(true)` and every texture its material binds
+     * has loaded) or one post process of an active camera (ready when `postProcess.isReady()`).
+     */
+    class SceneShaderWarmup {
+        /** Upper bound of a warm-up (ms). */
+        static TIMEOUT_MS: number;
+        /** Pause between two polls (ms): long enough for the splash to paint a frame, short enough to keep the stage quick. */
+        static POLL_MS: number;
+        /**
+         * Time budget of one poll (ms): a poll stops checking units once it is spent (at least one unit is checked per poll), so
+         * engines that compile synchronously (WebGPU) spread the work over several polls, the page stays responsive and the bar climbs.
+         */
+        static POLL_BUDGET_MS: number;
+        /**
+         * Compiles the scene's shaders behind the splash without blocking the browser, in two stages:
+         * 1. **Effects**: polls every unit until all are ready (a few milliseconds per poll), the timeout passes or the scene is
+         *    disposed. While a toolkit scene load holds draws (BeginSceneLoad) nothing else prepares them, then the hold lifts.
+         * 2. **Pipelines** (WebGPU scene loads): the scene draws every mesh (frustum clipping off) and each draw's GPU pipeline is
+         *    built asynchronously, until no draw requests a new one (PIPELINE_SETTLE_FRAMES) or the timeout passes.
+         * Never rejects. `onProgress` gets `ready < total` until both stages are done, then one final `ready === total`.
+         * @param scene - The scene to warm up.
+         * @param onProgress - Called after each poll / frame with the ready and total unit counts (pipelines count as units in stage 2)
+         * and the overall fraction, 0 to 1, which never goes back (stage 1 fills EFFECT_STAGE_SHARE of it when a pipeline stage follows).
+         * @returns The final counts ({ ready: 0, total: 0, timedOut: false } at once when the scene has no units).
+         */
+        static RunAsync(scene: BABYLON.Scene, onProgress?: (ready: number, total: number, fraction?: number) => void): Promise<TOOLKIT.ISceneShaderWarmupResult>;
+        /** Stage 1 of RunAsync: polls every effect unit until all are ready, the deadline passes or the scene is disposed. */
+        private static PrepareEffectsAsync;
+        /**
+         * True when every texture the material binds has finished loading or failed to load. A non-blocking texture still
+         * downloading lets a material report ready and recompile when it arrives (visible pop-in), so warm-ups wait for it.
+         * @param material - The material to check (null counts as loaded).
+         * @returns True when no bound texture is still loading.
+         */
+        static TexturesLoaded(material: BABYLON.Material): boolean;
+        /** The scene's mesh units: enabled, visible meshes with sub-meshes and a material. */
+        private static CollectMeshes;
+        /** The scene's post-process units: every post process of every active camera (activeCameras, else activeCamera). */
+        private static CollectPostProcesses;
+        /**
+         * Checks the mesh units not ready yet under the active camera's render pass and marks the newly ready ones, until the
+         * poll deadline passes (at least one unit is checked). A mesh disposed during the warm-up, or one whose check throws,
+         * counts as ready (it can never be warmed).
+         * @returns How many units became ready in this check.
+         */
+        private static CheckMeshes;
+        /** True when the mesh's effects (sub-meshes, shadow passes, levels of detail) are compiled and its textures loaded. */
+        private static IsMeshReady;
+        /**
+         * Checks the post-process units not ready yet and marks the newly ready ones (a throwing check counts as ready), until the
+         * poll deadline passes (at least one unit is checked).
+         * @returns How many units became ready in this check.
+         */
+        private static CheckPostProcesses;
+        /** Milliseconds from performance.now() (Date.now() where performance is missing). */
+        private static NowMs;
+        /** Share of the warm-up fraction the effect stage fills when a pipeline stage follows (RunAsync). */
+        static EFFECT_STAGE_SHARE: number;
+        /** Consecutive frames without a new pipeline request (and none pending) that end the pipeline stage of a warm-up. */
+        static PIPELINE_SETTLE_FRAMES: number;
+        /** Consecutive quiet frames after the scene load completed that end the asynchronous pipeline mode. */
+        static PIPELINE_QUIET_FRAMES: number;
+        /** Upper bound (ms) of the draw hold and the asynchronous pipeline mode of one scene load. */
+        static LOAD_MODE_TIMEOUT_MS: number;
+        private static readonly SkipDraw;
+        private static LoadStates;
+        private static PipelineStates;
+        private static MeshDrawHook;
+        /**
+         * Starts the non-blocking load mode of a toolkit scene load (called by the toolkit scene loader while the splash covers the
+         * canvas). Two things keep the browser responsive until the shader stage has run:
+         * - **Draw hold**: the scene draws no mesh, so no frame prepares every material's shaders at once on the page thread. The
+         *   shader stage (RunAsync) prepares them instead, a few milliseconds per poll, and lifts the hold when done. During the
+         *   hold `scene.isReady()` skips the material sweep and material dirty marking is blocked (one pass over the meshes catches
+         *   up when the hold lifts), so neither scales with materials x meshes while the load applies its settings.
+         * - **Asynchronous pipelines (WebGPU)**: a draw whose GPU pipeline is not built yet requests it with
+         *   `GPUDevice.createRenderPipelineAsync` (built on the GPU process's worker threads) and is skipped for that frame,
+         *   instead of `createRenderPipeline`, which compiles on the GPU process's main thread and freezes every tab and the
+         *   browser window while it runs. Only scene mesh draws (drawn again every frame) are skipped - never one-time internal
+         *   draws such as the GPU decode of a loading .env texture or mipmap generation. Behind the splash a skipped draw is
+         *   invisible; the mode ends once the load completed and the scene rendered PIPELINE_QUIET_FRAMES frames without a new request.
+         * Both end at the latest after LOAD_MODE_TIMEOUT_MS or when the scene load completes without a shader stage (load error).
+         * @param scene - The scene being loaded.
+         */
+        static BeginSceneLoad(scene: BABYLON.Scene): void;
+        /** True while the scene draws no mesh because its load has not finished the shader stage (BeginSceneLoad). */
+        static IsHoldingDraws(scene: BABYLON.Scene): boolean;
+        /** GPU pipelines of the scene's engine still compiling asynchronously (0 outside the asynchronous pipeline mode or on WebGL). */
+        static PendingPipelineCount(scene: BABYLON.Scene): number;
+        /**
+         * `scene.executeWhenReady` that does not run during a toolkit scene load. executeWhenReady checks every mesh of the scene
+         * every 100 ms and prepares every not-ready material in that one call, which blocks the page for seconds on a large scene;
+         * during a load the shader stage prepares them in small slices, so the action waits until the load completed (then the
+         * check finds everything prepared). Outside a toolkit load it is plain executeWhenReady.
+         * @param scene - The scene.
+         * @param action - Called once the scene is ready.
+         */
+        static ExecuteWhenReady(scene: BABYLON.Scene, action: () => void): void;
+        /** Lifts the draw hold of the scene (the scene draws its meshes again). */
+        private static ReleaseDrawHold;
+        /** Lifts the scene's draw hold: meshes draw again, isReady checks materials again, material dirty marking resumes. */
+        private static LiftHold;
+        /**
+         * Blocks Babylon's material dirty marking during the hold (`scene.blockMaterialDirtyMechanism`). Each dirty call - an image
+         * processing change, a reflection probe's box size, the pre-pass renderer - makes every material scan every mesh of the scene
+         * for its own sub-meshes, so one call costs materials x meshes checks: seconds per call on a scene with thousands of each,
+         * repeated by every post-processing setting and probe applied during the load. During the hold almost no material is
+         * prepared yet, so the scans mark next to nothing. Left alone when something else already blocks it.
+         */
+        private static BlockMaterialDirtying;
+        /**
+         * Resumes material dirty marking after the hold. Babylon's own unblock marks every material dirty with one more materials x
+         * meshes scan; this marks every sub-mesh prepared so far as fully dirty in one pass over the meshes instead (a superset of
+         * what the blocked calls would have marked), so prepared materials re-check their defines before their next draw.
+         */
+        private static UnblockMaterialDirtying;
+        /** Marks the material defines of every prepared sub-mesh of the scene (every render pass) as fully dirty. */
+        private static MarkPreparedSubMeshesDirty;
+        /**
+         * Chains, once per scene (so providers chained later - a selection octree, terrain filters - keep working):
+         * - a mesh-candidate provider that returns no mesh while the scene holds draws and the previous provider otherwise;
+         * - a `scene.isReady` that, while the scene holds draws, only checks that no scene data is still loading. Babylon's isReady
+         *   prepares every not-ready material in one call - polled every 100 ms by each executeWhenReady / whenReadyAsync (host
+         *   pages start their render loop from one, SceneLoader registers one for its loading screen) and each frame by some
+         *   systems - which blocks the page for seconds on a large scene. During the hold the shader stage prepares the materials
+         *   behind the splash instead, a few milliseconds at a time.
+         */
+        private static InstallDrawHold;
+        /** After-render check of a scene load: lifts the hold when the load completed without a shader stage, ends the mode when quiet. */
+        private static CheckSceneLoadEnd;
+        /** Ends the non-blocking load mode of the scene: hold lifted, asynchronous pipelines released, skipped render targets refreshed. */
+        private static EndSceneLoad;
+        /** Makes every render target of the scene render again on its next frame. */
+        private static RefreshRenderTargets;
+        /** Draws every mesh regardless of the camera frustum (the pipeline stage builds the pipelines of the whole scene, not only the first view). */
+        private static SkipFrustumClipping;
+        /** Restores the frustum clipping SkipFrustumClipping changed (left alone when something else changed it meanwhile). */
+        private static RestoreFrustumClipping;
+        /**
+         * Renders frames (the render loop keeps running) until the scene's draws request no new pipeline for PIPELINE_SETTLE_FRAMES
+         * frames and none is still compiling, or the deadline passes. Reports `onProgress(compiled, requested)` after each frame.
+         */
+        private static WaitForPipelines;
+        /**
+         * Switches the engine to asynchronous pipeline creation for draws (WebGPU only; shared by the engine's scenes, counted).
+         * @returns The engine's pipeline state, or null on WebGL or when this Babylon version lacks the hooks.
+         */
+        private static AcquireAsyncPipelines;
+        /** Releases one user of the engine's asynchronous pipeline mode; the last one restores Babylon's synchronous path. */
+        private static ReleaseAsyncPipelines;
+        /**
+         * Wraps BABYLON.Mesh.prototype._draw (every mesh, instance and thin-instance draw of a scene pass) so the asynchronous pipeline
+         * mode of the mesh's engine knows a scene mesh is drawing. Installed while any engine uses the mode.
+         * @returns False when this Babylon version has no Mesh._draw (the mode is then not used).
+         */
+        private static InstallMeshDrawHook;
+        /** Restores BABYLON.Mesh.prototype._draw once no engine uses the asynchronous pipeline mode (left alone when replaced meanwhile). */
+        private static RemoveMeshDrawHook;
+    }
+    /** @hidden Per-scene state of SceneShaderWarmup's non-blocking load mode. */
+    interface ISceneLoadShaderState {
+        /** True while the scene draws no mesh. */
+        holding: boolean;
+        /** True while the hold blocks Babylon's material dirty marking (set by the hold, not by someone else). */
+        blockedDirty: boolean;
+        /** The engine's asynchronous pipeline state (null on WebGL or after the mode ended). */
+        pipelines: TOOLKIT.IAsyncPipelineState;
+        /** Consecutive quiet frames since the load completed. */
+        quietFrames: number;
+        /** Pipeline request count at the previous frame. */
+        lastRequested: number;
+        /** When the mode ends at the latest (ms). */
+        deadline: number;
+        /** The after-render check. */
+        observer: BABYLON.Observer<BABYLON.Scene>;
+        /** scene.skipFrustumClipping before the pipeline stage changed it (null when unchanged). */
+        previousSkipFrustumClipping: boolean;
+    }
+    /** @hidden Per-engine state of asynchronous WebGPU pipeline creation (SceneShaderWarmup). */
+    interface IAsyncPipelineState {
+        /** Scenes using the mode. */
+        users: number;
+        /** Pipeline cache tokens whose pipeline is compiling. */
+        pending: Map<any, boolean>;
+        /** Pipeline cache tokens whose asynchronous creation failed (Babylon's path builds them). */
+        failed: Set<any>;
+        /** Pipelines requested asynchronously. */
+        requested: number;
+        /** Requested pipelines that finished compiling (or failed). */
+        compiled: number;
+        /** Draws skipped because their pipeline was compiling. */
+        skippedDraws: number;
+        /** Nesting depth of engine._draw calls. */
+        drawDepth: number;
+        /** Nesting depth of scene mesh draws (BABYLON.Mesh._draw) of this engine. */
+        meshDrawDepth: number;
+        /** True when the engine had its own _draw property before the mode. */
+        ownDraw: boolean;
+        /** True when the cache had its own getRenderPipeline property before the mode. */
+        ownGet: boolean;
+        /** engine._draw before the mode. */
+        originalDraw: (...args: any[]) => void;
+        /** cache.getRenderPipeline before the mode. */
+        originalGet: (fillMode: number, effect: BABYLON.Effect, sampleCount: number, textureState?: number) => any;
     }
 }
 declare namespace TOOLKIT {
@@ -6180,6 +7317,30 @@ declare namespace TOOLKIT {
          * material) or a material that cannot be cloned keeps the hard switch.
          */
         private static PrepareFade;
+        /** Makes every (material, level) clone of a group's cross-fade; false when one material cannot be cloned. */
+        private static MakeFadeClones;
+        /**
+         * Cross-fade groups registered while a toolkit scene load still holds the splash make their material clones in slices of
+         * FadeCloneSliceMs, a task each, instead of one block at setup (a large scene's LOD groups make thousands of clones: over a
+         * second of work). A fade that starts before its group's slice ran makes its clones on the spot (AcquireClone), and a group
+         * whose material cannot be cloned drops back to the hard switch when its slice runs. The reveal waits for every slice
+         * (PendingFadeClones). Groups registered after the load make their clones at once as before. Default true.
+         */
+        static DeferLoadFadeClones: boolean;
+        /** Time budget (ms) of one fade-clone slice task. */
+        static FadeCloneSliceMs: number;
+        private static _cloneQueues;
+        private static _clonePumps;
+        /** Cross-fade groups of the scene whose clones are still waiting for their slice (0 when none). */
+        static PendingFadeClones(scene: BABYLON.Scene): number;
+        /** True while a toolkit scene load of `scene` is still in flight (and DeferLoadFadeClones is on). */
+        private static CanDeferFadeClones;
+        private static QueueFadeClones;
+        private static ScheduleFadeCloneSlice;
+        /** One slice task: makes queued groups' clones until FadeCloneSliceMs passed (at least one group), then schedules the next slice. */
+        static RunFadeCloneSlice(scene: BABYLON.Scene): void;
+        /** A group whose material cannot be cloned keeps the hard switch: any fade in progress is undone, its current level shown. */
+        private static DropFade;
         /**
          * unity-export-parity-gaps T19 fix: a single-renderer, non-fading group on regular meshes keeps Babylon's NATIVE LOD
          * (`master.addLODLevel`), exactly as before coverages were preferred. Leaving that path cost Oasis +27% frame time:
@@ -6296,6 +7457,19 @@ declare namespace TOOLKIT {
         static Install(scene: BABYLON.Scene, perObjectLimit?: number): TOOLKIT.UnityLightSelector;
         /** The scene's selector, or null when none was installed. */
         static Get(scene: BABYLON.Scene): TOOLKIT.UnityLightSelector;
+        /** Meshes whose full light resync waits, per deferring scene (BeginDeferredResync). */
+        private static _deferredResync;
+        private static _originalResync;
+        /**
+         * Babylon's scene.addLight resyncs EVERY mesh against EVERY light, so creating a scene's lights one by one costs
+         * meshes x lights^2 (the 41 lights of a 3,945-mesh scene: 3.4 million canAffectMesh calls, half a second). Between
+         * Begin and EndDeferredResync a mesh's full resync only records the mesh; EndDeferredResync runs it once per recorded
+         * mesh - or not at all for a mesh the selector has taken over since, whose list the selector computed from scratch.
+         * Single-light resyncs (include / exclude lists, enable) still run at once.
+         */
+        static BeginDeferredResync(scene: BABYLON.Scene): void;
+        /** Ends BeginDeferredResync: one full resync for every mesh that asked for one meanwhile. */
+        static EndDeferredResync(scene: BABYLON.Scene): void;
         constructor(scene: BABYLON.Scene);
         private watch;
         /** Takes over one mesh's light list. An InstancedMesh shares its source's list: its source is re-evaluated. */
@@ -6669,6 +7843,8 @@ declare namespace TOOLKIT {
          * the heavy VAT GPU textures and release them by reference count.
          */
         private static _globalTextureCache;
+        /** How often (ms) preloadTexturesAsync re-checks textures that may have loaded or failed without an onLoad event. */
+        static PRELOAD_POLL_INTERVAL_MS: number;
         /** Look up an existing controller by controller guid. Returns null if none. */
         static Find(guid: string): TOOLKIT.VertexAnimationController;
         /**
@@ -6743,6 +7919,10 @@ declare namespace TOOLKIT {
         private _textureCacheKeys;
         /** Maps renderer GUID → the specific Mesh/InstancedMesh node for THIS animator instance. */
         private _instanceMeshes;
+        /** The one scene-load texture preload of this controller (preloadTexturesAsync); null until it starts. */
+        private _preloadPromise;
+        /** True once dispose() ran; ends a pending preload. */
+        private _disposed;
         /** Register the specific scene mesh node that this controller drives.
          *  Called once per renderer GUID during AnimationState setup.
          *  The mesh may be a source Mesh or an InstancedMesh — both support instancedBuffers. */
@@ -6773,6 +7953,16 @@ declare namespace TOOLKIT {
          * all renderers on one controller are expected to share the same packing.
          */
         loadAnimations(settings: TOOLKIT.IVertexAnimationSettings[]): void;
+        /**
+         * Acquires the VAT textures of the given settings through this controller's cache (the same textures loadAnimations and
+         * play() use, released by dispose()) and resolves once every one has loaded or failed. The first call owns the work; later
+         * calls return the same promise. Never rejects; resolves at once when the controller is disposed.
+         * @param settings - The renderer × clip settings whose position (and separate normal) textures to load.
+         * @param onTextureLoaded - Called once with (0, textureCount) when the texture list is known, then after each texture
+         *   finishes (loaded or failed) with the running count. Not called by later calls that return the existing promise.
+         * @returns A promise resolved when every texture is ready or failed.
+         */
+        preloadTexturesAsync(settings: TOOLKIT.IVertexAnimationSettings[], onTextureLoaded?: (loadedCount: number, textureCount: number) => void): Promise<void>;
         /**
          * Start playback of a named clip. If blendDuration > 0 and a different clip
          * is currently playing, crossfade from the current clip to the new one. (Default 0.1)
@@ -6818,6 +8008,15 @@ declare namespace TOOLKIT {
          */
         private _wrapTime;
         private _ensureClipTexturesLoaded;
+        /**
+         * The unique, non-null textures loadAnimations would acquire for the settings (position, plus normal when packing is
+         * "separate"), acquired now through the controller cache.
+         * @param settings - The renderer × clip settings.
+         * @returns The acquired textures, without duplicates.
+         */
+        private _acquirePreloadTextures;
+        /** True when the texture finished loading or failed to load. */
+        private static _isTextureSettled;
         private _getOrAcquireTexture;
         private static _acquireVATTexture;
         private static _releaseVATTexture;
@@ -15600,6 +16799,8 @@ declare namespace TOOLKIT {
         static IsPointerLocked(): boolean;
         private static LockMousePointerObserver;
         static IsPointerLockHandled(): boolean;
+        /** Is user input enabled. Check this before calling EnableUserInput, which resets and re-registers every input handler. */
+        static IsUserInputEnabled(): boolean;
         /** Get user input state from the scene. */
         static GetUserInput(input: TOOLKIT.UserInputAxis, player?: TOOLKIT.PlayerNumber): number;
         /** Set a keyboard up event handler. */
@@ -15988,12 +17189,14 @@ declare namespace TOOLKIT {
         static ShowSceneLoader(): void;
         /** Hides the default page scene loader. */
         static HideSceneLoader(): void;
-        /** Update the default page scene loader full status. */
-        static UpdateLoaderStatus(status: string, details: string, state: number): void;
-        /** Update the default page scene loader details only. */
-        static UpdateLoaderDetails(details: string, state: number): void;
+        /** Update the default page scene loader full status (progress: optional 0-1 fraction of the current loading phase, for SceneManager.OnLoaderStatusObservable). */
+        static UpdateLoaderStatus(status: string, details: string, state: number, progress?: number): void;
+        /** Update the default page scene loader details only (progress: optional 0-1 fraction of the current loading phase). */
+        static UpdateLoaderDetails(details: string, state: number, progress?: number): void;
         /** Update the default page scene loader progress only. */
         static UpdateLoaderProgress(progress: string, state: number): void;
+        /** Forwards a loader update to SceneManager.OnLoaderStatusObservable (page splash screens without the window.update* globals). */
+        private static NotifyLoaderStatus;
         /** Show the default page error message. */
         static ShowPageErrorMessage(message: string, title?: string, timeout?: number): void;
         /** Delays a function call using browser window timeout. Returns a handle object (Milliseconds) */
@@ -16100,6 +17303,12 @@ declare namespace TOOLKIT {
         static KEEP_PHASE: number;
         /** Upper bound, per layer per advance, on loop-observable fires and on repeat fires of each animation event (animation events fire in skeleton mode only; skeleton blend trees raise no loop events). A huge external delta wraps many cycles; the phase and animationLoopCount stay exact. */
         static MAX_LOOP_EVENTS_PER_ADVANCE: number;
+        /** How long (ms) the scene preloader waits for an animator's vertex animation textures before the splash is released (they keep loading after). */
+        static VAT_PRELOAD_TIMEOUT_MS: number;
+        /** Stage label of the "Animations" loading job. */
+        private static readonly VAT_PRELOAD_LABEL;
+        /** Per-scene vertex animation preload counters (keyed by scene.uniqueId; dropped on scene dispose). Each controller is preloaded and counted once per scene. */
+        private static VatPreloads;
         private _looptime;
         private _loopblend;
         private _frametime;
@@ -16300,6 +17509,14 @@ declare namespace TOOLKIT {
         protected update(): void;
         protected destroy(): void;
         /**
+         * Joins the scene's asset preloader so the splash waits for this animator's vertex animation textures (TerrainBuilder
+         * pattern). Opens the scene's "Animations" loading job and preloads each VAT controller once per scene; the task never
+         * rejects and gives up after VAT_PRELOAD_TIMEOUT_MS. Lazily loaded controllers preload only their default clip. Does
+         * nothing for an animator without vertex animation.
+         * @param assetsManager - The scene's preload assets manager.
+         */
+        addPreloaderTasks(assetsManager: TOOLKIT.PreloadAssetsManager): void;
+        /**
          * Plays the layer's entry state (same rules as playAnimation). transitionDuration is the crossfade in seconds (not positive = no
          * crossfade). VAT: the fade advances by |deltaSeconds × state.speed × speedRatio| per tick and frameRate is ignored. Skeleton mode
          * converts it to a fixed blending step of 1 / (rate × transitionDuration), added once per tick with a non-zero scaled step, where
@@ -16470,6 +17687,27 @@ declare namespace TOOLKIT {
         private updateAnimationGroups;
         private setupSourceAnimationGroups;
         private awakeStateMachine;
+        /**
+         * Reads what this animator needs to drive vertex animation textures from its exported properties without changing any
+         * state: the controller guid, every renderer × clip setting flattened (e.g. Joints×Idle, Surface×Idle, Joints×Walk), the
+         * lazy-load flag and the first clip name.
+         * @returns The setup, or null when the animator has no vertex controller, no clips or no renderer settings.
+         */
+        protected readVertexAnimationSetup(): TOOLKIT.IVertexAnimationSetup;
+        /**
+         * The settings whose textures the scene preload loads: all of them, or only the default clip's when the export asked for
+         * lazily loaded clip textures (the other clips still load on their first play).
+         * @param setup - The animator's vertex animation setup.
+         * @returns The settings to preload.
+         */
+        private static SelectPreloadSettings;
+        /**
+         * The scene's vertex animation preload counters, created with the scene's "Animations" loading job on first use and dropped
+         * when the scene is disposed.
+         * @param scene - The scene being loaded.
+         * @returns The scene's counters.
+         */
+        private static GetOrCreateVatPreload;
         /**
          * Resolves the scene node for a serialized vertex animation renderer entry.
          *
@@ -16861,6 +18099,30 @@ declare namespace TOOLKIT {
         maskType: string;
         transformCount: number;
         transformPaths: string[];
+    }
+    /** What an AnimationState needs to drive vertex animation textures (AnimationState.readVertexAnimationSetup). */
+    interface IVertexAnimationSetup {
+        /** The VertexAnimationController guid. */
+        controllerId: string;
+        /** Every renderer × clip setting, flattened. */
+        settings: TOOLKIT.IVertexAnimationSettings[];
+        /** True when the export asked for lazily loaded clip textures. */
+        lazyLoadTextures: boolean;
+        /** The first clip name, the default clip. */
+        defaultClip: string;
+    }
+    /** @hidden Per-scene vertex animation preload counters (AnimationState.addPreloaderTasks). */
+    interface IVertexAnimationPreloadState {
+        /** Controllers already registered with the scene preloader. */
+        controllerIds: Set<string>;
+        /** Registered controllers whose preload settled. */
+        settledCount: number;
+        /** Textures finished (loaded or failed) across the registered controllers. */
+        loaded: number;
+        /** Textures known so far across the registered controllers. */
+        total: number;
+        /** The scene's "Animations" loading job. */
+        job: TOOLKIT.LoadingJob;
     }
     /** Result of AnimationState.resolveVertexAnimationClips — the top-2 clips the VAT controller is driven with. */
     interface IVertexAnimationClipSelection {
@@ -18012,6 +19274,10 @@ declare namespace TOOLKIT {
      * stored sRGB-encoded so shadows do not band); this pass decodes them after sampling and outputs display-linear
      * colour, alpha untouched. The image-processing pass that follows stays neutral and only performs the gamma encode.
      *
+     * On an LDR camera (`displayEncodedChain`) Babylon's DefaultRenderingPipeline gamma-encodes inside the materials and
+     * runs no image-processing pass, so the pass decodes its input before the LogC lookup and returns display-encoded
+     * colour. Unity grades an LDR camera through the same LUT; its 8-bit target only clamps the input to [0, 1].
+     *
      * The LUT texture is created by the orchestrator through its existing loader (`requestLutTexture` ->
      * `finalizeLutTexture`, 3D repack when supported); the plugin never loads. It samples a `RawTexture3D` volume
      * (`use3D`) or falls back to Unity's `ApplyLut2D` on the N*N x N strip. The static factory follows the
@@ -18053,7 +19319,8 @@ declare namespace TOOLKIT {
         };
         /**
          * The GLSL fragment source (registered once under `ShaderKey`). Compiled with `#define LUT3D` for the volume
-         * path and `#define LUT_DECODE_SRGB` when the strip samples are sRGB-encoded (PostProcess `defines`).
+         * path, `#define LUT_DECODE_SRGB` when the strip samples are sRGB-encoded, and `#define DISPLAY_ENCODED_CHAIN`
+         * on an LDR chain, whose input and output are display-encoded (PostProcess `defines`).
          */
         static GetFragmentShader(): string;
         /**
@@ -18063,6 +19330,7 @@ declare namespace TOOLKIT {
          * @param options.use3D Sample the volume with `sampler3D`; false = Unity's `ApplyLut2D` on the strip.
          * @param options.postExposure Unity post exposure in EV (`2^ev` is the uniform); 0 for SRP volumes.
          * @param options.decodeSrgb The strip samples are sRGB-encoded (`lutencoding: "srgb"`): decode after sampling.
+         * @param options.displayEncodedChain The camera chain is LDR (gamma-encoded by the materials): read and write display-encoded colour.
          * @param options.samplingMode Post-process sampling mode (bilinear by default).
          */
         static CreatePostProcess(scene: BABYLON.Scene, camera: BABYLON.Camera, options: {
@@ -18073,6 +19341,7 @@ declare namespace TOOLKIT {
             use3D?: boolean;
             postExposure?: number;
             decodeSrgb?: boolean;
+            displayEncodedChain?: boolean;
             samplingMode?: number;
         }): BABYLON.PostProcess;
         /** N from the option, else from the texture (3D: depth / height, strip: height), else Unity's 32. */
@@ -18279,6 +19548,21 @@ declare namespace TOOLKIT {
          * PPv2 pyramid uses. No helper takes a `sampler2D` PARAMETER (F-9.27: Babylon's WebGPU GLSL path rejects it) and no
          * line carries a `//` comment (the shader processor splits on the `;` inside one).
          */
+        /**
+         * The render-target type of a bloom chain's INTERNAL buffers (every pass after the prefilter's scene input, up to and including
+         * the composite's bloom input): half-float wherever the engine can render it, whatever the chain's own type. Unity renders every
+         * bloom pyramid in an HDR format, and thresholded, blurred light stored in 8 bits steps into visible contour rings.
+         */
+        static LadderTextureType(engine: any, textureType: number): number;
+        /** The exact sRGB transfer functions (GLSL) used by an LDR chain's ladder, which reads and writes display-encoded colour. */
+        static SrgbFunctions(): string;
+        /**
+         * URP's SampleTexture2DBicubic (Core Filtering.hlsl BicubicFilter: a cubic B-spline in four bilinear taps) as a GLSL function
+         * named `fn` reading the global sampler `sampler` (WebGPU takes no sampler parameters); `size` is (w, h, 1 / w, 1 / h).
+         * URP's High Quality Filtering samples the low mip of every upsample and the final bloom with it, which is what keeps the
+         * edge of the blur kernels' reach invisible (bilinear left a faint ring around bright objects).
+         */
+        static BicubicFunction(fn: string, sampler: string): string;
         static GetUrpPyramidShaders(): {
             prefilter: string;
             blurH: string;
@@ -18326,12 +19610,147 @@ declare namespace TOOLKIT {
             sampleScale?: number;
             /** hdrp-complete-parity T20: the HDRP lens-dirt texture (`TK_BLOOM_DIRT`), already loaded. */
             dirtTexture?: BABYLON.BaseTexture;
+            /** URP ladder: the chain is LDR, so its colour is display-encoded (`TK_BLOOM_DISPLAY_ENCODED`): decode, bloom in linear, re-encode. */
+            displayEncodedChain?: boolean;
             /** Pyramid: called after the ladder was rebuilt for a new iteration count, with the passes removed and added, so the owner can re-track and re-order them. */
             onRebuild?: (chain: any, removed: BABYLON.PostProcess[], added: BABYLON.PostProcess[]) => void;
         }): any;
         private static createPyramid;
         private static createBlurChain;
         private static createUrpPyramid;
+    }
+}
+declare namespace TOOLKIT {
+    /**
+     * Fly camera ported from the Render Pipeline Core utility FreeCamera (UnityEngine.Rendering.FreeCamera).
+     *
+     * The exporter emits it for any GameObject carrying Unity's FreeCamera, with the same tuning values and the input
+     * mode Unity compiled it for (`inputSystem`). It moves and turns its own node the way Unity does:
+     * - Move: W A S D / arrow keys, or the gamepad left stick.
+     * - Up / down: E and Q, Page Up and Page Down, or the gamepad right and left shoulder buttons.
+     * - Look, Input System projects: click the scene to capture the mouse (pointer lock: no window edges, Esc releases it)
+     *   and move it, or drag with the right mouse button, or the gamepad right stick. Unity's Game view turns with any
+     *   mouse movement; a browser cursor stops at the window edge and loses the aim, so the capture stands in for it.
+     * - Look, legacy Input Manager projects: drag with the right mouse button (or move the mouse while the pointer is
+     *   locked), or the gamepad right stick.
+     * - Turbo: hold the left mouse button or the gamepad X button; legacy projects also Shift while right-dragging.
+     * - Speed up / down: Home and End, or the gamepad d-pad up and down.
+     *
+     * Keys and buttons come from TOOLKIT.InputController, which this component enables when the host has not. Mouse look
+     * reads raw pointer movement from the scene, because the controller reports mouse movement only while a button is held.
+     *
+     * @example
+     * const freeCamera = TOOLKIT.SceneManager.GetComponent<TOOLKIT.FreeCameraController>(cameraNode, "TOOLKIT.FreeCameraController");
+     * freeCamera.moveSpeed = 25;
+     */
+    class FreeCameraController extends TOOLKIT.ScriptComponent {
+        /** Unity's k_MouseSensitivityMultiplier. */
+        private static readonly MOUSE_SENSITIVITY_MULTIPLIER;
+        /** Unity's legacy Input Manager "Mouse X" / "Mouse Y" sensitivity: axis units per pixel of mouse movement. */
+        private static readonly LEGACY_MOUSE_AXIS_PER_PIXEL;
+        /** The Input System binding's `scaleVector2(x=15, y=15)` processor on the gamepad right stick. */
+        private static readonly INPUT_SYSTEM_STICK_SCALE;
+        /** Right-stick dead zones: the legacy axis entry's 0.2, the Input System's default 0.125. */
+        private static readonly LEGACY_STICK_DEAD_ZONE;
+        private static readonly INPUT_SYSTEM_STICK_DEAD_ZONE;
+        /** Unity applies stick look and speed changes once per frame; scaling to this rate keeps them the same at any frame rate. */
+        private static readonly REFERENCE_FRAME_RATE;
+        /** Pitch limit in degrees, above or below the horizon. */
+        private static readonly PITCH_LIMIT;
+        /** Rotation speed when using a controller. */
+        lookSpeedController: number;
+        /** Rotation speed when using the mouse. */
+        lookSpeedMouse: number;
+        /** Movement speed in meters per second. */
+        moveSpeed: number;
+        /** Value added to the movement speed per speed step (Home / End). Also the lowest allowed movement speed. */
+        moveSpeedIncrement: number;
+        /** Movement speed multiplier while turbo is held. */
+        turbo: number;
+        /** Unity compiled the FreeCamera for the Input System (mouse look without a button) rather than the legacy Input Manager. */
+        inputSystem: boolean;
+        private pointerObserver;
+        private contextMenuCanvas;
+        private ownsPointerLock;
+        private wasPointerLocked;
+        private pendingMousePixelsX;
+        private pendingMousePixelsY;
+        private readonly localEulerAngles;
+        private readonly forwardDirection;
+        private readonly rightDirection;
+        private readonly worldPosition;
+        /** Cancels the browser context menu on the canvas so a right-drag can look around (legacy mode). */
+        private readonly suppressContextMenu;
+        /**
+         * Creates the component on the exported node. The toolkit calls this for every node whose metadata
+         * names TOOLKIT.FreeCameraController.
+         * @param transform The node to fly, usually the camera.
+         * @param scene The scene the node belongs to.
+         * @param properties The exported property bag (the Unity FreeCamera's tuning fields and input mode).
+         * @param alias The registered class name.
+         */
+        constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties?: any, alias?: string);
+        /** Reads the exported tuning values and input mode. */
+        protected awake(): void;
+        /**
+         * Enables toolkit user input when the host has not, makes a click capture the mouse (Input System projects, unless
+         * the host already handles pointer lock), and starts collecting raw mouse movement for look.
+         */
+        protected start(): void;
+        /** Applies this frame's speed change, rotation and movement, as Unity's FreeCamera.Update does. */
+        protected update(): void;
+        /** Releases the pointer observer, the click-to-capture handler it installed and the context-menu listener. */
+        protected destroy(): void;
+        /**
+         * Adds a pointer move to this frame's mouse look, while the mouse is captured (pointer lock) or the right button
+         * is held. A free cursor never turns the camera: it would stop at the window edge and lose the aim. The first
+         * move after the capture starts is dropped, because browsers can report one large jump at that moment.
+         * @param pointerInfo A scene POINTERMOVE event.
+         */
+        private collectMouseMovement;
+        /**
+         * Converts this frame's mouse movement to degrees: Unity's Input System uses `delta * lookSpeedMouse * 0.01`, the
+         * legacy Input Manager `delta * 0.1 * lookSpeedMouse`.
+         * @param pixels Mouse movement this frame in CSS pixels (positive right / up).
+         * @returns Rotation in degrees.
+         */
+        private getMouseLookDegrees;
+        /**
+         * Converts a right-stick value to this frame's rotation in degrees. Input System: `stick * 15 * lookSpeedMouse * 0.01`
+         * per frame; legacy: `stick * lookSpeedController * 0.01` per frame. Both are scaled to the frame time.
+         * @param stick Stick deflection after the dead zone, -1..1.
+         * @param deltaTime Frame time in seconds.
+         * @returns Rotation in degrees.
+         */
+        private getStickLookDegrees;
+        /** The gamepad right stick's horizontal deflection (positive right), zero inside the dead zone. */
+        private readRightStickX;
+        /** The gamepad right stick's vertical deflection (positive up, unlike Babylon's stick), zero inside the dead zone. */
+        private readRightStickY;
+        /** Zeroes a stick value inside the dead zone of the active input mode. */
+        private applyStickDeadZone;
+        /** Speeds up with Home / d-pad up and slows down with End / d-pad down, never below one increment. */
+        private updateMoveSpeed;
+        /** Returns world-up movement input: E / Page Up / right shoulder up, Q / Page Down / left shoulder down. */
+        private getVerticalMoveInput;
+        /**
+         * Turbo is the left mouse button or the gamepad X button. Legacy projects also accept Shift while right-dragging;
+         * the Input System build never sets that boost, so Shift does nothing there, as in Unity.
+         */
+        private isTurboHeld;
+        /**
+         * Turns the node in local Euler angles, keeping its roll, with the pitch held within 90 degrees of the horizon.
+         * @param yawDegrees Turn to the right, in degrees.
+         * @param pitchDegrees Look up, in degrees.
+         */
+        private applyLook;
+        /**
+         * Moves the node in world space along its own forward and right axes and the world up axis.
+         * @param forwardDistance Meters along the node's forward axis.
+         * @param rightDistance Meters along the node's right axis.
+         * @param upDistance Meters along world up.
+         */
+        private applyMove;
     }
 }
 declare namespace TOOLKIT {
@@ -19110,6 +20529,17 @@ declare namespace TOOLKIT {
     class HdrpFogMath {
         /** HDRP `ScaleHeightFromLayerDepth`. */
         static readonly LayerDepthScale: number;
+        /** HDRP's top convolution mip used by mip fog (ENVCONSTANTS_CONVOLUTION_MIP_COUNT - 1). */
+        static readonly ConvolutionTopMip: number;
+        /**
+         * Babylon's real SH basis constants with their signs, Babylon harmonic order (l00, l1_1, l10, l11, l2_2, l2_1, l20, l21,
+         * l22) - the polynomial they multiply is 1, y, z, x, xy, yz, 3z^2 - 1, xz, x^2 - y^2.
+         */
+        private static readonly SignedBasisConstants;
+        /** The SH band of each coefficient, Babylon harmonic order. */
+        private static readonly CoefficientBands;
+        /** Undoes Babylon's cosine convolution and divide by pi per band (pi / A_l: 1, 3/2, 4), giving the radiance SH. */
+        private static readonly RadianceBandScales;
         /** 1 / meanFreePath (HDRP clamps the mean free path to 1 m). */
         static Extinction(meanFreePath: number): number;
         /** `_HeightFogExponents` = (1/H, H), H = max(0.01, maximumHeight - baseHeight) * 0.144765 (Fog.cs). */
@@ -19130,14 +20560,43 @@ declare namespace TOOLKIT {
         /** HDRP mip fog: LOD = (1 - mipFogMaxMip * saturate((d - near) / (far - near))) * maxLod (near fog is the blurriest). */
         static MipFogLod(fog: any, distance: number, maxLod: number): number;
         /**
-         * The shader's fog for one ray (grey: scalar colours): volumetric on -> the lit in-scatter (`fogColor * probeDimmer + sunTerm`)
+         * The shader's fog for one ray (grey: scalar colours): volumetric on -> the lit in-scatter (`ambient * probeDimmer + sunTerm`)
          * inside `depthextent`, HDRP's analytic fog (`fogColor`) beyond it; off -> analytic over the whole ray. `fogColor` is
-         * already x pe. Returns { color, opacity } (EvaluateAtmosphericScattering's height-fog half).
+         * already x pe. `ambient` (the volumetric ambient probe along the ray, x pe) replaces `fogColor` in the volumetric term
+         * only; omitted, the volumetric term uses `fogColor`. Returns { color, opacity } (EvaluateAtmosphericScattering's
+         * height-fog half).
          */
-        static Evaluate(fog: any, cameraY: number, dirY: number, distance: number, fogColor: number, sunTerm: number): {
+        static Evaluate(fog: any, cameraY: number, dirY: number, distance: number, fogColor: number, sunTerm: number, ambient?: number): {
             color: number;
             opacity: number;
         };
+        /**
+         * HDRP's Cornette-Shanks zonal harmonics (`GetCornetteShanksPhaseFunction`, SphericalHarmonics.cs) - the phase function
+         * the volumetric ambient probe is convolved with.
+         * @param anisotropy The fog anisotropy g, in (-1, 1).
+         * @returns [zh0, zh1, zh2].
+         */
+        static CornetteShanksZonal(anisotropy: number): number[];
+        /**
+         * HDRP's volumetric ambient probe (D2): the environment's radiance SH convolved with the Cornette-Shanks phase
+         * (`SphericalHarmonicMath.Convolve`), with Babylon's signed basis constants folded in, so `EvaluateAmbient` is a plain
+         * polynomial. Babylon's polynomial holds the cosine-convolved, divided-by-pi SH, so each band is first scaled back to
+         * radiance.
+         * @param polynomial The environment's spherical polynomial (null gives no ambient).
+         * @param anisotropy The fog anisotropy g.
+         * @returns 27 numbers - nine RGB coefficients, Babylon harmonic order - or 27 zeros when `polynomial` is null.
+         */
+        static VolumetricAmbientCoefficients(polynomial: BABYLON.SphericalPolynomial, anisotropy: number): number[];
+        /**
+         * CPU mirror of the fog shader's `hdrpFogAmbient(direction)`: the volumetric ambient radiance along a unit direction
+         * given in the environment's frame (the shader rotates by the environment matrix first).
+         * @param coefficients The 27 numbers from `VolumetricAmbientCoefficients`.
+         * @param x The direction's x component.
+         * @param y The direction's y component.
+         * @param z The direction's z component.
+         * @returns The RGB radiance.
+         */
+        static EvaluateAmbient(coefficients: number[], x: number, y: number, z: number): number[];
         /** Henyey-Greenstein phase (the analytic volumetric in-scatter of the main light). */
         static PhaseHG(g: number, cosTheta: number): number;
         /** HDRP `CompositeOver`: c = cF + (1 - oF) * cB, o = oF + (1 - oF) * oB (per channel when the opacities are arrays). */
@@ -19175,11 +20634,15 @@ declare namespace TOOLKIT {
         environment: BABYLON.BaseTexture;
         envMatrix: BABYLON.Matrix;
         skyDepth: number;
+        /** Volumetric ambient coefficients x envScale (27 numbers, `HdrpFogMath.VolumetricAmbientCoefficients`). */
+        ambient: number[];
     }
     class HdrpFogPass {
         static readonly ShaderName: string;
         static readonly Uniforms: string[];
         static readonly Samplers: string[];
+        /** The volumetric ambient probe's vec4 uniforms (`fogAmb0`...`fogAmb8`, one SH coefficient each, w unused). */
+        static readonly AmbientVectors: number;
         /** Every uniform the GLSL effect resolves: the fog's own plus the atmosphere (pb*) the aerial perspective reads (GLSL looks up only listed names). */
         static AllUniforms(): string[];
         private static AllUniformsBase;
@@ -19219,6 +20682,19 @@ declare namespace TOOLKIT {
          */
         static LocalGlsl(): string;
         static LocalWgsl(): string;
+        /**
+         * The `fogAmb<i>` uniform declarations (D2).
+         * @param wgsl True for WGSL syntax.
+         * @returns One declaration per line.
+         */
+        static AmbientDeclarations(wgsl: boolean): string;
+        /**
+         * GLSL `hdrpFogAmbient(dir)` - the volumetric ambient probe (D2) along a world direction, rotated into the environment's
+         * frame exactly as `hdrpFogColor` does. Main pass only (not in the shared helpers the transparent plugin uses).
+         */
+        static AmbientGlsl(): string;
+        /** WGSL twin of `AmbientGlsl`. */
+        static AmbientWgsl(): string;
         static GlslHelpers(prefix: string): string;
         static WgslHelpers(prefix: string): string;
         private static Glsl;
@@ -21109,6 +22585,10 @@ declare namespace TOOLKIT {
         private run;
         /** True once every pass compiled (a frame is skipped until then). */
         isReady(): boolean;
+        /** The number of shader passes of the simulation (FFT, normals, clear and, with caustics, the caustics mesh). */
+        getPassCount(): number;
+        /** The number of shader passes whose effect has compiled (the simulation steps once all of them have). */
+        getReadyPassCount(): number;
         /** One simulation step (HDRenderPipeline.WaterSystem.Simulation.cs UpdateGPUWaterSimulation + EvaluateWaterCaustics). */
         update(spectrum: any, bandData: number[][], time: number, caustics: any): boolean;
         dispose(): void;
@@ -21152,6 +22632,12 @@ declare namespace TOOLKIT {
         static FoamTexture(scene: BABYLON.Scene): BABYLON.Texture;
         /** An exported data texture ({ url } or a string), linear, with its Unity wrap mode (0 repeat, 1 clamp, 2 mirror). */
         static DataTexture(scene: BABYLON.Scene, meta: any, wrapU: number, wrapV: number, fallback: BABYLON.Texture): BABYLON.Texture;
+        /**
+         * True once the engine's preintegrated FGD LUT has been rendered (FgdTexture renders it on the first frame its shader is ready).
+         * @param scene - Any scene of the engine.
+         * @returns False before FgdTexture was first requested or while its shader compiles.
+         */
+        static IsFgdReady(scene: BABYLON.Scene): boolean;
         /** HDRP's preintegrated FGD (GGX + Disney diffuse, 64 x 64, 4096 samples, 10-bit) rendered once per engine. */
         static FgdTexture(scene: BABYLON.Scene): BABYLON.RenderTargetTexture;
         /**
@@ -21193,6 +22679,26 @@ declare namespace TOOLKIT {
         /** HDRP's FindVerticalDisplacement / ProjectPointOnWaterSurface defaults. */
         static readonly SearchIterations: number;
         static readonly SearchError: number;
+        /** Upper bound (ms) the scene's asset preloader waits for a water surface before the splash is released anyway. */
+        static WATER_PRELOAD_TIMEOUT_MS: number;
+        /** Poll interval (ms) of the water preload task. */
+        static readonly WATER_PRELOAD_POLL_MS: number;
+        /** Loading job title of every water surface (LoadingProgress.WEIGHTS). */
+        static readonly WATER_JOB_TITLE: string;
+        /** Stage labels of the water loading job, in stage order. */
+        static readonly WATER_SIMULATION_LABEL: string;
+        static readonly WATER_TEXTURES_LABEL: string;
+        static readonly WATER_SHADERS_LABEL: string;
+        /** Shares of the water job: the simulation (passes, first step, FGD LUT), the surface textures, the surface shaders. */
+        private static readonly SIMULATION_WEIGHT;
+        private static readonly TEXTURES_WEIGHT;
+        private static readonly SHADERS_WEIGHT;
+        /** Simulation units beyond the compiled passes: the first simulation step and the FGD LUT. */
+        private static readonly SIMULATION_EXTRA_STEPS;
+        private m_awoken;
+        private m_skipped;
+        private m_destroyed;
+        private m_simulated;
         private m_props;
         private m_block;
         private m_derived;
@@ -21272,6 +22778,48 @@ declare namespace TOOLKIT {
         protected awake(): void;
         protected update(): void;
         protected destroy(): void;
+        /**
+         * Joins the scene's asset preloader so the splash waits for this surface (TerrainBuilder pattern; setup itself stays in
+         * awake()). Opens the scene's "Water" loading job and adds one promise task that polls every WATER_PRELOAD_POLL_MS ms, reports
+         * the water progress and resolves, completing the job, once the surface is ready. The task never rejects and gives up after
+         * WATER_PRELOAD_TIMEOUT_MS.
+         * @param assetsManager - The scene's preload assets manager.
+         */
+        addPreloaderTasks(assetsManager: TOOLKIT.PreloadAssetsManager): void;
+        /**
+         * True when the first visible frame can show the finished water: the surface was skipped (gated off or an unsupported device)
+         * or destroyed, or it is awake with every simulation pass compiled, one simulation step run (the waves and foam exist), the
+         * FGD LUT rendered, every surface texture loaded or failed and every water mesh's material compiled for that mesh.
+         * @returns False before awake().
+         */
+        isWaterReady(): boolean;
+        /**
+         * Polls the surface until the splash no longer needs to wait for it, reporting the progress on the way. Never rejects: the job
+         * completes when the surface is ready, skipped, destroyed or disabled, when the scene is disposed, when a check throws and when
+         * WATER_PRELOAD_TIMEOUT_MS has passed.
+         * @param job - The surface's loading job.
+         * @returns Resolves once the job is complete.
+         */
+        private waitForWater;
+        /** True when the preload task can stop waiting: the water is ready, the scene is gone, or the surface never wakes (disabled). */
+        private isPreloadSettled;
+        /** Reports the water progress and the stage it waits on (the simulation stage at 0 until awake() has run). */
+        private reportWaterProgress;
+        /** The water job's progress, 0 to 1 (LoadingProgress.Blend of the simulation, texture and shader parts). */
+        private waterFraction;
+        /** The label of the first incomplete water stage (simulation, textures, shaders); the shader label once all are complete. */
+        private waterStageLabel;
+        /**
+         * The three weighted parts of the water job: the simulation (compiled passes plus the first simulation step and the FGD LUT),
+         * the surface textures loaded or failed, and the surface materials compiled for every mesh that uses them.
+         */
+        private waterProgressParts;
+        /** The surface's own textures (mask, foam mask, both current maps and, once bound, HDRP's foam texture), without duplicates. */
+        private surfaceTextures;
+        /** True when the material has compiled for every water mesh that draws with it (a material without meshes is ready). */
+        private isMaterialReady;
+        /** True when the texture has loaded or failed to load (a failed texture never holds the splash). */
+        private static IsTextureSettled;
         /** Re-evaluates the spectrum / rendering after a property change (e.g. the wind speed): the foam curve follows. */
         setWaterProperty(name: string, value: any): void;
         getWaterProperty(name: string): any;
@@ -25290,9 +26838,9 @@ declare namespace TOOLKIT {
     export interface IPostProcessStackFlags {
         /** A Classic vignette with intensity > 0 is active: bloom must run through the head chain (never after the vignette). */
         vignetteActive: boolean;
-        /** Grading takes the HDR LogC LUT path (HDR-mode profile, LogC LUT exported, HDR pipeline). */
+        /** Grading takes the LogC LUT path (HDR-mode profile, LogC LUT exported), on an HDR or an LDR chain alike. */
         hdrGrading: boolean;
-        /** Why not (or "hdr"): "ldr" (LDR profile), "nolut" (no baked LUT), "lutspace" (older export without lutspace), "nohdr" (camera without allowhdr). */
+        /** Why not (or "hdr"): "ldr" (LDR profile), "nolut" (no baked LUT), "lutspace" (older export without lutspace). */
         hdrReason: string;
     }
     /**
@@ -25487,6 +27035,14 @@ declare namespace TOOLKIT {
         private static Registry;
         private static Warned;
         private static Scheduled;
+        /** Scenes whose stack the asset preloader applies (one preloader task per scene). */
+        private static PreloadScheduled;
+        /** Per scene: the volumes and cameras the preloader applied the stack for (see PreloadApply). */
+        private static PreloadKeys;
+        /** scene-loading-progress T8 (D8): the longest the preloader waits for the ray-tracing setup (ms); the setup keeps running after. */
+        static RAY_TRACING_PRELOAD_TIMEOUT_MS: number;
+        /** How often the preloader reads the ray-tracing setup progress (ms). */
+        private static readonly RAY_TRACING_POLL_INTERVAL_MS;
         /** The orchestrating instance (null once every volume is destroyed). */
         static get Instance(): PostProcessor;
         /** Every live PostProcessor instance, in awake order. */
@@ -25620,6 +27176,7 @@ declare namespace TOOLKIT {
         private orchestrator;
         private applied;
         private readyCalled;
+        private registered;
         private cameraOwner;
         private stacks;
         private defaultRenderPipeline;
@@ -25743,6 +27300,34 @@ declare namespace TOOLKIT {
             pipeline: BABYLON.DefaultRenderingPipeline;
         }[];
         protected awake(): void;
+        /** Reads the exported volume and joins the registry, once (awake or addPreloaderTasks, whichever runs first). */
+        private register;
+        /**
+         * Scene loads apply the stack inside the asset preloader, before the preloader's other work (terrains, skins) compiles
+         * its shaders. Building the pipeline moves image processing onto the post chain (and may change the prepass layout),
+         * which re-creates the effect of every material in the scene: applied at ready() instead, every shader compiled during
+         * the load is thrown away and compiled again in the first visible frames (multi-second freezes at the start of the
+         * scene). The task runs after every component of the load has registered here; ready() then keeps that stack unless
+         * the volumes or cameras changed since (see tryOrchestrate). scene-loading-progress T8: the task then holds the splash
+         * until the scene's ray-tracing setup has settled (WhenRayTracingSettled), at most RAY_TRACING_PRELOAD_TIMEOUT_MS.
+         */
+        addPreloaderTasks(assetsManager: TOOLKIT.PreloadAssetsManager): void;
+        /**
+         * Applies the scene's stack from the preloader. Only for exports that flag their post-processing cameras: a legacy
+         * export targets the main camera, which game scripts may still be choosing, so it keeps the ready-time application.
+         * @param scene - The scene being loaded.
+         */
+        private static PreloadApply;
+        /**
+         * scene-loading-progress T8 (D10): waits for the scene's ray-tracing setup (gather, BVH builds, backend kernels) and reports
+         * it to the loading splash as the "Ray tracing" job. PreloadApply creates the system when the export asks for ray tracing;
+         * a scene without one (or a legacy export, whose stack applies at ready) resolves at once and opens no job. Never rejects.
+         * @param scene - The scene being loaded.
+         * @returns Resolves once the setup is ready, failed or has no backend, the scene is disposed or the preload timeout passed.
+         */
+        private static WhenRayTracingSettled;
+        /** Identifies what a stack was applied for: the scene's registered volumes and its cameras. */
+        private static ApplyKey;
         protected ready(): void;
         /**
          * The toolkit may run `ready` before `awake` (edit mode / ScenePlaying false), so orchestration starts from
@@ -26119,8 +27704,14 @@ declare namespace TOOLKIT {
         /**
          * The cross-applier decisions of one camera stack (pure, spit-and-polish T13): `vignetteActive` = a Classic vignette
          * with intensity > 0 (Unity's `IsEnabledAndSupported`); `hdrGrading` = the colour-grading family is active and in
-         * HDR mode (PPv2 HighDefinitionRange, or any URP / HDRP volume), the export carries a LogC LUT (`lutspace: "logc"`)
-         * and the camera allows HDR. `hdrReason` names the fallback cause otherwise.
+         * HDR mode (PPv2 HighDefinitionRange, or any URP / HDRP volume) and the export carries a LogC LUT (`lutspace: "logc"`).
+         * `hdrReason` names the fallback cause otherwise.
+         *
+         * The camera's `allowhdr` is deliberately NOT part of the decision. Unity picks the grading path from the profile /
+         * pipeline asset, never from the camera's HDR flag: URP's `ApplyColorGrading` (Common.hlsl) and PPv2's ColorGrading
+         * run the same LUT on an LDR camera, whose 8-bit target simply clamps the input to [0, 1] first. Falling back to the
+         * LDR path here dropped the baked tone mapper (an LDR URP camera with ACES rendered washed out to white). An LDR
+         * Babylon chain is display-encoded instead of linear, which the grading pass handles itself (`displayEncodedChain`).
          */
         static DeriveStackFlags(model: TOOLKIT.IPostProcessModel, metadata: TOOLKIT.IPostProcessCameraMetadata): TOOLKIT.IPostProcessStackFlags;
         /**
@@ -26169,6 +27760,13 @@ declare namespace TOOLKIT {
         private antialiasingRecordOf;
         private static AntialiasingUnity;
         /** DEC-6: the chain's HDR flag -- a pipeline's own `_hdr` (it may be reused, built by someone else) wins over the camera's `allowhdr`. */
+        /**
+         * The render-target type for a head pass between the bloom composite and the grading pass (vignette, grain, the LDR colour
+         * filter, the grading input): half-float where the engine can render it, so bloom pushed above white survives into the
+         * grading the way Unity's Uber shader keeps it (bloom, vignette, grain and grading in one HDR shader), on every pipeline.
+         * On an HDR chain the chain type already is half-float; the chain's own type when the engine has no half-float target.
+         */
+        static PrecisionTextureType(scene: BABYLON.Scene, textureType: number): number;
         static ChainHdr(pipeline: BABYLON.DefaultRenderingPipeline, hdr: boolean): boolean;
         /** The canvas's own MSAA (engine creation option `antialias`); null when the engine does not say. */
         static CanvasAntialias(scene: BABYLON.Scene): boolean;
@@ -34535,6 +36133,18 @@ declare namespace TOOLKIT {
         private static readonly HeightHeaderWords;
         /** Largest raw terrain height (Unity heightmaps are 16-bit). */
         private static readonly MaxRawHeight;
+        /** Share of `buildProgress` for gathering the scene geometry (scene-loading-progress T8). */
+        private static readonly GatherProgressWeight;
+        /** Share of `buildProgress` for the BVH builds. */
+        private static readonly BuildProgressWeight;
+        /** Share of `buildProgress` for the backend's kernels (compiled and ready). */
+        private static readonly BackendProgressWeight;
+        /** Loading-splash stage labels of `buildStageLabel`, in setup order. */
+        static readonly BuildStageLabels: {
+            gathering: string;
+            building: string;
+            compiling: string;
+        };
         /** The live system of every asked scene. */
         private static systems;
         /** Report keys already written (one report per key per page). */
@@ -34634,6 +36244,8 @@ declare namespace TOOLKIT {
         private gatherCursor;
         /** Terrains whose height field was not built yet, retried every frame. */
         private waitingTerrains;
+        /** BVH builds started since creation (scene-loading-progress T8: the denominator of the build part of `buildProgress`). */
+        private totalBuildsStarted;
         /** Membership changed since the last pack. */
         private membershipDirty;
         /** Frames since the last pack. */
@@ -34804,6 +36416,20 @@ declare namespace TOOLKIT {
         get debugIsRadiance(): boolean;
         /** A one-line state for the Inspector: unavailable, gathering, compiling, ready or failed. */
         get status(): string;
+        /**
+         * scene-loading-progress T8: true once the setup needs nothing more before the scene is shown - ready (`stats.readyMs > 0`),
+         * failed, or without a backend (nothing will ever trace).
+         */
+        get isSettled(): boolean;
+        /**
+         * scene-loading-progress T8: setup progress, 0 to 1, for the loading splash - gathering (meshes queued plus terrains waiting
+         * for their height field) 30 %, BVH builds 60 %, backend kernels ready 10 % (`LoadingProgress.Blend`).
+         */
+        get buildProgress(): number;
+        /** scene-loading-progress T8: the splash label of the first incomplete `buildProgress` part (`BuildStageLabels`). */
+        get buildStageLabel(): string;
+        /** True when every queued mesh was gathered and no terrain still waits for its height field. */
+        private isGatherComplete;
         /**
          * Records the ray-tracing intent of one camera; the gather keeps only layers some asked branch traces (D-L6).
          * @param camera - The camera.
@@ -36638,6 +38264,30 @@ declare namespace TOOLKIT {
      * JavaScript RNG (every draw is the seeded ParticleRandom); warnings go through ParticleContract.warnOnce only; no hand-tuned constants.
      * @class ShurikenParticles - All rights reserved (c) 2024 Mackey Kinard
      */
+    /** @hidden A resumable SimulateFamily run (ShurikenParticles): the family, its saved state and the next fixed step. */
+    interface IParticleFamilyRun {
+        family: TOOLKIT.ShurikenParticles[];
+        pre: number[];
+        saved: {
+            paused: boolean;
+            updateSpeed: number;
+        }[];
+        most: number;
+        steps: number;
+        next: number;
+    }
+    /** @hidden A play() prewarm running in slices behind the splash (ShurikenParticles.DeferLoadPrewarm). */
+    interface IParticlePrewarmJob {
+        plan: {
+            coarseSteps: number;
+            coarseDt: number;
+            fineSeconds: number;
+        };
+        coarseNext: number;
+        run: TOOLKIT.IParticleFamilyRun;
+        realSpeed: number;
+        realPaused: boolean;
+    }
     class ShurikenParticles extends TOOLKIT.ScriptComponent {
         /** The parity rewrite. */
         static readonly Version: string;
@@ -36740,6 +38390,7 @@ declare namespace TOOLKIT {
         private _prtHeldUpdateSpeed;
         private _prtOnceApplied;
         private _prtSimulating;
+        private _prtPrewarmJob;
         private readonly _prtRange;
         private _prtTexture;
         private _prtEmissionEntry;
@@ -36853,6 +38504,18 @@ declare namespace TOOLKIT {
          * (its own clock never emits, D37 - it only has to take its parent's requests in the frame they were made).
          */
         private static SimulateFamily;
+        /** SimulateFamily's set-up: restarts / prewarm plans, the saved state and the fixed-step count (no step runs). */
+        private static BeginFamilyRun;
+        /**
+         * Runs SimulateFamily's fixed steps from `run.next` until all ran or `deadline` (performance.now ms) passed - at least one
+         * step per call. Each step is { _stepClock; animate(true) } for every member in family order (the parent first).
+         * @returns True when every step ran.
+         */
+        private static StepFamilyRun;
+        /** SimulateFamily's `finally`: the simulating flags cleared and the run's ONE trail flush and mesh step. */
+        private static FinishFamilyRun;
+        /** SimulateFamily's end: each member's paused / updateSpeed restored, the capture hold re-applied (D35, D52). */
+        private static RestoreFamilyRun;
         /** Emitting, or holding live particles, or (withChildren) any child alive (D37). */
         isAlive(withChildren?: boolean): boolean;
         isPlaying(): boolean;
@@ -36915,6 +38578,42 @@ declare namespace TOOLKIT {
          * D35's single loop left the Pack's long-lived fog / dust younger and sparser (GroundFog 110 vs Unity 182 at t = 0.5).
          */
         prewarmSeconds(): number;
+        /**
+         * Prewarms started while a toolkit scene load still holds the splash run in slices of PrewarmSliceMs, a task each, instead
+         * of one block that locks the page (a 50 s prewarm with noise is seconds of work). The same steps run in the same order;
+         * between slices the system is frozen like the capture hold (D35: no emission, no clock, update speed 0). Only systems that
+         * step alone are sliced (no child systems, no sub-emitters - a family steps in lockstep); the reveal waits for every slice
+         * (PendingPrewarms). A system started after the load prewarms in one block as before. Default true.
+         */
+        static DeferLoadPrewarm: boolean;
+        /** Time budget (ms) of one prewarm slice task. */
+        static PrewarmSliceMs: number;
+        private static _prewarmQueues;
+        private static _prewarmPumps;
+        /** Prewarms of the scene still running in slices (0 when none). */
+        static PendingPrewarms(scene: BABYLON.Scene): number;
+        /** Milliseconds from performance.now() (Date.now() where performance is missing). */
+        private static NowMs;
+        /** True when this system's play() prewarm may run in slices: a toolkit scene load still in flight and a system stepping alone. */
+        private canSlicePrewarm;
+        /** Queues this system's prewarm for slices and freezes it until they ran. */
+        private queuePrewarm;
+        /** Runs a pending sliced prewarm to its end at once (a control call - stop, pause, clear, simulate - sees the finished prewarm). */
+        private finishPendingPrewarm;
+        /**
+         * Between two slices nothing runs: Babylon's animate() returns at once on a paused system, nothing emits, the clock holds.
+         * The real paused state and update speed are kept on the job and restored before the next slice.
+         */
+        private freezeForPrewarm;
+        private static SchedulePrewarmSlice;
+        /** One slice task: runs the queued prewarms in order until PrewarmSliceMs passed, then schedules the next slice. */
+        private static RunPrewarmSlice;
+        /**
+         * Runs this system's queued prewarm until `deadline` (at least one step): the coarse half exactly as runCoarsePrewarm, then the
+         * fine steps exactly as simulate(fineSeconds, false, false) - SimulateFamily's own begin / step / finish parts.
+         * @returns True when the prewarm finished (or the system is gone).
+         */
+        private runPrewarmSlice;
         /** The most fixed 1/60 steps one prewarm runs FINE (60 simulated seconds; T35, verifier D-c). The rest runs coarse (D29). */
         static MaxPrewarmSteps: number;
         /** D29 - the step the excess beyond MaxPrewarmSteps fine steps is simulated with, and how many such steps at most. */
@@ -37604,6 +39303,12 @@ declare namespace TOOLKIT {
          * FIRST image's dimensions (arrays require uniform layer size). Returns a Promise that resolves to
          * the array texture (or null when no URLs are supplied / loading fails). Shared across all callers
          * with the same URL list.
+         * @param scene - The scene the array texture belongs to.
+         * @param urls - One image URL per layer (empty entries are dropped; the list is clamped to the GPU layer limit).
+         * @param options - GPU-result-affecting build options (part of the cache key).
+         * @param onSliceLoaded - Called once per decoded slice with the running decoded count and the clamped slice count. Not part
+         *  of the cache key and never called when the build comes from the cache (default null).
+         * @returns The array texture, or null when there are no URLs or the build failed (never rejects).
          */
         static Build(scene: BABYLON.Scene, urls: string[], options?: {
             samplingMode?: number;
@@ -37612,7 +39317,7 @@ declare namespace TOOLKIT {
             mipmaps?: boolean;
             linearize?: boolean;
             largest?: boolean;
-        }): Promise<BABYLON.RawTexture2DArray>;
+        }, onSliceLoaded?: (decodedCount: number, sliceCount: number) => void): Promise<BABYLON.RawTexture2DArray>;
         /** X10: the array cell for `largest: true` - the largest slice width by the largest slice height (no cap). */
         static LargestCell(slices: Array<{
             width: number;
@@ -37650,15 +39355,16 @@ declare namespace TOOLKIT {
         static LinearizeRgba8(data: Uint8Array): void;
         private static _cacheKey;
         private static _uploadMipChain;
-        /** Box-average (2x2) downsample every layer of a stacked RGBA8 buffer to (dw x dh). Edge-clamped. */
-        private static _downsampleLayers;
+        /** Box-average (2x2) downsample layer L of a stacked RGBA8 buffer (sw x sh) into `out` (dw x dh). Edge-clamped. */
+        private static _downsampleLayer;
         /** GPU cap on Texture2DArray layers: WebGPU device limit `maxTextureArrayLayers`, else WebGL2
          *  `MAX_ARRAY_TEXTURE_LAYERS`. Falls back to the spec-guaranteed floor (256) when it can't be read. */
         private static _maxArrayLayers;
         /** Load every slice URL into a normalized descriptor { width, height, image, pixels }. Browser-decodable
          *  images (png/jpg/webp) come back as an HTMLImageElement; GPU container formats (ktx2/ktx/dds/basis) —
          *  which NO browser can decode through an <img> tag — are routed through Babylon's texture loader and
-         *  read back as RGBA8 pixels instead. */
+         *  read back as RGBA8 pixels instead. `onSliceLoaded` (may be null) hears every slice that finishes decoding, in
+         *  completion order, with the running decoded count and the list's length. */
         private static _loadSlices;
         /**
          * X10: one decode per image URL while arrays are being built - terrains share layers, so the same 2048 slice was decoded
@@ -38362,6 +40068,23 @@ declare namespace TOOLKIT {
     }
 }
 declare namespace TOOLKIT {
+    /** One terrain loading progress update (TerrainBuilder.onLoadProgressObservable / TerrainBuilder.OnLoadProgressObservable). */
+    interface ITerrainLoadProgress {
+        /** The terrain reporting. */
+        terrain: TOOLKIT.TerrainBuilder;
+        /** Stage key: heightmap, collision, textures, surface, trees, details, settle, shaders or complete. */
+        stage: string;
+        /** Readable stage label, e.g. "Loading terrain textures". */
+        label: string;
+        /** Progress inside the stage, 0 to 1. */
+        stageProgress: number;
+        /** Progress of this terrain's whole load, 0 to 1 (never goes back). */
+        progress: number;
+        /** True on the final update: the terrain is completely loaded (or failed / disposed). */
+        complete: boolean;
+        /** True when the terrain could not be built (complete is true as well). */
+        failed: boolean;
+    }
     /**
      * Unity terrain runtime (unity-terrain-system-parity, contract 2). Builds the heightfield, holes, the Havok heightfield
      * collider and the quadtree LOD surface from the TOOLKIT.TerrainBuilder component properties (Design Reference §3, §4.3).
@@ -38370,6 +40093,34 @@ declare namespace TOOLKIT {
     class TerrainBuilder extends TOOLKIT.ScriptComponent {
         private static _registry;
         readonly onBuiltObservable: BABYLON.Observable<TOOLKIT.TerrainBuilder>;
+        /** Loading progress of this terrain, stage by stage (see ITerrainLoadProgress). */
+        readonly onLoadProgressObservable: BABYLON.Observable<TOOLKIT.ITerrainLoadProgress>;
+        /** Fires once when this terrain is completely loaded: built, settled around the loading camera and its shaders compiled (also on failure). */
+        readonly onLoadedObservable: BABYLON.Observable<TOOLKIT.TerrainBuilder>;
+        /** Loading progress of every terrain of every scene (see ITerrainLoadProgress; the terrain's scene is terrain.scene). */
+        static readonly OnLoadProgressObservable: BABYLON.Observable<TOOLKIT.ITerrainLoadProgress>;
+        /** Upper bound (milliseconds) the scene's asset preloader waits for one terrain before it carries on without it. */
+        static PRELOAD_TIMEOUT_MS: number;
+        /** Upper bound (milliseconds) of the load-time settle: surface refinement and detail streaming around the loading camera. */
+        static SETTLE_MS: number;
+        /** Surface node meshes built per settle pass while the loader is up (TerrainSurface.MAX_BUILDS_PER_FRAME while playing). */
+        static SETTLE_SURFACE_BUILDS: number;
+        /** Upper bound (milliseconds) the load waits for the scene's light probe network before compiling probe-lit tree shaders. */
+        static PROBE_WAIT_MS: number;
+        /** Detail chunk build budget per settle pass (milliseconds) while the loader is up (TerrainDetails.BUILD_BUDGET_MS while playing). */
+        static SETTLE_DETAIL_BUDGET_MS: number;
+        /** Loading stages in order, with their share of a terrain's load progress. */
+        private static readonly LOAD_STAGES;
+        private _contractChecked;
+        private _loadPromise;
+        /** The shared LoadingProgress job this terrain reports its load to (opened by startLoad). */
+        private _loadJob;
+        private _preloadClaimed;
+        private _preloading;
+        private _isLoaded;
+        private _loadFailed;
+        private _loadStage;
+        private _loadProgress;
         private _isBuilt;
         private _disposed;
         private _registered;
@@ -38420,6 +40171,14 @@ declare namespace TOOLKIT {
         shadowSlotDrift: number;
         constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties?: any, alias?: string);
         get isBuilt(): boolean;
+        /** True once the terrain is completely loaded (see onLoadedObservable), also after a failed build. */
+        get isLoaded(): boolean;
+        /** True when the terrain finished loading without being built. */
+        get loadFailed(): boolean;
+        /** Load progress of this terrain, 0 to 1. */
+        get loadProgress(): number;
+        /** The current loading stage key (see ITerrainLoadProgress.stage), "" before the load starts. */
+        get loadStage(): string;
         get contract(): TOOLKIT.ITerrainContract;
         get heightfield(): TOOLKIT.TerrainHeightfield;
         get surfaceRoot(): BABYLON.TransformNode;
@@ -38465,8 +40224,20 @@ declare namespace TOOLKIT {
         getMedianUpdateMs(): number;
         /** Shadow generators this terrain has registered its casters with. */
         get shadowGenerators(): Set<any>;
+        /**
+         * The scene's asset preloader loads the terrain (scene path): the whole build, the settle around the loading camera
+         * and the shader pre-warm run inside one preloader task, so the page loader, ready() and SceneManager.OnSceneReady /
+         * WhenSceneReady wait for the completely loaded terrain while the loader shows the stage progress.
+         */
+        addPreloaderTasks(assetsManager: TOOLKIT.PreloadAssetsManager): void;
         protected awake(): void;
+        /** Validates the exported contract once and registers the terrain (awake or addPreloaderTasks, whichever runs first). */
+        private prepareContract;
+        /** Starts the load once; the promise never rejects and resolves when the terrain is completely loaded (or failed). */
+        private startLoad;
         protected update(): void;
+        /** One frame of the surface quadtree, tree instancing, detail streaming and shadow reach for a camera (update and the load settle). */
+        private tick;
         protected destroy(): void;
         private disposeParts;
         private buildAsync;
@@ -38531,7 +40302,9 @@ declare namespace TOOLKIT {
         /**
          * Installs the terrain's per-pass caster list on a generator's shadow map (once; a list installed by someone else is
          * chained in front). Babylon draws every caster into every cascade, face or map; this keeps a terrain caster only
-         * in the passes whose volume it overlaps.
+         * in the passes whose volume it overlaps. The scene-wide Unity caster culling (LightingConversions.ApplyUnityCasterCulling,
+         * which passes the terrain's own casters through) runs AFTER the terrain instead, on the terrain's per-pass output, so the
+         * terrain still gathers its casters from the whole render list once per frame (CasterFrame).
          */
         static InstallCasterCulling(generator: any): void;
         /**
@@ -38580,6 +40353,33 @@ declare namespace TOOLKIT {
          * @returns The cached caster set for this frame and list.
          */
         private static CasterFrame;
+        /**
+         * Load-time settle (loader up): drives the surface quadtree, tree instancing and detail streaming for the active camera
+         * with raised budgets until every refined surface node and every detail chunk within reach is built, so nothing pops in
+         * once the loader hides. Ends at SETTLE_MS, without a camera (after 2 s), or on dispose.
+         */
+        private settle;
+        /** Reports a loading stage to the observables and the terrain's LoadingProgress job (which posts to the splash while the scene preloader owns it). */
+        private reportLoad;
+        /** Ends the load once: restores the playing budgets, reports completion and notifies onLoadedObservable. */
+        private finishLoad;
+        /** Resolves when the texture is ready, failed to load or after timeoutMs (null resolves at once). */
+        private static WaitForTexture;
+        /** Combined load progress (0 to 1) of every registered terrain of the scene (1 when there are none). */
+        static GetLoadProgress(scene: BABYLON.Scene): number;
+        /** True when every registered terrain of the scene is completely loaded (also true when there are none). */
+        static IsAllLoaded(scene: BABYLON.Scene): boolean;
+        /**
+         * Splash-screen gate for terrains alone: resolves when every terrain of the scene is completely loaded (built, settled
+         * around the loading camera, shaders compiled) or after the timeout. NEVER rejects and NEVER hangs: true when the
+         * terrains finished, false on timeout or disposal. A terrain registers on awake or with the asset preloader, so the
+         * call waits settleMs for terrains to appear before it resolves on a scene that has none. Scene loads normally gate
+         * on SceneManager.WhenSceneReady, which includes the terrains.
+         * @param scene The scene to wait on.
+         * @param timeoutMs Hard deadline in milliseconds (values <= 0 use PRELOAD_TIMEOUT_MS).
+         * @param settleMs How long to wait for a first terrain before a scene without terrains resolves (default 250).
+         */
+        static WhenAllTerrainsLoaded(scene: BABYLON.Scene, timeoutMs?: number, settleMs?: number): Promise<boolean>;
         /** Upper bound of the D45 shader pre-warm (milliseconds). */
         static PREWARM_MS: number;
         /**
@@ -38889,6 +40689,8 @@ declare namespace TOOLKIT {
         lastCompactMs: number;
         /** Milliseconds spent building chunks in the last update (diagnostics, D43). */
         lastBuildMs: number;
+        /** Chunk build budget per update in milliseconds (BUILD_BUDGET_MS while playing; TerrainBuilder raises it while the loader settles the details). */
+        buildBudgetMs: number;
         private _n;
         private static readonly UP;
         private _qa;
@@ -38994,6 +40796,13 @@ declare namespace TOOLKIT {
         private static WorldBox;
         /** Every shadow-casting host currently built (castshadows layers, chunks inside the shadow reach). */
         getMeshes(): BABYLON.AbstractMesh[];
+        /** True once every chunk within reach of the last camera position is built (or there is nothing to stream). */
+        get isSettled(): boolean;
+        /** Chunks built and still queued around the last camera position (loading progress). */
+        getStreamingCounts(): {
+            built: number;
+            queued: number;
+        };
         /** Diagnostics: layers, chunk states, hosts and built instances per layer index. */
         getStats(): {
             layers: number;
@@ -39387,6 +41196,13 @@ declare namespace TOOLKIT {
         prepareDefines(defines: BABYLON.MaterialDefines, scene: BABYLON.Scene, mesh: BABYLON.AbstractMesh): void;
         bindForSubMesh(uniformBuffer: BABYLON.UniformBuffer, scene: BABYLON.Scene, engine: BABYLON.AbstractEngine, subMesh: BABYLON.SubMesh): void;
         getCustomCode(shaderType: string, shaderLanguage?: BABYLON.ShaderLanguage): any;
+        /**
+         * URP's realtime shadow distance fade on each light's shadow (Shadows.hlsl MixRealtimeAndBakedShadows), at the shared light
+         * loop anchor `aggShadow+=shadow;`, which the body re-emits: `shadow` fades to 1 by `saturate(distanceToCamera² * scale + bias)`
+         * (LightingConversions.GetShadowFade). The texture grass is a Standard material, so it does not carry ShadowmaskPlugin, which
+         * applies the same fade to every toolkit PBR material.
+         */
+        static ShadowFadeCode(wgsl: boolean): string;
         /** §10 code for both languages (the WGSL is a line-for-line port). Behind TKGRASS / TKGRASS_BILLBOARD. */
         static BuildCode(wgsl: boolean): {
             [hook: string]: string;
@@ -39433,6 +41249,11 @@ declare namespace TOOLKIT {
         isNearHole(u: number, v: number, paddingMetres: number): boolean;
         /** RGBA8 per-sample normal texture, (n * 0.5 + 0.5) * 255 of the terrain-local normal, BILINEAR, CLAMP, invertY false (D12). */
         createNormalTexture(scene: BABYLON.Scene): BABYLON.RawTexture;
+        /** createNormalTexture in slices (LoadSlicer): the same bytes, the page keeps running between rows. */
+        createNormalTextureAsync(scene: BABYLON.Scene, slicer: TOOLKIT.LoadSlicer): Promise<BABYLON.RawTexture>;
+        /** Fills the normal bytes one sample row per step. */
+        private normalRows;
+        private normalTexture;
         /** RGBA8 (R-1)^2 holes texture (255 solid, 0 hole), NEAREST, CLAMP. Null when there are no holes (D13). */
         createHolesTexture(scene: BABYLON.Scene): BABYLON.RawTexture;
         /** Nodes per side at a pyramid level (node = leafCells * 2^level cells). */
@@ -39443,6 +41264,12 @@ declare namespace TOOLKIT {
          * Level 0 is the leaf (step 1, error 0). Nodes past R-1 are clamped to the edge.
          */
         buildErrorPyramid(leafCells?: number): void;
+        /** buildErrorPyramid in slices (LoadSlicer): the same pyramid, the page keeps running between steps. */
+        buildErrorPyramidAsync(leafCells: number, slicer: TOOLKIT.LoadSlicer): Promise<void>;
+        /** True when buildErrorPyramid already ran with these leaf cells. */
+        hasErrorPyramid(leafCells: number): boolean;
+        /** Builds the pyramid in steps: one level-0 node row, or one coarser node (its full-resolution error scan), per step. */
+        private errorPyramidRows;
         /** Geometric error (metres) of a pyramid node, 0 before buildErrorPyramid. */
         nodeError(level: number, nx: number, nz: number): number;
         /** [min, max] local height of a pyramid node. */
@@ -39785,10 +41612,16 @@ declare namespace TOOLKIT {
         graphUvs: boolean;
         /** Times every node was refrozen after a terrain move (diagnostics, D45). */
         refreezes: number;
+        /** Node meshes built per update (MAX_BUILDS_PER_FRAME while playing; TerrainBuilder raises it while the loader settles the surface). */
+        maxBuildsPerFrame: number;
         constructor(owner: TOOLKIT.TerrainBuilder, hf: TOOLKIT.TerrainHeightfield, material: BABYLON.Material);
         get root(): BABYLON.TransformNode;
         get pixelError(): number;
         set pixelError(v: number);
+        /** True once the quadtree selection for the last camera is complete (every refined node built), or in mesh mode. */
+        get isSettled(): boolean;
+        /** The surface meshes drawn for the current selection (node meshes or adopted legacy meshes). */
+        getActiveMeshes(): BABYLON.AbstractMesh[];
         /** Every surface mesh built so far (node meshes or adopted legacy meshes). */
         getMeshes(): BABYLON.AbstractMesh[];
         build(): void;
@@ -39948,6 +41781,8 @@ declare namespace TOOLKIT {
         pollProbes(): void;
         /** X11: gives every probe-lit host its probe buffer + plugin (once, after the network is active). */
         private attachProbeHosts;
+        /** True while probe-lit hosts wait for the scene's light probe network to become active (pollProbes has not settled). */
+        get probesPending(): boolean;
         /** True once any host carries the per-instance probe buffer (diagnostics / tests). */
         get probesAttached(): boolean;
         /** X10 fix loop 2: where on an instance the probes are sampled, as a fraction of its bounds height above its position (0 = Unity's tree position). */
@@ -40002,7 +41837,7 @@ declare namespace TOOLKIT {
         /**
          * hdrp-complete-parity T24: re-attaches the HDRP material plugins a host clone loses (PBRMaterial.clone copies no toolkit plugin):
          * HdrpLitPlugin with the source's keys (double-sided normal mode - HDRP's Mirror is what darkens back-lit grass -, detail map, unlit
-         * emission, anisotropic IBL) and the "hdrp" PipelineLightingPlugin. URP / Built-in clones keep their foliage-plugin path unchanged.
+         * emission, anisotropic IBL, HDRP transmission) and the "hdrp" PipelineLightingPlugin. URP / Built-in clones keep their foliage-plugin path unchanged.
          */
         static CopyHdrpPlugins(source: BABYLON.Material, clone: BABYLON.Material): void;
         /** Drops one reference taken by AcquireMaterial and disposes the clone when none remain. */
@@ -40338,6 +42173,18 @@ declare namespace TOOLKIT {
         private static _batchWatch;
         /** Scene the outstanding builds belong to (passed to the observable). */
         private static _batchScene;
+        /** Share of the skins loading job given to slice decoding; the rest goes to the built arrays. */
+        private static readonly SKIN_DECODE_WEIGHT;
+        /** Share of the skins loading job given to the built (uploaded) arrays. */
+        private static readonly SKIN_UPLOAD_WEIGHT;
+        /** Detail label while slices are still decoding. */
+        private static readonly SKIN_DECODE_LABEL;
+        /** Detail label once every slice decoded and the arrays are being stacked and uploaded. */
+        private static readonly SKIN_UPLOAD_LABEL;
+        /** Per-scene splash progress of the preloader's skin array builds (one array index per started build), keyed by scene.uniqueId. */
+        private static SkinPreloads;
+        /** Scenes whose dispose already drops their SkinPreloads entry (weak). */
+        private static _skinPreloadWatchedScenes;
         /** Number of skin slice arrays still uploading across the whole app (0 = nothing in flight). */
         static GetPendingSkinBuilds(): number;
         /** True when no skin slice array is currently uploading. NOTE: also true BEFORE the first component
@@ -40370,6 +42217,32 @@ declare namespace TOOLKIT {
         private static SetBatchScene;
         /** Retire one build from the global gate. ALWAYS called — success or failure — so it can never stick. */
         private static NoteBuildFinished;
+        /**
+         * Registers one preloader array build with the scene's skins loading job, opening the job ("Skins") and the scene's
+         * counters on the first build.
+         * @param scene - The scene being loaded.
+         * @param sliceCount - The channel's URL count (corrected by the build's first slice callback).
+         * @returns This build's index in the scene's counters.
+         */
+        private static AddSkinPreload;
+        /** Scene lifecycle: drops the scene's SkinPreloads entry when the scene is disposed (registered once per scene). */
+        private static WatchSkinPreloadScene;
+        /**
+         * Slice callback of one preloader array build: stores the decoded count at the build's index and reports.
+         * @param scene - The scene being loaded.
+         * @param buildIndex - The build's index from AddSkinPreload.
+         * @param decodedCount - Slices of this build decoded so far.
+         * @param sliceCount - Slices in this build's clamped list (replaces the URL count).
+         */
+        private static NoteSkinSliceDecoded;
+        /**
+         * One preloader array build settled (built, failed or null): counts it, reports, and completes the scene's skins job once
+         * every started build has settled (the entry is then dropped so a later batch starts fresh counters).
+         * @param scene - The scene being loaded.
+         */
+        private static NoteSkinArrayBuilt;
+        /** Reports the skins job: 80% decoded slices, 20% settled arrays; decoding label until every slice decoded. */
+        private static ReportSkinPreload;
         /** Wrap a slice-array build so the global gate sees it, whoever started it. Passes the result (and any
          *  rejection) straight through — purely bookkeeping. */
         private static TrackSkinBuild;
@@ -40534,6 +42407,206 @@ declare namespace TOOLKIT {
         private markConfigured;
         /** Human-readable label for a delivery mechanism (used in setup logging). */
         private describeKind;
+    }
+}
+declare namespace TOOLKIT {
+    /**
+     * Plays a camera fly-through baked from a Unity Timeline by the TimelineCameraPath editor component:
+     * the Cinemachine shots and blends, the hard cuts between shots, the lens field of view and the
+     * screen fade.
+     *
+     * Attach it (in Unity) to the exported main camera. It drives that node's local transform, the
+     * camera rig's field of view and the alpha of the exported Unity UI fade graphic, the same RawImage
+     * the timeline animates in Unity. Playback never interpolates across a cut.
+     *
+     * @example
+     * const path = TOOLKIT.SceneManager.GetComponent<TOOLKIT.TimelineCameraPath>(cameraNode, "TOOLKIT.TimelineCameraPath");
+     * path.onShotChangedObservable.add((shotName: string) => console.info("Now showing", shotName));
+     * path.nextShot();                                  // jump to the next shot, keep playing or paused
+     * path.beginScrub(); path.setPlaybackTime(12.5); path.endScrub(); // drag a scrubber
+     * path.togglePlayback();
+     */
+    class TimelineCameraPath extends TOOLKIT.ScriptComponent {
+        /** Values stored per baked frame: local position xyz, local rotation xyzw, vertical field of view (degrees), fade alpha. */
+        private static readonly FRAME_STRIDE;
+        private static readonly POSITION_OFFSET;
+        private static readonly ROTATION_OFFSET;
+        private static readonly FIELD_OF_VIEW_OFFSET;
+        private static readonly FADE_OFFSET;
+        private static readonly DEGREES_TO_RADIANS;
+        private static readonly DEFAULT_FRAME_RATE;
+        /** Longest step playback advances in one frame, in seconds (Unity's default Time.maximumDeltaTime), so a load hitch does not skip a shot. */
+        private static readonly MAX_FRAME_DELTA;
+        /** Fade alpha changes smaller than this are not pushed to the UI, so the GUI is not redrawn for nothing. */
+        private static readonly FADE_EPSILON;
+        /** Slack added before flooring a playback time to a frame, so a seek to a shot's exact start time never rounds into the previous shot. */
+        private static readonly FRAME_SNAP_EPSILON;
+        /** Raised with the shot name whenever playback enters a new shot (including the first). */
+        readonly onShotChangedObservable: BABYLON.Observable<string>;
+        /** Raised when a non-looping fly-through reaches its end. */
+        readonly onPlaybackCompleteObservable: BABYLON.Observable<TimelineCameraPath>;
+        /** Raised with the new state whenever playback starts (true) or stops (false), including pauses for scrubbing and the end of a non-looping fly-through. */
+        readonly onPlaybackStateChangedObservable: BABYLON.Observable<boolean>;
+        /** Baked samples per second. */
+        private frameRate;
+        /** Length of the baked timeline in seconds. */
+        private duration;
+        /** Start playing when the scene starts. */
+        private playOnStart;
+        /** Restart from the beginning at the end. */
+        private loopPlayback;
+        /** Playback rate: 1 plays at the timeline's own speed. */
+        private playbackSpeed;
+        /** Drive the camera rig's field of view from the baked lens. */
+        private applyFieldOfView;
+        /** Drive the alpha of the exported fade graphic. */
+        private applyScreenFade;
+        /** Exported Unity UI path of the fade graphic, for TOOLKIT.UserInterface.FindElement. */
+        private fadeGraphicPath;
+        /** Baked frames, FRAME_STRIDE values each. */
+        private frameData;
+        /** Per frame: the camera segment it belongs to; a new segment starts at every hard cut. */
+        private frameSegments;
+        /** Per segment: the name of the shot it shows. */
+        private segmentNames;
+        /** Per shot (segment): the index of its first baked frame. */
+        private shotStartFrames;
+        private frameCount;
+        private playbackTime;
+        private playing;
+        private scrubbing;
+        private resumeAfterScrub;
+        private currentSegment;
+        private cameraRig;
+        private fadeElement;
+        private lastFadeAlpha;
+        private interfaceLoadedObserver;
+        private readonly framePosition;
+        private readonly nextFramePosition;
+        private readonly frameRotation;
+        private readonly nextFrameRotation;
+        /**
+         * Creates the component on the exported camera node. The toolkit calls this for every node whose
+         * metadata names TOOLKIT.TimelineCameraPath.
+         * @param transform The camera node to drive.
+         * @param scene The scene the node belongs to.
+         * @param properties The exported property bag (the C# component's public fields).
+         * @param alias The registered class name.
+         */
+        constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties?: any, alias?: string);
+        /** Reads the exported settings and baked frames into typed fields. */
+        protected awake(): void;
+        /** Finds the camera rig and the fade graphic, poses the first frame and starts playback when asked to. */
+        protected ready(): void;
+        /** Advances playback by this frame's delta time. */
+        protected update(): void;
+        /** Releases the UI observer and every observer added to this component's observables. */
+        protected destroy(): void;
+        /**
+         * Starts or resumes playback. A finished, non-looping fly-through restarts from the beginning.
+         * While scrubbing, playback resumes when the scrub ends instead.
+         */
+        play(): void;
+        /** Pauses playback, holding the current frame. While scrubbing, playback stays paused when the scrub ends. */
+        pause(): void;
+        /** Plays when paused and pauses when playing: the one call behind a play / pause button. */
+        togglePlayback(): void;
+        /** Stops playback and rewinds to the first frame. */
+        stop(): void;
+        /** @returns true while the fly-through is playing. A scrub in progress reports false. */
+        isPlaying(): boolean;
+        /** @returns The playback rate: 1 plays at the timeline's own speed. */
+        getPlaybackSpeed(): number;
+        /**
+         * Sets the playback rate.
+         * @param speed 1 plays at the timeline's own speed, 2 twice as fast, 0.5 half speed. Negative values are clamped to 0.
+         */
+        setPlaybackSpeed(speed: number): void;
+        /** @returns true when playback restarts from the beginning at the end. */
+        getLoopPlayback(): boolean;
+        /**
+         * Sets whether playback restarts from the beginning at the end. Also decides whether nextShot and
+         * previousShot wrap around past the last and first shot.
+         * @param loop true to loop.
+         */
+        setLoopPlayback(loop: boolean): void;
+        /** @returns The length of the fly-through in seconds. */
+        getDuration(): number;
+        /** @returns The current playback position in seconds. */
+        getPlaybackTime(): number;
+        /**
+         * Jumps to a playback position and poses the camera there.
+         * @param seconds Position in seconds, clamped to 0..duration.
+         */
+        setPlaybackTime(seconds: number): void;
+        /**
+         * Starts a scrub, as when the user grabs a scrubber bar: playback pauses and remembers whether it was
+         * playing. Move the playhead with setPlaybackTime while dragging, then call endScrub.
+         */
+        beginScrub(): void;
+        /** Ends a scrub and resumes playback from the scrubbed position if it was playing when the scrub began. */
+        endScrub(): void;
+        /** @returns true between beginScrub and endScrub. */
+        isScrubbing(): boolean;
+        /** @returns The name of the shot currently shown, or null before the first frame. */
+        getCurrentShotName(): string;
+        /** @returns The index of the shot currently shown (0 is the first shot), or -1 before the first frame. */
+        getCurrentShotIndex(): number;
+        /** @returns The number of shots in the fly-through. Every hard cut starts a new shot. */
+        getShotCount(): number;
+        /**
+         * @param shotIndex Index of the shot, 0 is the first.
+         * @returns The shot's name, or null when the index is out of range.
+         */
+        getShotName(shotIndex: number): string;
+        /**
+         * @param shotIndex Index of the shot, 0 is the first.
+         * @returns The playback time in seconds at which the shot starts, or -1 when the index is out of range.
+         */
+        getShotStartTime(shotIndex: number): number;
+        /**
+         * Jumps to the start of a shot. Playback keeps its state: when playing it carries on in normal timed
+         * play from there, when paused it holds the shot's first frame.
+         * @param shotIndex Index of the shot, 0 is the first. Out-of-range indices are ignored.
+         */
+        setShot(shotIndex: number): void;
+        /**
+         * Jumps to the start of the first shot with the given name, as setShot does.
+         * @param shotName The shot name, as raised by onShotChangedObservable.
+         * @returns true when a shot with that name exists.
+         */
+        setShotByName(shotName: string): boolean;
+        /** Jumps to the start of the next shot. Past the last shot it wraps to the first when looping, else does nothing. */
+        nextShot(): void;
+        /** Jumps to the start of the previous shot. Before the first shot it wraps to the last when looping, else restarts the first. */
+        previousShot(): void;
+        /** Moves the playhead, wrapping or finishing at the end, then poses the camera. */
+        private advancePlayback;
+        /**
+         * Poses the camera at a playback time: blends the two baked frames around it, except across a cut,
+         * where the outgoing shot holds its last frame so the cut stays sharp.
+         */
+        private applyPlaybackTime;
+        /** Sets the playing flag and raises onPlaybackStateChangedObservable when it changes. */
+        private setPlaying;
+        /**
+         * Finds each shot's first baked frame. The Unity baker numbers segments 0, 1, 2... in timeline order,
+         * one per hard cut, so a segment is a shot.
+         * @returns The first frame index of every shot, indexed by segment.
+         */
+        private collectShotStartFrames;
+        /** Copies one baked frame's local position and rotation into the given vectors. */
+        private readFramePose;
+        /** Reads one value of a baked frame. */
+        private readFrameValue;
+        /** Raises onShotChangedObservable when playback enters another segment. */
+        private updateCurrentSegment;
+        /** Looks up the exported fade graphic now, or as soon as its Unity UI interface has been built. */
+        private bindFadeElement;
+        /** @returns true when the fade element was found; it is then posed at the current fade. */
+        private tryFindFadeElement;
+        /** Sets the fade graphic's colour alpha, as the Unity timeline does, and redraws it. */
+        private applyFadeAlpha;
     }
 }
 declare namespace TOOLKIT {
@@ -42954,6 +45027,8 @@ declare namespace TOOLKIT {
      * `d = abs(uv - center) * settings.x`, `d.x *= lerp(1, width / height, settings.w)` (the `rounded` aspect term),
      * `d = pow(saturate(d), settings.z)`, `vfactor = pow(saturate(1 - dot(d, d)), settings.y)`,
      * `rgb *= lerp(color, 1, vfactor)`, `a = lerp(1, a, vfactor)`. Multiply blend only, in linear space.
+     * On an LDR camera (`displayEncodedChain`) the materials already gamma-encoded the frame, so the pass decodes to
+     * linear, applies the vignette and re-encodes (multiplying encoded colour darkened the corners about twice as much as Unity).
      *
      * The screen size is read from the post-process size every frame, so the aspect term follows resizes and DPR.
      * The vignette is evaluated on the lens-distorted UV like Unity's Uber (`options.distortion` carries the active
@@ -43040,6 +45115,7 @@ declare namespace TOOLKIT {
          * @param options.distortionSettings The Unity lens-distortion settings SHARED with the lens pass (inspector-truth T3):
          *        the vignette derives the distortion model from them every frame (`LensDistortionPlugin.DeriveModel`), so a
          *        lens edit moves the vignette too; takes precedence over `distortion`.
+         * @param options.displayEncodedChain The camera chain is LDR (gamma-encoded by the materials): read and write display-encoded colour.
          */
         static CreatePostProcess(scene: BABYLON.Scene, camera: BABYLON.Camera, options?: {
             /** Render-target type of the pass (artifact-cleanup T5: HALF_FLOAT on the HDR chain); Babylon's 8-bit default when omitted. */
@@ -43063,6 +45139,8 @@ declare namespace TOOLKIT {
             /** hdrp-complete-parity T20: HDRP Masked mode -- the loaded mask (alpha) and `opacity` (`TK_VIGNETTE_MASK`). */
             mask?: BABYLON.BaseTexture;
             opacity?: number;
+            /** The chain is LDR, so its colour is display-encoded (`DISPLAY_ENCODED_CHAIN`): decode, vignette, re-encode. */
+            displayEncodedChain?: boolean;
         }): BABYLON.PostProcess;
         /**
          * Normalises the `distortion` option: null / undefined / a zero intensity -> null (screen UV); otherwise the

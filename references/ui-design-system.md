@@ -117,10 +117,13 @@ export { babylonLogo, spinnerImage };
 "Loading Scene ..."           ← framework emits via OnLoadProgress
 "Loading Scene 0%"            ← ImportMeshAsync progress
 "Loading Scene 42%"
-"Loading Scene 100%"
+"Loading Scene 100%"          ← the scene file is in; from here the toolkit reports the real work
+"BUILDING SCENE 40%"          ← building meshes and materials (state 1) via SceneManager.OnLoaderStatusObservable
+"SETTING UP SCENE"            ← scene components, levels of detail, lights (state 2)
 "Preparing game world ..."    ← your custom messages via GameManager.PostProgressStatus()
 "Spawning enemies ..."
-"LOADING TERRAIN 45%"         ← asset preloader (state 3) via SceneManager.OnLoaderStatusObservable
+"LOADING ASSETS 40%"          ← asset preloader (state 3) via SceneManager.OnLoaderStatusObservable
+"LOADING TERRAIN 45%"         ← a heavy system in the asset preloader (state 3)
 "COMPILING SHADERS 67%"       ← preparing scene view (state 4) via SceneManager.OnLoaderStatusObservable
 "STARTING SCENE"              ← every shader compiled, the last moment before the reveal
 ```
@@ -157,17 +160,23 @@ function SplashScreen({ visible }: { visible: boolean }) {
   const [progress, setProgress] = useState<number>(0);
 
   useEffect(() => {
-    // 1. the scene download (glTF + bin)
+    // the toolkit's scene build stages (Building scene, Setting up scene) take over the status line and bar once the scene file
+    // is in - without this flag the runtime only fills the detail line there, so a splash still showing its download percent
+    // never fights it
+    SceneManager.HostDefersSceneStatus = true;
+    let loaderState = -1;
+    // 1. the scene download (glTF + bin), until the toolkit posts its own stages (state 1 on)
     const onLoadProgress = (data: LoadProgressMessage): void => {
-      if (data == null) return;
+      if (data == null || loaderState >= 1) return;
       if (data.message != null) setMessage(data.message);
       const percent: number | undefined = data.overallPercent ?? data.percent;
       if (typeof percent === 'number' && isFinite(percent)) setProgress(clampFraction(percent / 100));
     };
-    // 2. everything after the download: the asset preloader (state 3), then the shader compile (state 4).
+    // 2. everything after the download: building (1), setting up (2), the asset preloader (3), the shader compile (4).
     //    progress is the fraction of the current state, so the bar starts over when data.state changes
     const onLoaderStatus = (data: LoaderStatus): void => {
       if (data == null) return;
+      if (typeof data.progress === 'number') loaderState = data.state;
       if (data.status != null && data.status !== '') setMessage(data.status);
       if (data.details != null) setDetails(data.details);
       if (typeof data.progress === 'number' && isFinite(data.progress)) setProgress(clampFraction(data.progress));
@@ -213,7 +222,9 @@ constructor(transform: BABYLON.TransformNode, scene: BABYLON.Scene, properties: 
 | Stage (state) | Status line (example) | Detail line (example) | Progress |
 | --- | --- | --- | --- |
 | Scene download (`OnLoadProgress`) | Loading Scene 45% | — | file percent |
-| Asset preloader (3) | Loading terrain 45% · Loading skins 20% · Loading animations · Loading navigation · Loading water · Loading ray tracing | Loading 12 of 25 assets (before any heavy system starts) · then the stage the system is waiting on, e.g. Loading terrain textures (steady, forward only) | one combined scene fraction |
+| Building the scene (1) | Building scene 40% | Downloading scene geometry · Building 1200 of 3908 meshes · Loading 120 of 177 textures | meshes built + textures loaded |
+| Setting up the scene (2) | Setting up scene | Creating scene components | full |
+| Asset preloader (3) | Loading assets 40% · Loading terrain 45% · Loading skins 20% · Loading animations · Loading navigation · Loading water · Loading ray tracing | Loading 12 of 25 assets (before any heavy system starts) · then the stage the system is waiting on, e.g. Loading terrain textures (steady, forward only) | one combined scene fraction |
 | Preparing scene view (4) | Compiling shaders 67% · then Starting scene | 140 of 210 shaders compiled · then All 210 shaders compiled | shader fraction (full at Starting scene) |
 
 **You have full creative freedom.** These are the states the runtime reports, and the default splash screens show
@@ -224,9 +235,12 @@ with the load (a bar, stage names, counts), never an endless "please wait".
 
 **Where each value comes from:**
 - `GameManager.EventBus.OnMessage("OnLoadProgress", ...)` — the scene download (`message`, `percent` / `overallPercent`), plus your own `GameManager.PostProgressStatus()` messages.
-- `TOOLKIT.SceneManager.OnLoaderStatusObservable` — every `TOOLKIT.ILoaderStatus` after the download: `status` (status line), `details` (detail line), `progress` (0..1 fraction of the current state, or `null`) and `state` (the loading state: 3 asset preloader, 4 preparing scene view). Text arrives in upper case.
+- `TOOLKIT.SceneManager.OnLoaderStatusObservable` — every `TOOLKIT.ILoaderStatus` after the download: `status` (status line), `details` (detail line), `progress` (0..1 fraction of the current state, or `null`) and `state` (the loading state: 1 building the scene, 2 setting up the scene, 3 asset preloader, 4 preparing scene view). Text arrives in upper case.
+- `TOOLKIT.SceneManager.HostDefersSceneStatus = true` — set it in a splash that hands its status line and bar to the toolkit once the scene file is in (the default engine.html and React splashes do) and stop showing the download percent after the first toolkit update with `state >= 1`. Without it the runtime posts only the detail line during states 1 and 2.
 - During the asset preloader the status line names one heavy system at a time (Terrain, Skins, Animations, Navigation, Water, Ray tracing) for at least 750 ms unless it completes; the bar is one weighted fraction of every heavy system in the scene. Small assets (light probes, audio, video, ordinary files) never get their own stage — they only count in "Loading n of m assets", which shows until the first heavy system starts.
 - For per-system indicators, subscribe to `TOOLKIT.LoadingProgress.OnProgressObservable` (`TOOLKIT.ILoadingJobProgress`: `title`, `stageLabel`, `jobProgress`, `groupProgress`, `sceneProgress`, `complete`) or read `TOOLKIT.LoadingProgress.GetSceneProgress(scene)` / `GetGroupProgress(scene, title)`; a terrain's own stages arrive on `TOOLKIT.TerrainBuilder.OnLoadProgressObservable` (`TOOLKIT.ITerrainLoadProgress`).
+- **Never let the splash look stuck.** A custom splash may show progress in any form and wording it likes, but it should always show *some* progress that keeps moving through every stage, not just the download. To keep that data arriving, keep `SceneManager.HostDefersSceneStatus = true`, both subscriptions (removed on cleanup) and the check that stops using `"OnLoadProgress"` once a toolkit update reports `state >= 1`, as in the example above. Without them the splash sits on "Loading Scene 100%" while the scene builds and sets up, which reads as a hang.
+- The page stays responsive for the whole load (the scene is built and set up in short slices), so the splash's own animation keeps running. Keep something visibly moving in every state, including the moments after a bar reaches 100% and the short hold on "Starting scene" while the last background work (GPU pipelines, particle pre-warm, LOD cross-fade materials) finishes before the reveal. CSS keyframe and transform animations stay smoothest.
 - Game code can await the same gate the splash uses: `await TOOLKIT.SceneManager.WhenSceneReady(scene, timeoutMs)` resolves `true` when the scene really finished, `false` on timeout or disposal, and never rejects.
 
 * Important: The `preloader` and `splash screen` **SHOULD** look very similar if not the same. The only differene is the preloader should be less animated than the splash screen because it is the `React Suspense` or downloading state.
