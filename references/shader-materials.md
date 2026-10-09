@@ -405,7 +405,7 @@ MaterialPropertyBlocks are applied automatically per renderer (as clones named `
 
 | Area | Status |
 |---|---|
-| VFX Graph assets | Not exported. Use a Babylon substitute (`unity-authoring-recipes.md` §22) |
+| VFX Graph assets | Carried by `TOOLKIT.VisualEffect` (`unity-authoring-recipes.md` §17); Shader Graph outputs inside VFX graphs are not |
 | HDRP | Graphs render under the scene's pre-exposure through `g_sgExposure` (HDRP-target classes also pre-expose their Emission output) and transparent classes get HDRP height fog. The Physically Based Sky renders live through `TOOLKIT.HdrpPhysicallyBasedSky` (a Material-mode sky graph draws the default atmosphere, warned). **Water surfaces do not render**; fog-volume graphs have no volumetric shadows |
 | Clear coat | Environment term not ported (slightly bright under the probe) |
 | Subsurface | An in-shader per-light wrap polyfill, not Babylon subsurface |

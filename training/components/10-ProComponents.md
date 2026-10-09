@@ -1,6 +1,6 @@
 # Pro Components Reference
 
-> This document covers: `PostProcessor`, the HDRP rendering classes (`HdrpRendering`, `HdrpPhysicallyBasedSky`, `PlanarReflection`), `TerrainBuilder`, `ShurikenParticles`, `LineRenderer` / `TrailRenderer`, `WebVideoPlayer`, `UserInterface` (exported Unity UI), and the legacy Unity GUI controls (`UnitySlider`, `UnityScrollBar`, `UnityDropdownMenu`).
+> This document covers: `PostProcessor`, the HDRP rendering classes (`HdrpRendering`, `HdrpPhysicallyBasedSky`, `PlanarReflection`), `TerrainBuilder`, `ShurikenParticles`, `VisualEffect` (VFX Graph), `LineRenderer` / `TrailRenderer`, `WebVideoPlayer`, `UserInterface` (exported Unity UI), and the legacy Unity GUI controls (`UnitySlider`, `UnityScrollBar`, `UnityDropdownMenu`).
 >
 > All of these are **created by the exporter** from Unity components (Pro licence). Find them with `TOOLKIT.SceneManager.FindScriptComponent`, then tune them — never rebuild what they already render. Shader Graph material APIs (`setFloat`, `TOOLKIT.ShaderGlobals`) are in the Custom Shader Code Instructions (`references/shader-materials.md`).
 
@@ -168,6 +168,64 @@ fx.onSystemStoppedObservable.add((s) => { /* Stop Action = Callback */ });
 Safe to edit (written once at load): the *constant* start values `minLifeTime` / `maxLifeTime`, `minEmitPower` / `maxEmitPower`, `minSize` / `maxSize`, `minInitialRotation` / `maxInitialRotation`, `color1` / `color2`, `blendMode`. Start values authored as curves are rewritten every frame.
 
 **Has no effect — do not set:** `emitRate`, `manualEmitCount`, `updateSpeed`, `gravity`, `colorDead`. Emission, gravity and colour over lifetime come from the exported modules. Control playback with the component (`play` / `stop` / `emit`), never `ps.start()` / `ps.stop()`. Change the look in Unity and re-export.
+
+---
+
+## VFX Graph (TOOLKIT.VisualEffect)
+
+> **Extends:** `TOOLKIT.ScriptComponent` (Pro)  
+> **Role:** Unity VFX Graph runtime. Each exported `VisualEffect` carries a description of every particle system in its graph. A system runs on the **GPU** path (`BABYLON.GPUParticleSystem`) when every block maps, else on the **CPU** path (a Node Particle System skeleton whose update queue runs every VFX block as a toolkit step). Spawners, events, exposed properties, update mode and prewarm come from the export; the export summary and one grouped runtime console summary per scene name each system's path and every deviation.
+
+### Find and control an effect
+
+```typescript
+const fogEffect: TOOLKIT.VisualEffect = TOOLKIT.SceneManager.GetComponent<TOOLKIT.VisualEffect>(node, "TOOLKIT.VisualEffect");
+const BURST_SPAWN_RATE: number = 40;                // particles per second
+fogEffect.play();                                   // sends the initial event (default OnPlay)
+fogEffect.sendEvent("Burst");                       // a graph event by name; an unknown name warns once
+fogEffect.setFloat("Spawn Rate", BURST_SPAWN_RATE); // exposed property by Unity's exposed name
+fogEffect.resetOverride("Spawn Rate");              // back to the exported value
+```
+
+| Member | Notes |
+|---|---|
+| `play()` | Sends the initial event (default `OnPlay`) |
+| `stop()` | Sends `OnStop`: spawners stop, live particles finish |
+| `reinit()` | Clears every particle, resets spawners and the seed rule, then sends the initial event |
+| `sendEvent(eventName)` | Sends an event by name. An unknown name warns once and does nothing |
+| `pause()`, `resume()`, `paused` | Freezes simulation and spawning; drawing continues |
+| `aliveParticleCount` | Live particles over every system (read-only) |
+| `getSystems()` | One `TOOLKIT.IVisualEffectSystemInfo` per exported system: `name`, `exportedPath` / `builtPath` (`"gpu"` / `"cpu"`; they differ on CPU fallback), `reason`, `particleSystem`, `aliveCount`, `deviations` |
+| `hasFloat` / `getFloat` / `setFloat`, and the same for `Int`, `UInt`, `Bool`, `Vector2`, `Vector3`, `Vector4`, `Gradient`, `AnimationCurve` | Typed exposed-property access by Unity's exposed name. `Vector3` also takes position / direction / vector properties, `Vector4` colours. A missing name or wrong type warns once: `set*` does nothing, `get*` returns null. Textures and meshes are not settable |
+| `resetOverride(name)` | Restores the exported value of one property |
+| `VisualEffect.FindAll(scene)`, `FindByInstanceId(scene, instanceId)` | Every live component of a scene; the component with that exported instance id (else null) |
+| `VisualEffect.PendingPrewarms(scene)`, `SceneTime(scene)` | CPU prewarms still queued (they hold the splash screen); seconds since the scene's first VisualEffect step |
+| `VisualEffect.GpuParticlesEnabled`, `GpuPrewarmMaxCycles` (200), `PrewarmSliceMs` (8) | Set before a scene loads. `GpuParticlesEnabled = false` builds every GPU system on the CPU path (testing) |
+
+### Example
+
+```typescript
+/** Thickens a VFX Graph fog while the player stands in a trigger. */
+export class FogThickener extends TOOLKIT.ScriptComponent {
+    /** Spawn rate while thickened, particles per second. */
+    private static readonly THICK_SPAWN_RATE: number = 60;
+    /** The fog effect on this node. */
+    private fog: TOOLKIT.VisualEffect = null;
+
+    /** Finds the exported VisualEffect on the same node. */
+    protected start(): void {
+        this.fog = TOOLKIT.SceneManager.GetComponent<TOOLKIT.VisualEffect>(this.transform, "TOOLKIT.VisualEffect");
+    }
+
+    /** Raises the exposed "Spawn Rate" when the effect has it. */
+    public thicken(): void {
+        if (this.fog == null || !this.fog.hasFloat("Spawn Rate")) return;
+        this.fog.setFloat("Spawn Rate", FogThickener.THICK_SPAWN_RATE);
+    }
+}
+```
+
+Drive the effect through the component and its exposed properties — never `start()` / `stop()` the Babylon systems from `getSystems()` directly. Change the graph in Unity and re-export; what the toolkit carries and what stays neutral is in `references/unity-authoring-recipes.md` §17.
 
 ---
 
