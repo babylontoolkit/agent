@@ -229,6 +229,158 @@ Drive the effect through the component and its exposed properties — never `sta
 
 ---
 
+## Cinemachine cameras and Unity Splines
+
+> **Extends:** `TOOLKIT.ScriptComponent` (Pro)  
+> **Role:** Unity Cinemachine 3 runtime — a `TOOLKIT.CinemachineBrain` on the exported camera node picks the live `TOOLKIT.CinemachineCamera` by priority, blends between cameras and writes the result to the node and its camera rig every frame. Cinemachine 2 content is converted to the Cinemachine 3 model at export, so V2 and V3 cameras play on the same runtime. The Unity Splines runtime (`TOOLKIT.SplineContainer`, `TOOLKIT.SplineAnimate`) ships alongside it and also works in projects without Cinemachine.
+
+### What exports automatically
+
+- **Cinemachine 3 (`com.unity.cinemachine` 3.x):** the brain, every camera and manager, every Position / Rotation Control, noise, extension, input axis controller, target group, impulse source / listener and the Timeline Cinemachine track, with their inline assets (noise profiles, blender settings, impulse definitions).
+- **Cinemachine 2 (2.x):** virtual cameras, FreeLooks, managers, the brain, paths, dolly / cart, impulse and post-processing are converted with the same tables as Unity's own upgrader (the scene is never changed). The Starter Assets `PlayerFollowCamera` plays as a third-person follow camera.
+- **Unity Splines (`com.unity.splines`):** every `SplineContainer` (knots, tangents, tangent modes, closed state, extra data) and `SplineAnimate`.
+- A setting the runtime cannot honour is listed once in the export console under **Cinemachine**; nothing fails the export. A project without Cinemachine or Splines exports exactly as before.
+
+### Classes and their Unity counterparts
+
+| Toolkit class | Unity counterpart |
+|---|---|
+| `TOOLKIT.CinemachineBrain` | `CinemachineBrain` |
+| `TOOLKIT.CinemachineCore` (static) | `CinemachineCore` |
+| `TOOLKIT.CinemachineVirtualCameraBase` (base) | `CinemachineVirtualCameraBase` |
+| `TOOLKIT.CinemachineCamera` | `CinemachineCamera` (V2 `CinemachineVirtualCamera`, `CinemachineFreeLook`) |
+| `TOOLKIT.CinemachineExternalCamera` | `CinemachineExternalCamera` |
+| `TOOLKIT.CinemachineCameraManagerBase` (base) | `CinemachineCameraManagerBase` |
+| `TOOLKIT.CinemachineClearShot` / `CinemachineStateDrivenCamera` / `CinemachineSequencerCamera` / `CinemachineMixingCamera` | the same names (V2 `CinemachineBlendListCamera` → Sequencer) |
+| `TOOLKIT.CinemachineComponentBase` (base) | `CinemachineComponentBase` |
+| `TOOLKIT.CinemachineFollow` / `CinemachineOrbitalFollow` / `CinemachineThirdPersonFollow` / `CinemachinePositionComposer` / `CinemachineHardLockToTarget` / `CinemachineSplineDolly` | Position Control: the same names (V2 Transposer, Orbital Transposer / FreeLook, 3rd Person Follow, Framing Transposer, Hard Lock To Target, Tracked Dolly) |
+| `TOOLKIT.CinemachineRotationComposer` / `CinemachinePanTilt` / `CinemachineHardLookAt` / `CinemachineRotateWithFollowTarget` / `CinemachineSplineDollyLookAtTargets` | Rotation Control: the same names (V2 Composer, POV, Hard Look At, Same As Follow Target) |
+| `TOOLKIT.CinemachineBasicMultiChannelPerlin` | Noise: `CinemachineBasicMultiChannelPerlin` |
+| `TOOLKIT.CinemachineExtension` (base) | `CinemachineExtension` |
+| `TOOLKIT.CinemachineDeoccluder` / `CinemachineDecollider` / `CinemachineConfiner2D` / `CinemachineConfiner3D` / `CinemachineShotQualityEvaluator` | the same names (V2 Collider → Deoccluder, Confiner → Confiner 3D) |
+| `TOOLKIT.CinemachineCameraOffset` / `CinemachineRecomposer` / `CinemachineFollowZoom` / `CinemachineGroupFraming` / `CinemachineThirdPersonAim` / `CinemachineFreeLookModifier` | the same names |
+| `TOOLKIT.CinemachineVolumeSettings` / `CinemachinePostProcessing` / `CinemachineAutoFocus` | the same names (per-camera post-processing; the profile is a `TOOLKIT.PostProcessor` on the camera node) |
+| `TOOLKIT.CinemachineFreeLookModifierBase`, `CinemachineFreeLookTiltModifier`, `CinemachineFreeLookLensModifier`, `CinemachineFreeLookPositionDampingModifier`, `CinemachineFreeLookCompositionModifier`, `CinemachineFreeLookDistanceModifier`, `CinemachineFreeLookNoiseModifier`, `CinemachineFreeLookComponentModifier` | `CinemachineFreeLookModifier.Modifier` and its Tilt / Lens / Position Damping / Composition / Distance / Noise modifiers |
+| `TOOLKIT.CinemachineInputAxisController`, `CinemachineInputAxisControllerEntry`, `CinemachineInputAxisReader`, `CinemachineInputSource` | `CinemachineInputAxisController` and its controllers / readers (V2 `CinemachineInputProvider`) |
+| `TOOLKIT.CinemachineTargetGroup`, `CinemachineGroupWeightManipulator` | the same names |
+| `TOOLKIT.CinemachineImpulseSource` / `CinemachineCollisionImpulseSource` / `CinemachineImpulseListener` / `CinemachineExternalImpulseListener` | the same names |
+| `TOOLKIT.CinemachineImpulseManager`, `CinemachineImpulseEvent`, `CinemachineImpulseDefinition`, `CinemachineImpulseEnvelopeDefinition`, `CinemachineImpulseReaction`, `CinemachineFixedSignal` | `CinemachineImpulseManager`, `ImpulseEvent`, `CinemachineImpulseDefinition`, `EnvelopeDefinition`, `ImpulseReaction`, `CinemachineFixedSignal` |
+| `TOOLKIT.CinemachineSplineCart`, `CinemachineSplineRoll`, `CinemachineSplineDolly`, `CinemachineSplineContainerExtensions`, `CinemachineSplineHelpers`, `SplineAutoDollyFixedSpeed`, `SplineAutoDollyNearestPointToTarget` | `CinemachineSplineCart`, `CinemachineSplineRoll`, `CinemachineSplineDolly`, `SplineContainerExtensions`, `SplineAutoDolly.FixedSpeed` / `NearestPointToTarget` (V2 `CinemachineDollyCart`, paths) |
+| `TOOLKIT.CinemachineTimeline`, `CinemachineTimelineTrack`, `CinemachineTimelineShot` | Timeline `CinemachineTrack` / `CinemachineShot` played live on the brain |
+| `TOOLKIT.CinemachineTriggerAction` | `CinemachineTriggerAction` |
+| `TOOLKIT.CinemachineBlend`, `CinemachineBlendDefinition`, `CinemachineBlenderSettings` | `CinemachineBlend`, `CinemachineBlendDefinition`, `CinemachineBlenderSettings` |
+| `TOOLKIT.CinemachineThirdPersonFollowObstacleSettings`, `CinemachinePhysicsQuery`, `CinemachineVolumeBlendable`, `CinemachineVolumeExtension`, `Cinemachine3OrbitRigSettings`, `Cinemachine3OrbitRigSplineCache`, `CinemachineRect`, `CinemachineContract`, `CinemachineMath` | runtime helpers (Third Person obstacle settings, physics casts, volume blending, orbit rig, screen rects, export contract, Unity math) |
+| `TOOLKIT.SplineContainer`, `Spline`, `SplineCurve`, `SplineData`, `SplinePath`, `SplineUtility`, `SplineMath` | Unity Splines `SplineContainer`, `Spline`, `BezierCurve`, `SplineData<T>`, `SplinePath`, `SplineUtility`, `SplineMath` |
+| `TOOLKIT.SplineAnimate` | Unity Splines `SplineAnimate` |
+| Enums: `TOOLKIT.CinemachineBlendStyles`, `CinemachineBrainUpdateMethods`, `CinemachineBrainBlendUpdateMethods`, `CinemachineLensOverrideModes`, `CinemachineGateFitMode`, `CinemachineOutputChannels`, `CinemachineStandbyUpdateMode`, `CinemachineStage`, `CinemachineUpdateClock`, `CinemachineUpdateFilter`, `CinemachineBindingMode`, `CinemachineAngularDampingMode`, `CinemachineOrbitalFollowOrbitStyles`, `CinemachineOrbitalFollowReferenceFrames`, `CinemachinePanTiltReferenceFrames`, `CinemachinePanTiltRecenterTargetModes`, `CinemachineDeoccluderResolutionStrategy`, `CinemachineFocusTrackingModes`, `CinemachineGroupFramingModes`, `CinemachineGroupFramingSizeAdjustmentModes`, `CinemachineGroupFramingLateralAdjustmentModes`, `CinemachineTargetGroupPositionModes`, `CinemachineTargetGroupRotationModes`, `CinemachineTargetGroupUpdateMethods`, `CinemachineImpulseShapes`, `CinemachineImpulseTypes`, `CinemachineImpulseDirectionModes`, `CinemachineImpulseDissipationModes`, `CinemachineImpulseRepeatModes`, `CinemachineImpulseSignalCombinationModes`, `CinemachinePostFlavours`, `CinemachineSplineCartUpdateMethods`, `CinemachineSplineDollyRotationMode`, `CinemachineTriggerActionModes`, `CinemachineTriggerTimeModes`, `SplineAnimateMethod`, `SplineAnimateLoopMode`, `SplineAnimateEasingMode`, `SplineAnimateAlignmentMode` | Unity's nested enums with the same values (`CinemachineBlendDefinition.Styles`, `CinemachineBrain.UpdateMethods`, `LensSettings.OverrideModes`, `Camera.GateFitMode`, `OutputChannels`, `CinemachineOrbitalFollow.OrbitStyles`, `CinemachineImpulseDefinition.ImpulseShapes`, `CinemachineTriggerAction.ActionSettings.Mode`, `SplineAnimate.LoopMode` …) |
+| `TOOLKIT.Clipper`, `Clipper64`, `ClipperBase`, `ClipperOffset`, `ClipperInternal`, `ClipperPoint64`, `ClipperPointD`, `ClipperRect64`, `ClipperPaths64` | the Clipper2 routines Cinemachine's Confiner 2D vendors (`Clipper`, `Clipper64`, `ClipperBase`, `ClipperOffset`, `InternalClipper`, `Point64`, `PointD`, `Rect64`, `Paths64`) |
+
+### Main API
+
+```typescript
+const scene: BABYLON.Scene = this.scene;
+const brain: TOOLKIT.CinemachineBrain = TOOLKIT.CinemachineCore.GetActiveBrain(scene);      // the first live brain, or null
+const cameras: TOOLKIT.CinemachineVirtualCameraBase[] = TOOLKIT.CinemachineCore.GetVirtualCameras(scene);
+const closeUp: TOOLKIT.CinemachineCamera = TOOLKIT.SceneManager.GetComponent<TOOLKIT.CinemachineCamera>(closeUpNode, "TOOLKIT.CinemachineCamera");
+```
+
+| Member | Notes |
+|---|---|
+| `CinemachineCore.GetActiveBrain(scene, index?)`, `GetActiveBrains(scene)`, `GetVirtualCameras(scene)`, `IsLive(camera)` | Static lookups, keyed by scene |
+| `CinemachineCore.OnCameraActivated` / `OnBlendCreated` / `OnBlendFinished` / `OnCameraDeactivated` / `OnCameraUpdated` | Global observables (every brain and manager) |
+| `CinemachineCore.UniformDeltaTimeOverride`, `CurrentTimeOverride` | Seconds; `-1` (default) uses the scene clock |
+| `brain.activeVirtualCamera`, `activeBlend`, `isBlending`, `outputCamera` | The live camera, the blend in progress, the Babylon camera rig the brain drives |
+| `brain.defaultBlend`, `customBlends`, `updateMethod`, `blendUpdateMethod`, `ignoreTimeScale`, `channelMask` | Unity's brain settings (`CinemachineBrainUpdateMethods`: FixedUpdate 0, LateUpdate 1, SmartUpdate 2, ManualUpdate 3) |
+| `brain.onCameraActivatedObservable`, `onBlendCreatedObservable`, `onBlendFinishedObservable`, `onCameraCutObservable`, `onCameraUpdatedObservable` | Per-brain events; each fires once per change |
+| `brain.manualUpdate()`, `brain.resetState()` | Update now (ManualUpdate brains, once per frame); forget the current camera so the next one cuts in |
+| `camera.priority`, `priorityEnabled`, `prioritize()`, `enabled`, `isLive`, `outputChannel` | Raise the priority (or call `prioritize()`) to make a camera live on the next frame; a disabled camera never goes live |
+| `camera.follow`, `lookAt`, `target`, `lens`, `blendHint`, `state` | Retarget at run time by assigning a node; `lens.fieldOfView` is vertical degrees |
+| `camera.cancelDamping(updateNow?)`, `forceCameraPosition(position, rotation)`, `getCinemachineComponent(stage)` | Snap, teleport, and find the Body / Aim / Noise / Finalize component |
+| `orbitalFollow.horizontalAxis` / `verticalAxis` / `radialAxis`, `panTilt.panAxis` / `tiltAxis` (`TOOLKIT.InputAxis`: `value`, `range`, `wrap`, `recentering`) | Drive the axes from code, or let `CinemachineInputAxisController` read the toolkit input (mouse, gamepad, keyboard) |
+| `targetGroup.addMember(node, weight, radius)`, `removeMember(node)`, `findMember(node)` | Group framing members (weight 0–1, radius in metres) |
+| `impulseSource.generateImpulse(velocityOrForce?)`, `generateImpulseAt(position, velocity)` | Fire an impulse; listening cameras within the definition's dissipation distance shake |
+| `container.evaluatePosition(t, splineIndex?)`, `evaluateTangent`, `evaluateUpVector`, `calculateLength(splineIndex?)` | `TOOLKIT.SplineContainer`; `t` is normalized 0–1, results in world space |
+| `splineAnimate.play()`, `pause()`, `restart(autoplay)`, `normalizedTime`, `elapsedTime`, `duration`, `maxSpeed`, `isPlaying` | `TOOLKIT.SplineAnimate`; seconds and metres per second |
+
+### Example
+
+```typescript
+/** Cuts to a close-up camera on demand, retargets it, and builds a fallback rig in code when the scene has no brain. */
+export class ShotDirector extends TOOLKIT.ScriptComponent {
+    /** Priority that beats every authored camera in the scene. */
+    private static readonly CLOSE_UP_PRIORITY: number = 50;
+    /** Behind-and-above offset of the code-built follow camera, in metres (an exported-bag vector). */
+    private static readonly FOLLOW_OFFSET: { x: number; y: number; z: number } = { x: 0, y: 2, z: -6 };
+    /** The close-up camera on this node, or null. */
+    private closeUp: TOOLKIT.CinemachineCamera = null;
+    /** The active brain, or null. */
+    private brain: TOOLKIT.CinemachineBrain = null;
+
+    /** Finds the brain and the close-up camera, and logs every finished blend. */
+    protected start(): void {
+        this.brain = TOOLKIT.CinemachineCore.GetActiveBrain(this.scene);
+        this.closeUp = TOOLKIT.SceneManager.GetComponent<TOOLKIT.CinemachineCamera>(this.transform, "TOOLKIT.CinemachineCamera");
+        if (this.brain == null) return;
+        this.brain.onBlendFinishedObservable.add((blendEvent: TOOLKIT.ICinemachineCameraEvent) => {
+            console.log("Now live: " + blendEvent.camera.name);
+        });
+    }
+
+    /**
+     * Makes the close-up live (the brain blends with its default or custom blend) and points it at a new subject.
+     * @param subject The node the close-up follows and frames.
+     */
+    public showCloseUp(subject: BABYLON.TransformNode): void {
+        if (this.closeUp == null) return;
+        this.closeUp.follow = subject;
+        this.closeUp.priority = ShotDirector.CLOSE_UP_PRIORITY;
+    }
+
+    /**
+     * Builds a follow camera entirely in code: a CinemachineCamera, a Follow body and a Rotation Composer aim on a new node.
+     * The scene's main camera node needs a brain (`new TOOLKIT.CinemachineBrain(mainCameraNode, scene, {})`) when none was exported.
+     * @param subject The node to follow.
+     * @returns The new camera.
+     */
+    public buildFollowRig(subject: BABYLON.TransformNode): TOOLKIT.CinemachineCamera {
+        const rigNode: BABYLON.TransformNode = new BABYLON.TransformNode("Code Follow Camera", this.scene);
+        const rigCamera: TOOLKIT.CinemachineCamera = new TOOLKIT.CinemachineCamera(rigNode, this.scene, { priority: { enabled: true, value: ShotDirector.CLOSE_UP_PRIORITY } });
+        // Settings go in the properties bag: a component reads it on its first frame, so a field set right after `new` would be overwritten.
+        new TOOLKIT.CinemachineFollow(rigNode, this.scene, { followOffset: ShotDirector.FOLLOW_OFFSET });
+        new TOOLKIT.CinemachineRotationComposer(rigNode, this.scene, {});
+        rigCamera.follow = subject; // a target set in code before the first frame wins over the bag
+        return rigCamera;
+    }
+}
+```
+
+### Units
+
+Positions and offsets in metres, angles and field of view in degrees (`lens.fieldOfView` is vertical), blend and damping times in seconds, axis speeds as authored in Unity, spline positions normalized 0–1 unless a unit is named (`PathIndexUnit` Distance / Normalized / Knot). Vectors use Unity's axes as exported (left-handed, Y up).
+
+### Coexistence
+
+- The brain owns its camera node and rig. It stands down while a `TOOLKIT.PlayableDirector` binds a camera track to that camera, and while the Starter Assets first-person controller holds the rig; it resumes with a cut when they release it.
+- A Starter Assets `DefaultCameraSystem` in control mode 1–3 also moves the camera: the brain warns once and keeps writing it (use control mode 0).
+- Without a physics engine the Deoccluder, Decollider, Third Person Follow obstacle avoidance and collision impulses run as "no obstacles" and warn once.
+- Per-camera post-processing blends a Cinemachine volume (priority 999, role `"cinemachine"`) on top of the scene's `TOOLKIT.PostProcessor` volumes; edit it like any other volume.
+
+### Deviations from Unity
+
+- A **ManualUpdate** brain places its camera once when it starts (Cinemachine 2's first-scene-load update), then moves only on `manualUpdate()`. Cinemachine 3 skips that update; the exported data does not say which version authored the brain, so every ManualUpdate brain does it.
+- Cinemachine 2 lenses whose mode follows the camera take the output camera's **sensor size and gate fit** at export (Cinemachine 2 reads them from the camera every frame).
+- Deoccluder / Decollider / Third Person obstacle casts use `TOOLKIT.RigidbodyPhysics` ray and sphere casts (Havok) instead of PhysX overlap tests; a tag-ignored hit re-casts past it (up to 16 times). Re-enabling a Deoccluder or Decollider keeps its per-camera state.
+- Confiner 2D does not bake `CircleCollider2D` shapes (Unity's does not either); its skeleton bake spends up to 1/120 s per frame.
+- Collision impulses take Unity's trigger path for both collisions and triggers (Babylon contacts carry no relative velocity); `ignoreTimeScale` impulses use `performance.now()`. `TargetPositionCache` (Timeline scrubbing cache) is not ported.
+- Perlin noise and impulse reactions are seeded per node, so a shake is the same on every load.
+- Timeline: shots play live through `TOOLKIT.CinemachineTimeline`; the `TOOLKIT.PlayableDirector` bake stays the fallback. Behaviours on a shot camera that was never enabled keep their defaults until it is enabled.
+- A spline with no knots evaluates to `+Infinity` (as Unity); exported knots keep their stored tangents (auto-smoothing runs only for code-built splines). Unity's `BezierCurve` is `TOOLKIT.SplineCurve`.
+- Code-built rigs with no input controller get the Cinemachine editor's default controls.
+
+Change cameras, blends and splines in Unity and re-export; set priorities, targets and axes from code at run time.
+
+---
+
 ## TOOLKIT.LineRenderer / TOOLKIT.TrailRenderer
 
 > **Extends:** `TOOLKIT.ScriptComponent` (Pro)  
