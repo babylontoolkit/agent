@@ -30,7 +30,7 @@ Every Unity feature reaches BabylonJS one of four ways. Know which before you au
 |---|---|---|
 | **Direct** | Serialised as-is and recreated by the runtime | meshes, PBR materials, Realtime/Mixed lights, fog, colliders, cameras |
 | **Bake** | Unity bakes it; the bake output ships | lightmaps and shadowmasks, light probes, reflection probes, IBL `.env`, colour-grading LUTs, the Recast navmesh, animation clips |
-| **Toolkit** | Carried by a toolkit component or runtime class that mirrors the Unity system | `TerrainBuilder`, `AnimationState`, `PostProcessor`, `RigidbodyPhysics`, `NavigationAgent`, `ShurikenParticles`, `VisualEffect`, script components |
+| **Toolkit** | Carried by a toolkit component or runtime class that mirrors the Unity system | `TerrainBuilder`, `Animator`, `PostProcessor`, `RigidbodyPhysics`, `NavigationAgent`, `ShurikenParticles`, `VisualEffect`, script components |
 | **Substitute** | Not carried; the named Babylon-side equivalent does the job | cookies, Timeline, realtime GI |
 
 **Baking is how the pipeline carries lighting and navigation.** Always bake. Unity's lightmapper, probe
@@ -95,7 +95,7 @@ How to call the typed commands is in `unity-editor-commands.md`. The export itse
 | Off-mesh links — `OffMeshLink`, AI Navigation `NavMeshLink` (width, direction, area, cost override, activation) | **Bake** — into the Recast navmesh, plus scene key `navigation.offmeshlinks` | Re-bake after adding or moving a link (§12) |
 | NavMeshAgent | **Toolkit** `NavigationAgent` (crowd) — crosses off-mesh links (auto or manual traversal) | Pro (§12) |
 | Animation clips | **Bake** (glTF animations, 30 fps) | Not licence-gated (§13) |
-| Animator state machines, blend trees, layers, avatar masks, root motion, events, StateMachineBehaviours | **Toolkit** `AnimationState` | Pro. Direct blend trees, additive and synced layers, entry transitions, interruption, sub-state machines, speed / mirror / cycle-offset parameters carried; mirror and synced Timing are approximations (§13) |
+| Animator state machines, blend trees, layers, avatar masks, root motion, events, StateMachineBehaviours, override controllers, humanoid IK | **Toolkit** `Animator` | Pro. A port of Unity's Animator: every Unity Animator exports as `TOOLKIT.Animator` with nothing added; clips are sampled by Unity's own Animator evaluation (Bake Into Pose, mirror, offsets exact); Unity's Apply Root Motion rules; override controllers and runtime swaps. Humanoid poses blend per bone, not in muscle space (§13) |
 | AudioSource, AudioListener | **Toolkit** `AudioSource`: Unity's rolloff curves, spatial blend and stereo pan; the active camera is the listener | Pro (§14) |
 | Prefabs | **Toolkit** — layer-31 in-level prefabs, or asset containers | §15 |
 | Particle systems (Shuriken, every module; CPU-simulated), incl. Shader Graph particle materials | **Toolkit** `ShurikenParticles` | Pro. Noise, distortion and lit-particle shading approximated (§17) |
@@ -113,7 +113,7 @@ How to call the typed commands is in `unity-editor-commands.md`. The export itse
 **Pro** means the project needs a valid Babylon Toolkit `license.json` (`unity-exporter-cli.md` §0). Without it
 the export still "succeeds", but the following are **silently omitted**:
 - every `physics` and `collision` block, including static colliders;
-- terrain, AnimationState, AudioSource, NavigationAgent, CharacterController, particles, line / trail / sprite /
+- terrain, Animator, AudioSource, NavigationAgent, CharacterController, particles, line / trail / sprite /
   tilemap renderers, UI, video;
 - post-processing volumes, LOD groups and camera anti-aliasing.
 
@@ -1016,9 +1016,13 @@ before exporting.
 - **Clips (Bake, not licence-gated).** Every enabled Animator with a controller, and every legacy Animation
   component, has its clips **baked to glTF animations** at `AnimBakingFrameRate` (default **30 fps**). Skinned
   meshes export skins, and blend-shape weight curves become morph-target animation.
-- **State machine (Toolkit, Pro).** An Animator also becomes a `TOOLKIT.AnimationState` component carrying the
-  **state machine**: layers, states, transitions, parameters and blend trees. It also carries clip settings,
-  `applyrootmotion` and the update mode.
+- **State machine (Toolkit, Pro).** Every Animator also becomes a `TOOLKIT.Animator` component (a port of Unity's
+  Animator; scripting API in `training/components/03-Animator.md`) carrying its controller or override controller,
+  avatar, settings, layers, masks, states, sub-state machines, transitions, parameters, blend trees, events and
+  StateMachineBehaviours, with Unity's own hashes. Every clip variant it can play (override clips and mirrored variants
+  included) is sampled by **Unity's own Animator evaluation**, so Bake Into Pose, Based Upon, offsets, Loop Pose, cycle
+  offset, trims and mirror are Unity's. Beside the pose keys each clip carries its root trajectory, humanoid body / pivot
+  / gravity values, Foot IK goals, parameter curves and property curves.
 - **Rig modes.** The toolkit **`AnimatorControlRig`** component switches a rig to vertex-animation textures (VAT,
   for crowds) or to a shared runtime rig that retargets clips by bone name.
 
@@ -1042,49 +1046,57 @@ Simple procedural clips (doors, platforms, spinning pickups): `create_animation_
 Omitted tangents are **flat**, not Unity's Auto tangents. Exact parameter names for every command:
 `unity command --tag animation --detail full`.
 
+**Author it — override controller:** create an Animator Override Controller asset over the base controller, assign its
+override clips, and set it as the Animator's controller. To swap controllers at runtime (weapons, mounts), also put
+each controller in a public `RuntimeAnimatorController` field of a script component on the character or a parent; it
+then travels with the character and the script assigns it (`03-Animator.md` §10).
+
+**Author it — root-motion character:** tick Apply Root Motion on the Animator
+(`set_component_properties --type Animator --properties '{"m_ApplyRootMotion":true}'`), set each clip's Bake Into
+Pose / Based Upon in its import settings as in Unity, and give the character a Unity CharacterController (exported as
+`TOOLKIT.CharacterController`, which collides) or a Rigidbody; a plain transform moves without collisions.
+
 | Feature | How it reaches BabylonJS |
 |---|---|
 | States; transitions with conditions, exit time, (fixed) duration, offset, solo/mute; parameters | **Toolkit** ✅ |
 | Blend trees — 1D, 2D Simple Directional, 2D Freeform (both), **Direct** (incl. Normalized Blend Values, nested in other trees) | **Toolkit** ✅ |
-| Layers — weight (`setLayerWeight` / `getLayerWeight`), **override** and **additive** blending, avatar masks | **Toolkit** ✅ — additive adds `inverse(first frame) × current` of its clip on top of the layers below |
+| Layers — weight (`setLayerWeight` / `getLayerWeight`), **override** and **additive** blending, avatar masks | **Toolkit** ✅ — additive adds its clip's motion relative to the additive reference pose (the clip's first frame unless one is set) on top of the layers below |
 | **Synced** layers (override motions per state) | **Toolkit** ✅ — follow the source layer's state, including mid-transition |
 | Entry transitions | **Toolkit** ✅ — evaluated in order when a machine is entered through Entry (a transition to a sub-state machine, or Exit from the root); like Unity, a layer **starts in its default state** |
-| Transitions in flight; interruption source (None, Current State, Next State, both orders), Ordered Interruption | **Toolkit** ✅ — Any State transitions are evaluated first (Unity order) and can always interrupt; `isInTransition(layer)` / `getActiveTransition(layer)` |
+| Transitions in flight; interruption source (None, Current State, Next State, both orders), Ordered Interruption | **Toolkit** ✅ — Any State transitions are evaluated first (Unity order) and can always interrupt; `isInTransition(layer)` / `getAnimatorTransitionInfo(layer)` |
 | Can Transition To Self | **Toolkit** ✅ (Any State transitions); a state's own transition onto itself restarts it |
 | Sub-state machines | **Toolkit** ✅ — transitions to a machine enter through its entry transitions (else its default state); Exit follows the machine's outgoing transitions, else re-enters the parent through Entry |
 | State speed + **speed multiplier parameter** (negative plays backwards), **cycle offset** + parameter, **mirror** + parameter; Animator `speed` | **Toolkit** ✅ — parameters are read live. A state with a speed multiplier parameter plays at that parameter's value, as in Unity. The toolkit's `ThirdPersonPlayerController` and `StandardPlayerController` set the Starter Assets `MotionSpeed` every frame as Unity's ThirdPersonController does (1, or the input magnitude when `analogMovement` is on; parameter name `animationStateParams.motionSpeed`); a custom script driving that controller must set it itself, or locomotion holds still |
-| `StateMachineBehaviour`s | **Toolkit** ✅ — `onStateMachineBehaviourObservable` raises `{kind, behaviour, state, layer, properties}` for enter / update / exit / machineEnter / machineExit; a class registered with `TOOLKIT.SceneManager.RegisterClass("<C# class name>", …)` (namespace-qualified name first) is created on its first enter, gets the exported public / `[SerializeField]` fields, and receives `onStateEnter` / `onStateUpdate` / `onStateExit(animator, stateInfo, layerIndex)` and `onStateMachineEnter` / `onStateMachineExit(animator, machinePath)`. Machine-level behaviours also receive enter / update / exit for every state inside the machine. A missing class warns once per name |
-| `AnimatorOverrideController` | ❌ — nothing exports; use a real controller |
-| Root motion | Baked in when `applyRootMotion` is on, pinned otherwise; the runtime exposes root-motion deltas |
-| AnimationEvents | ✅ via `onAnimationEventObservable` (skeleton mode, 0.01 normalised-time precision) |
+| `StateMachineBehaviour`s | **Toolkit** ✅ — all seven hooks in Unity's order: a class registered with `TOOLKIT.SceneManager.RegisterClass("<C# class name>", …)` (namespace-qualified name first) is created lazily, gets the exported public / `[SerializeField]` fields, and receives `onStateEnter` / `onStateUpdate` / `onStateExit` / `onStateMove` / `onStateIK(animator, stateInfo, layerIndex)` and `onStateMachineEnter` / `onStateMachineExit(animator, stateMachinePathHash)`; extending `TOOLKIT.StateMachineBehaviour` is optional. Machine-level behaviours also receive the state hooks of every state inside the machine. `onStateMachineBehaviourObservable` raises `{kind, behaviour, state, layer, properties}` for every hook. A missing class warns once per name |
+| `AnimatorOverrideController` | **Toolkit** ✅ — chains (override of an override) flatten to the root base, as Unity re-bases them; `getOverride` / `setOverride` / `applyOverrides` at runtime; controllers in `RuntimeAnimatorController` script fields travel with the character for runtime `runtimeAnimatorController` swaps (an override of the same base keeps state, time and parameters; any other swap resets, as in Unity) |
+| Root motion | **Toolkit** ✅ — Unity's Apply Root Motion rules with Bake Into Pose / Based Upon honoured: an `onAnimatorMove` taker, else (with `applyRootMotion`) the character's `TOOLKIT.CharacterController` / `TOOLKIT.ThirdPersonController`, a Havok body or the transform; `deltaPosition`, `velocity`, `bodyPosition`, `matchTarget` |
+| AnimationEvents | ✅ exact times, once per crossing: `onAnimatorEventObservable` and a same-named (or lower-camel) method on the Animator node's script components, as Unity's message |
 | Clip curves that drive Animator parameters | ✅ |
-| Humanoid clips | Baked onto the first SkinnedMeshRenderer's bones; share clips across rigs with `AnimatorControlRig`'s rig mode (bone names must match) |
-| IK pass | The runtime raises an IK observable; solve the IK in a script component |
+| Property curves | ✅ GameObject active; enabled of toolkit scripts, lights and renderers; material floats and colours; light intensity / colour / range / spot angle (not HDRP); camera field of view and clip planes. Others are listed as `unmapped property` in the export summary |
+| Mirror (state, blend-tree child, parameter) | ✅ Unity-baked mirrored clip variants |
+| Humanoid clips | Sampled by Unity's Animator onto the first SkinnedMeshRenderer's bones; share clips across rigs with `AnimatorControlRig`'s rig mode (bone names must match) |
+| IK pass, Foot IK | ✅ Unity's IK API (`setIKPosition`, `setLookAtPosition`, …) in `onAnimatorIKObservable` / `onAnimatorIK` / `onStateIK`; Foot IK from Unity-baked goals |
 | Skinning | Max **4** bone influences |
 | Blend shapes | ✅ (last frame only, no names); blend-shape animation ✅ |
-| Timeline / PlayableDirector | **Substitute** — a TypeScript component driving `AnimationState` or animation groups |
+| Timeline / PlayableDirector | **Substitute** — a TypeScript component driving `Animator` or animation groups |
 
-**Deviations from Unity** (skeleton mode unless noted):
+**Deviations from Unity:**
 
-- **Mirror is an approximation.** The runtime swaps the tracks of the exported humanoid left / right bone pairs and
-  reflects local rotations across the character's YZ plane (rest-pose corrected). Like Unity, a mirrored **looping**
-  motion plays half a cycle on (mirrored at t = swapped and reflected clip at t + 0.5), so a mirrored run stays in step
-  with the unmirrored one, and generic rigs ignore mirror. Measured against Unity on the Starter PlayerArmature (Run_N and
-  an authored one-arm clip) hands and feet agree to about 2 cm; Unity mirrors in muscle space, so rigs with an
-  asymmetric rest pose can differ more.
-- **Synced-layer Timing is an approximation.** With Timing on, the source layer plays at
-  `sourceLength / lerp(sourceLength, syncedLength, syncedWeight)` and the synced layer is locked to the source's
-  normalized time; Unity's exact duration blend is not documented, so long, heavily weighted synced clips can drift.
-- **Additive layers carry no root motion,** and an additive layer is never the base layer.
-- **Direct trees divide by the weight sum** of the children that animate a property, so weights summing below 1 do
-  not fade toward the rest pose.
-- **Cycle offset shifts the sampled pose only**; animation events still fire on the unshifted phase.
-- **Machine enter / exit behaviours fire whenever the active state's machine changes** (including the root machine on
-  the first state), not only through Entry / Exit nodes.
-- **VAT mode** carries transitions, interruption, behaviours, speed and cycle offset; it has one layer and no mirror.
+- **Humanoid poses blend per bone, not in Unity's muscle space.** Crossfades can drift a few centimetres; additive and
+  synced humanoid layers compose per bone (hips 8–16 cm on a test character with both).
+- **Humanoid root motion equals Unity's at `feetPivotActive` 0.** At Unity's default 1, Unity adds a feet-pivot
+  correction while clips blend that the runtime does not model (locomotion blends about 5 % slower in Unity, up to 18 cm
+  over a 30 s walk). For exact parity set `animator.feetPivotActive = 0` from a Unity script.
+- **Physics-driven characters** move with Havok, not PhysX: wall stops, slides and kinematic turns can differ slightly.
+- **The hips never move to reach an IK goal.**
+- **Synced-layer Timing is an approximation** (`lerp(sourceLength, syncedLength, syncedWeight)`).
+- **Match target:** hands, and feet without baked goals, use their current offset from the root.
+- **VAT mode** runs the full state machine, but the GPU blends the four heaviest **base-layer** clips per instance;
+  other layers, avatar masks and IK are skeleton-only (export summary line). Mirror, root motion and events work.
+  At most 32 clips per character.
 
 For one animated transform in its own `.glb`: `bt_export_animation --path <HierarchyPath>`. It writes no
-metadata, so that file has no `AnimationState`. It also bakes **no keyframes** for a rig in VAT mode.
+metadata, so that file has no `Animator`. It also bakes **no keyframes** for a rig in VAT mode.
 
 ---
 
@@ -1364,7 +1376,7 @@ few lines in a script component:
 
 | Unity feature | Babylon-side substitute |
 |---|---|
-| Timeline / PlayableDirector cinematics | A TypeScript component driving `AnimationState`, animation groups or camera paths |
+| Timeline / PlayableDirector cinematics | A TypeScript component driving `Animator`, animation groups or camera paths |
 | Light cookies | `SpotLight.projectionTexture` |
 | Realtime GI (Enlighten) | Bake the GI (§4) |
 | URP renderer features other than Full Screen Pass / Decal (e.g. the SSAO feature), URP Panini and Screen Space Lens Flare (HDRP's are carried, §9) | `SSAO2RenderingPipeline`, custom `PostProcess`, `LensFlareSystem` |

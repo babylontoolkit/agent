@@ -239,9 +239,9 @@ static FindAllScriptComponents<T extends TOOLKIT.ScriptComponent>(
 
 **Example:**
 ```typescript
-// Get the AnimationState on a character
-const anim: TOOLKIT.AnimationState = TOOLKIT.SceneManager.FindScriptComponent(
-    characterNode, "TOOLKIT.AnimationState"
+// Get the Animator on a character
+const animator: TOOLKIT.Animator = TOOLKIT.SceneManager.FindScriptComponent(
+    characterNode, "TOOLKIT.Animator"
 );
 
 // Get all audio sources in a level

@@ -15,7 +15,7 @@ import * as TOOLKIT from "@babylonjs-toolkit/next";
 
 ## Pattern 1 — Third-Person Player Controller
 
-Full third-person controller: input → CharacterController movement → AnimationState → camera follow.
+Full third-person controller: input → CharacterController movement → Animator → camera follow.
 
 ```typescript
 namespace TOOLKIT {
@@ -33,7 +33,7 @@ namespace TOOLKIT {
 
         // Runtime references
         private cc: TOOLKIT.CharacterController = null;
-        private anim: TOOLKIT.AnimationState = null;
+        private animator: TOOLKIT.Animator = null;
         private cameraPivot: BABYLON.TransformNode = null;
 
         // State
@@ -55,7 +55,7 @@ namespace TOOLKIT {
 
         protected start(): void {
             this.cc   = this.getComponent("TOOLKIT.CharacterController");
-            this.anim = this.getComponent("TOOLKIT.AnimationState");
+            this.animator = this.getComponent<TOOLKIT.Animator>(TOOLKIT.Animator.ClassName);
 
             this.cameraPivot = TOOLKIT.SceneManager.FindChildTransformNode(
                 this.transform, this.cameraPivotName, TOOLKIT.SearchType.ExactMatch
@@ -122,17 +122,17 @@ namespace TOOLKIT {
             if (TOOLKIT.InputController.WasKeyboardButtonTapped(TOOLKIT.UserInputKey.SpaceBar, true)) {
                 if (this.cc?.isGrounded() && this.cc.canJump()) {
                     this.cc.jump(this.jumpForce);
-                    this.anim?.setTrigger("Jump");
+                    this.animator?.setTrigger("Jump");
                 }
             }
 
             // ── Animation parameters ──────────────────────────────────────────
             const actualSpeed = hasInput ? this.moveDir.length() : 0;
             const normalizedSpeed = actualSpeed / (this.moveSpeed * this.sprintMultiplier);
-            this.anim?.setSmoothFloat("Speed", normalizedSpeed, 0.1);
-            this.anim?.setBool("IsGrounded", this.cc?.isGrounded() ?? true);
-            this.anim?.setFloat("VerticalVelocity", this.cc?.getVerticalVelocity() ?? 0);
-            this.anim?.setBool("IsSprinting", isSprinting && hasInput);
+            this.animator?.setFloat("Speed", normalizedSpeed, 0.1, this.getDeltaSeconds());
+            this.animator?.setBool("IsGrounded", this.cc?.isGrounded() ?? true);
+            this.animator?.setFloat("VerticalVelocity", this.cc?.getVerticalVelocity() ?? 0);
+            this.animator?.setBool("IsSprinting", isSprinting && hasInput);
         }
     }
 }
@@ -158,7 +158,7 @@ namespace TOOLKIT {
 
         // Runtime references
         private agent: TOOLKIT.NavigationAgent = null;
-        private anim: TOOLKIT.AnimationState = null;
+        private animator: TOOLKIT.Animator = null;
         private audio: TOOLKIT.AudioSource = null;
         private playerNode: BABYLON.TransformNode = null;
 
@@ -188,7 +188,7 @@ namespace TOOLKIT {
 
         protected start(): void {
             this.agent = this.getComponent("TOOLKIT.NavigationAgent");
-            this.anim  = this.getComponent("TOOLKIT.AnimationState");
+            this.animator  = this.getComponent<TOOLKIT.Animator>(TOOLKIT.Animator.ClassName);
             this.audio = this.getComponent("TOOLKIT.AudioSource");
 
             this.playerNode = TOOLKIT.SceneManager.FindGameObjectWithTag(this.scene, "Player");
@@ -197,8 +197,8 @@ namespace TOOLKIT {
             this.patrolPoints = ptNodes ?? [];
 
             // Animation events
-            this.anim?.onAnimationEventObservable.add((evt) => {
-                if (evt.function === "DealDamage") this.dealMeleeDamage();
+            this.animator?.onAnimatorEventObservable.add((animatorEvent: TOOLKIT.AnimatorEvent) => {
+                if (animatorEvent.functionName === "DealDamage") this.dealMeleeDamage();
             });
 
             // Nav complete
@@ -239,7 +239,7 @@ namespace TOOLKIT {
                 this.agent?.cancelNavigation();
                 if (this.attackTimer <= 0) {
                     this.attackTimer = this.attackCooldown;
-                    this.anim?.setTrigger("Attack");
+                    this.animator?.setTrigger("Attack");
                 }
                 // Face the player
                 const toPlayer = this.playerNode!.position.subtract(this.transform.position);
@@ -251,7 +251,7 @@ namespace TOOLKIT {
 
             // Animation sync
             const vel = this.agent?.getAgentVelocity() ?? BABYLON.Vector3.Zero();
-            this.anim?.setSmoothFloat("Speed", vel.length(), 0.1);
+            this.animator?.setFloat("Speed", vel.length(), 0.1, this.getDeltaSeconds());
         }
 
         private enterState(s: "patrol"|"chase"|"attack"|"dead"): void {
@@ -293,9 +293,9 @@ namespace TOOLKIT {
         private die(): void {
             this.enterState("dead");
             this.agent?.cancelNavigation();
-            this.anim?.setTrigger("Die");
-            this.anim?.onAnimationEndObservable.addOnce(() => {
-                TOOLKIT.SceneManager.SafeDestroy(this.transform, 3000, true);
+            this.animator?.setTrigger("Die");
+            this.animator?.onStateEnterObservable.add((stateChange: TOOLKIT.IAnimatorStateChange) => {
+                if (stateChange.stateInfo.isName("Die")) TOOLKIT.SceneManager.SafeDestroy(this.transform, 3000, true);
             });
             TOOLKIT.SceneManager.EventBus.PostMessage("enemy:killed", {
                 position: this.transform.position.clone()
@@ -566,7 +566,7 @@ namespace TOOLKIT {
     export class DoorController extends TOOLKIT.ScriptComponent {
         private isOpen: boolean = false;
         private isAnimating: boolean = false;
-        private anim: TOOLKIT.AnimationState = null;
+        private animator: TOOLKIT.Animator = null;
         private openSound: TOOLKIT.AudioSource = null;
 
         constructor(t: BABYLON.TransformNode, s: BABYLON.Scene, p: any = {}) {
@@ -574,7 +574,7 @@ namespace TOOLKIT {
         }
 
         protected start(): void {
-            this.anim      = this.getComponent("TOOLKIT.AnimationState");
+            this.animator      = this.getComponent<TOOLKIT.Animator>(TOOLKIT.Animator.ClassName);
             this.openSound = this.getComponent("TOOLKIT.AudioSource");
 
             this.enableCollisionEvents();
@@ -596,7 +596,7 @@ namespace TOOLKIT {
             this.isOpen = true;
 
             this.openSound?.play();
-            this.anim?.playAnimation("DoorOpen", 0.1);
+            this.animator?.crossFadeInFixedTime("DoorOpen", 0.1);
 
             // Wait for animation to finish (~1.5 seconds)
             await TOOLKIT.SceneManager.WaitForSeconds(1.5);
@@ -611,7 +611,7 @@ namespace TOOLKIT {
             this.isOpen = false;
 
             this.openSound?.play();
-            this.anim?.playAnimation("DoorClose", 0.1);
+            this.animator?.crossFadeInFixedTime("DoorClose", 0.1);
 
             await TOOLKIT.SceneManager.WaitForSeconds(1.5);
             this.isAnimating = false;

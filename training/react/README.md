@@ -1489,6 +1489,6 @@ TOOLKIT.SceneManager.RegisterClass("MyGameMode", MyGameMode);
 > **Full Babylon Toolkit Component Reference:**  
 > `https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/README.md`
 >
-> **SceneManager, AnimationState, CharacterController, RaycastVehicle, InputController, AudioSource and all other component APIs are documented in that reference.**  
+> **SceneManager, Animator, CharacterController, RaycastVehicle, InputController, AudioSource and all other component APIs are documented in that reference.**  
 >
 > **Important:** Default UMD namespaces for BabylonJS and the Babylon Toolkit (`BABYLON.*`, `TOOLKIT.*`, `PROJECT.*`).

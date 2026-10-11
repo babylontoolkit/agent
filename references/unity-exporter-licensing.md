@@ -22,7 +22,7 @@ Pro Tools Disabled: Exporting standard community edition content
 | Animation clips, skins, morph targets | ✅ | ✅ |
 | **Script components** (`EditorScriptComponent`) | ✅ | ✅ |
 | **Every `physics` and `collision` block** (Rigidbody, static colliders, CharacterController) | ❌ dropped | ✅ |
-| **Animator state machine** (`AnimationState`) | ❌ dropped | ✅ |
+| **Animator** (`TOOLKIT.Animator`) | ❌ dropped | ✅ |
 | **AudioSource** | ❌ dropped | ✅ |
 | **NavMeshAgent** | ❌ dropped | ✅ |
 | **CharacterController** | ❌ dropped | ✅ |

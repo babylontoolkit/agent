@@ -196,7 +196,7 @@ type tags) never fails a test, a verification or an Acceptance criterion.
 - Input: use `IC` = alias for `TOOLKIT.InputController`  
 - Physics: `this.transform.physicsBody`  
 - Audio: `TOOLKIT.AudioSource`  
-- Animator: `TOOLKIT.AnimationState`  
+- Animator: `TOOLKIT.Animator` (Unity's Animator API in camelCase)  
 - Navigation: `TOOLKIT.NavigationAgent`  
 - Character: `TOOLKIT.CharacterController`
 
@@ -206,7 +206,7 @@ type tags) never fails a test, a verification or an Acceptance criterion.
 |------------------------------|-----------------------------------|
 | ScriptComponent              | UnityEngine.Component             |
 | AudioSource                  | UnityEngine.AudioSource           |
-| AnimationState               | UnityEngine.Animator              |
+| Animator                     | UnityEngine.Animator              |
 | NavigationAgent              | UnityEngine.AI.NavMeshAgent       |
 | CharacterController          | UnityEngine.CharacterController   |
 | BABYLON.TransformNode        | UnityEngine.Transform/GameObject  |
@@ -225,7 +225,7 @@ namespace TOOLKIT {
 		getDeltaTime(): number;
 	}
 	class AudioSource extends TOOLKIT.ScriptComponent {}
-	class AnimationState extends TOOLKIT.ScriptComponent {}
+	class Animator extends TOOLKIT.ScriptComponent {}
 	class NavigationAgent extends TOOLKIT.ScriptComponent {}
 	class CharacterController extends TOOLKIT.ScriptComponent {}
 }
@@ -247,10 +247,11 @@ audio.play(time?, offset?, length?);
 audio.pause();
 audio.isPaused();
 
-// Animation
-let animator = new TOOLKIT.AnimationState(transform, scene);
-animator.playAnimation(state);
-animator.stopAnimation();
+// Animation (every exported Unity Animator is an Animator component: get it, never construct it)
+const animator = TOOLKIT.SceneManager.GetComponent<TOOLKIT.Animator>(transform, "TOOLKIT.Animator");
+animator.crossFadeInFixedTime(state, 0.25);
+animator.play(state);
+animator.enabled = false; // pause; true resumes
 animator.setFloat(name, value);
 animator.setBool(name, value);
 animator.setTrigger(name);

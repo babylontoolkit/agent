@@ -53,7 +53,7 @@ Scene
 │   ├── PROJECT.StandardPlayerController  ← Full-featured 3rd/1st person
 │   │   OR
 │   ├── PROJECT.ThirdPersonPlayerController ← Pure third-person controller
-│   └── (Optional) TOOLKIT.AnimationState
+│   └── (Optional) TOOLKIT.Animator
 │
 ├── NetworkManager (Multiplayer)
 │   └── PROJECT.ColyseusGameServer        ← Server connection & room join
@@ -406,7 +406,7 @@ getCameraBoomNode(): BABYLON.TransformNode   // Camera boom pivot
 getCameraTransform(): BABYLON.TransformNode  // Active camera transform
 getCameraPivotPosition(): BABYLON.Vector3
 getCameraPivotRotation(): BABYLON.Quaternion
-getAnimationState(): TOOLKIT.AnimationState
+getAnimator(): TOOLKIT.Animator
 getCharacterController(): TOOLKIT.CharacterController
 ```
 
@@ -513,7 +513,7 @@ All other properties, state methods, and animation integration are identical to 
 **Extends:** `TOOLKIT.ScriptComponent`  
 **File:** `Assets/[Starter]/Player/RemotePlayerController.ts`
 
-Drives the `TOOLKIT.AnimationState` of a remotely networked character using buffered network attributes. Reads 14 attribute slots from `TOOLKIT.EntityController.QueryBufferedAttribute`.
+Drives the `TOOLKIT.Animator` of a remotely networked character using buffered network attributes. Reads 14 attribute slots from `TOOLKIT.EntityController.QueryBufferedAttribute`.
 
 #### Properties
 
@@ -1179,22 +1179,27 @@ static AttachSpatialCamera(camera): void
 static IsLegacyEngine(): boolean
 ```
 
-### `TOOLKIT.AnimationState` — Instance Methods
+### `TOOLKIT.Animator` — Instance Methods
+
+The Starter controllers find the Animator on the avatar child (`getAnimator()`). Full API: [03-Animator.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/03-Animator.md).
 
 ```typescript
-const anim: TOOLKIT.AnimationState = this.getComponent("TOOLKIT.AnimationState");
-anim.playAnimation(stateName): void
-anim.stopAnimation(): void
-anim.setFloat(name, value): void
-anim.setBool(name, value): void
-anim.setInteger(name, value): void
-anim.setTrigger(name): void
-anim.setSmoothFloat(name, value, speed): void
-anim.getFloat(name): number
-anim.getBool(name): boolean
-anim.getInteger(name): number
-anim.ikFrameEnabled(): boolean
-anim.onAnimationUpdateObservable: BABYLON.Observable<BABYLON.TransformNode>
+const animator: TOOLKIT.Animator = this.getComponent<TOOLKIT.Animator>(TOOLKIT.Animator.ClassName, true);
+animator.crossFadeInFixedTime(stateName, transitionSeconds): void
+animator.play(stateName): void
+animator.enabled = false                       // pause; true resumes
+animator.setFloat(name, value, dampTime?, deltaTime?): void   // damped when dampTime is given (call every frame)
+animator.setBool(name, value): void
+animator.setInteger(name, value): void
+animator.setTrigger(name): void
+animator.getFloat(name): number
+animator.getBool(name): boolean
+animator.getInteger(name): number
+animator.hasIKPassLayer(): boolean
+animator.applyRootMotion: boolean
+animator.onAnimatorMoveObservable: BABYLON.Observable<TOOLKIT.Animator>   // root-motion taker
+animator.onAnimatorIKObservable: BABYLON.Observable<number>               // IK pass (layer index)
+animator.onStateExitObservable: BABYLON.Observable<TOOLKIT.IAnimatorStateChange>
 ```
 
 ### `TOOLKIT.CharacterController` — Instance Methods
@@ -1239,7 +1244,7 @@ Player (with CharacterController physics)
   ├── StandardPlayerController
   │     enableInput=true, attachCamera=true
   │     moveSpeed=5.335, jumpSpeed=10
-  ├── TOOLKIT.AnimationState
+  ├── TOOLKIT.Animator
   └── TOOLKIT.CharacterController
 
 [Level Geometry with colliders]
@@ -1313,7 +1318,7 @@ Player
 - [ ] Physics body (`TOOLKIT.CharacterController` or `TOOLKIT.RigidbodyPhysics`) on player root
 - [ ] `enableInput=false` by default; set `true` on game start
 - [ ] `attachCamera=true` on `StandardPlayerController` for automatic camera binding
-- [ ] `TOOLKIT.AnimationState` on avatar child node for animation
+- [ ] `TOOLKIT.Animator` on avatar child node for animation (every Unity Animator exports as one)
 - [ ] `postNetworkAttributes=true` if multiplayer
 
 ### Network Setup (if applicable)

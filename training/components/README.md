@@ -13,7 +13,7 @@ The Babylon Toolkit (BT) is a **Unity-to-Babylon game runtime**. It exports Unit
 
 The key mental model: **Unity = editor / authoring tool. Babylon = runtime renderer. BT bridges them.**
 
-Everything lives in the `TOOLKIT` namespace (e.g. `TOOLKIT.SceneManager`, `TOOLKIT.AnimationState`).
+Everything lives in the `TOOLKIT` namespace (e.g. `TOOLKIT.SceneManager`, `TOOLKIT.Animator`).
 
 In an npm/ESM project, the `TOOLKIT` namespace is the root import of the `@babylonjs-toolkit/next` package:
 
@@ -31,7 +31,7 @@ import * as TOOLKIT from "@babylonjs-toolkit/next";
 |------|----------|
 | [01-SceneManager.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/01-SceneManager.md) | Static scene manager — loading, timing, queries, shadow, physics, utilities |
 | [02-ScriptComponent.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/02-ScriptComponent.md) | Base component class — lifecycle, property bag, collision events, helpers |
-| [03-AnimationState.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/03-AnimationState.md) | Unity Mechanim-style animator — state machine, parameters, blend trees, root motion |
+| [03-Animator.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/03-Animator.md) | TOOLKIT.Animator — Unity Animator port: parameters, play / crossFade, state info, layers, root motion, events, StateMachineBehaviours, humanoid IK, override controllers, VAT ([03-AnimationState.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/03-AnimationState.md) redirects here) |
 | [04-CharacterController.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/04-CharacterController.md) | Physics-based character controller — move, jump, grounding, collisions |
 | [05-NavigationAgent.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/05-NavigationAgent.md) | Recast/Detour AI navigation agent — setDestination, crowd, off-mesh links |
 | [06-RigidbodyPhysics.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/06-RigidbodyPhysics.md) | Havok rigidbody, raycast, shapecast, vehicle physics |
@@ -112,8 +112,8 @@ TOOLKIT.SceneManager.EventBus             // GlobalMessageBus — scene-wide mes
 
 ```typescript
 // Get one component by class name
-const anim: TOOLKIT.AnimationState = TOOLKIT.SceneManager.FindScriptComponent(
-    transformNode, "TOOLKIT.AnimationState"
+const animator: TOOLKIT.Animator = TOOLKIT.SceneManager.FindScriptComponent(
+    transformNode, "TOOLKIT.Animator"
 );
 
 // Get all components of a class on node + descendants
@@ -122,7 +122,7 @@ const all: TOOLKIT.AudioSource[] = TOOLKIT.SceneManager.FindAllScriptComponents(
 );
 
 // From inside a ScriptComponent subclass:
-const anim: TOOLKIT.AnimationState = this.getComponent("TOOLKIT.AnimationState");
+const ownAnimator: TOOLKIT.Animator = this.getComponent<TOOLKIT.Animator>(TOOLKIT.Animator.ClassName);
 const child = this.getChildNode("Head", TOOLKIT.SearchType.ExactMatch);
 ```
 
@@ -152,7 +152,7 @@ node.metadata.toolkit
   .prefab           — prefab source info
   .tag              — Unity tag string
   .layer            — Unity layer number
-  .animator         — serialized Animator Controller (for AnimationState)
+  .animator         — the Animator's id (its TOOLKIT.Animator bag is in components[]; its clip groups carry source = this id)
   .navagent         — navigation agent properties
   .wheels           — wheel collider data (for RaycastVehicle)
 ```

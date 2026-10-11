@@ -230,16 +230,20 @@ enum CollisionFlags {
 
 ---
 
-### `AnimatorParameterType`
+### Animator enums (`TOOLKIT.Animator`, Unity's values)
 
 ```typescript
-enum AnimatorParameterType {
-    Float   = 1,
-    Int     = 3,
-    Bool    = 4,
-    Trigger = 9
-}
+enum AnimatorControllerParameterType { Float = 1, Int = 3, Bool = 4, Trigger = 9 }
+enum AnimatorUpdateMode { Normal = 0, AnimatePhysics = 1, UnscaledTime = 2 }
+enum AnimatorCullingMode { AlwaysAnimate = 0, CullUpdateTransforms = 1, CullCompletely = 2 }
+enum AvatarTarget { Root = 0, Body = 1, LeftFoot = 2, RightFoot = 3, LeftHand = 4, RightHand = 5 }
+enum DurationUnit { Fixed = 0, Normalized = 1 }
+enum AvatarIKGoal { LeftFoot = 0, RightFoot = 1, LeftHand = 2, RightHand = 3 }
+enum AvatarIKHint { LeftKnee = 0, RightKnee = 1, LeftElbow = 2, RightElbow = 3 }
+enum HumanBodyBones { Hips = 0, LeftUpperLeg, RightUpperLeg, … }   // Unity's order and values
 ```
+
+Full Animator API: [03-Animator.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/03-Animator.md).
 
 ---
 
@@ -501,13 +505,13 @@ interface NodeMetadata {
     
     // Script components
     components: Array<{
-        alias: string;       // e.g. "TOOLKIT.AnimationState"
+        alias: string;       // e.g. "TOOLKIT.Animator"
         klass: string;       // full registered class name
         properties: any;     // serialized Inspector values
     }>;
     
     // Specialized sub-objects (if present)
-    animator: any;           // AnimatorController metadata
+    animator: string;        // the Animator's id (its TOOLKIT.Animator bag is a components[] entry)
     physics: any;            // Physics shape metadata
     navigation: any;         // Navigation agent parameters
     audio: any;              // AudioSource metadata
@@ -554,20 +558,28 @@ TOOLKIT.SceneManager.EventBus.RemoveHandler("item:collected", handler);
 
 ---
 
-## `IAnimatorEvent` Interface
-
-Returned by `AnimationState.onAnimationEventObservable`:
+## Animator types (`TOOLKIT.Animator`)
 
 ```typescript
-interface IAnimatorEvent {
-    id: number;                  // event id
-    clip: string;                // animation clip name
-    time: number;                // event time within the clip
-    function: string;            // function name set in Unity Animation Event
-    intParameter: number;
-    floatParameter: number;
-    stringParameter: string;
-    objectIdParameter: string;   // Unity Object reference id
-    objectNameParameter: string; // Unity Object reference name
+class AnimatorEvent {                 // Unity AnimationEvent; raised by onAnimatorEventObservable (pooled: valid during the callback)
+    functionName: string;             // the Unity function name
+    floatParameter: number; intParameter: number; stringParameter: string;
+    objectReferenceParameter: BABYLON.TransformNode;
+    time: number;                     // seconds from clip start
+    animatorStateInfo: AnimatorStateInfo; animatorClipInfo: AnimatorClipInfo;
+    layerIndex: number;
+    weight: number;                   // blend-tree child × transition weight
 }
+class AnimatorStateInfo { fullPathHash; shortNameHash; normalizedTime; length; speed; speedMultiplier; tagHash; loop; stateName; machineName; isName(name); isTag(tag); }
+class AnimatorTransitionInfo { fullPathHash; nameHash; userNameHash; normalizedTime; anyState; duration; durationUnit; }
+class AnimatorClipInfo { clip: AnimatorClipReference; weight: number; }
+class AnimatorClipReference { name; clipKey; length; frameRate; isLooping; }
+class AnimatorControllerParameter { name; nameHash; type; defaultFloat; defaultInt; defaultBool; }
+class MatchTargetWeightMask { constructor(positionXYZWeight: BABYLON.Vector3, rotationWeight: number) }
+interface IAnimatorStateChange { layerIndex: number; stateInfo: AnimatorStateInfo; }
+interface IAnimatorBehaviourEvent { kind: "enter" | "update" | "exit" | "move" | "ik" | "machineEnter" | "machineExit"; behaviour: string; state: string; layer: number; properties: { [field: string]: unknown }; }
+interface IAnimatorRootMotionReceiver { applyAnimatorRootMotion(deltaPosition: BABYLON.Vector3, deltaRotation: BABYLON.Quaternion, deltaTime: number): boolean; }
+interface IAnimatorClipOverrideData { originalClipKey: string; overrideClipKey: string | null; }
 ```
+
+Details and examples: [03-Animator.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/03-Animator.md) §13.

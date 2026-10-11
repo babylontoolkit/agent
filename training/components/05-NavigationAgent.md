@@ -181,11 +181,13 @@ agent.onNavCompleteObservable   // Observable<BABYLON.TransformNode> — destina
 
 ## AI Enemy — Complete Example
 
+> **Animated agents.** The agent drives the position and the `TOOLKIT.Animator` only animates from the agent's speed. If the character's Animator has Apply Root Motion on, take its root motion over so it does not fight the agent: set `agent.updatePosition = false` and copy `agent.getCurrentPosition()` in an `onAnimatorMoveObservable` observer — the "follow the agent" recipe in [03-Animator.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/03-Animator.md) §6.
+
 ```typescript
 namespace TOOLKIT {
     export class EnemyAI extends TOOLKIT.ScriptComponent {
         private agent: TOOLKIT.NavigationAgent = null;
-        private anim: TOOLKIT.AnimationState = null;
+        private animator: TOOLKIT.Animator = null;
         private playerTransform: BABYLON.TransformNode = null;
         private patrolPoints: BABYLON.TransformNode[] = [];
         private currentPatrol: number = 0;
@@ -206,7 +208,7 @@ namespace TOOLKIT {
 
         protected start(): void {
             this.agent = this.getComponent("TOOLKIT.NavigationAgent");
-            this.anim  = this.getComponent("TOOLKIT.AnimationState");
+            this.animator  = this.getComponent<TOOLKIT.Animator>(TOOLKIT.Animator.ClassName);
 
             // Find patrol points by tag
             const pointNodes = TOOLKIT.SceneManager.FindGameObjectsWithTag(this.scene, "PatrolPoint");
@@ -252,8 +254,8 @@ namespace TOOLKIT {
 
             // Animate
             const speed = this.agent.getAgentVelocity().length();
-            this.anim?.setSmoothFloat("Speed", speed, 0.1);
-            this.anim?.setBool("IsAttacking", this.state === "attack");
+            this.animator?.setFloat("Speed", speed, 0.1, this.getDeltaSeconds());
+            this.animator?.setBool("IsAttacking", this.state === "attack");
         }
 
         private setState(s: "patrol" | "chase" | "attack"): void {
@@ -298,7 +300,7 @@ agent.isOnOffMeshLink()  // returns true
 agent.onPreUpdateObservable.add((t) => {
     if (agent.isOnOffMeshLink()) {
         // play a jump or climb animation
-        anim.setTrigger("Jump");
+        animator.setTrigger("Jump");
     }
 });
 ```

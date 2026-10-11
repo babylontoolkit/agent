@@ -209,13 +209,15 @@ enum CollisionState {
 
 ---
 
-## CharacterController + AnimationState Full Example
+## CharacterController + Animator Full Example
+
+The Animator here only reads parameters. With **Apply Root Motion** on, the Animator moves the character through `TOOLKIT.CharacterController` instead (it is a root-motion receiver: the root velocity drives the Havok capsule horizontally, so walls stop it, and gravity and jumping stay the controller's) — see [03-Animator.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/03-Animator.md) §6.
 
 ```typescript
 namespace TOOLKIT {
     export class PlayerMovement extends TOOLKIT.ScriptComponent {
         private cc: TOOLKIT.CharacterController = null;
-        private anim: TOOLKIT.AnimationState = null;
+        private animator: TOOLKIT.Animator = null;
         private moveSpeed: number = 5.0;
         private jumpForce: number = 8.0;
         private rotSpeed: number = 360.0;
@@ -233,7 +235,7 @@ namespace TOOLKIT {
 
         protected start(): void {
             this.cc   = this.getComponent("TOOLKIT.CharacterController");
-            this.anim = this.getComponent("TOOLKIT.AnimationState");
+            this.animator = this.getComponent<TOOLKIT.Animator>(TOOLKIT.Animator.ClassName);
             this.camera = this.getCameraRig() as BABYLON.FreeCamera;
         }
 
@@ -255,14 +257,14 @@ namespace TOOLKIT {
             // ── Jump ─────────────────────────────────────────────────────────
             if (jumpKey && this.cc.isGrounded() && this.cc.canJump()) {
                 this.cc.jump(this.jumpForce);
-                this.anim?.setTrigger("Jump");
+                this.animator?.setTrigger("Jump");
             }
 
             // ── Animation Parameters ─────────────────────────────────────────
             const speed = Math.abs(vertical) * this.moveSpeed;
-            this.anim?.setSmoothFloat("Speed", speed, 0.1);
-            this.anim?.setBool("IsGrounded", this.cc.isGrounded());
-            this.anim?.setFloat("VerticalVelocity", this.cc.getVerticalVelocity());
+            this.animator?.setFloat("Speed", speed, 0.1, this.getDeltaSeconds());
+            this.animator?.setBool("IsGrounded", this.cc.isGrounded());
+            this.animator?.setFloat("VerticalVelocity", this.cc.getVerticalVelocity());
         }
     }
 }

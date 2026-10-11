@@ -135,12 +135,12 @@ Scene
 
 | System | Depends On |
 |---|---|
-| `StandardCarController` | `TOOLKIT.RigidbodyPhysics`, `TOOLKIT.RaycastVehicle`, `TOOLKIT.AudioSource`, `TOOLKIT.AnimationState` |
+| `StandardCarController` | `TOOLKIT.RigidbodyPhysics`, `TOOLKIT.RaycastVehicle`, `TOOLKIT.AudioSource`, `TOOLKIT.Animator` |
 | `VehicleInputController` | `PROJECT.StandardCarController`, `PROJECT.RaceTrackManager` |
 | `VehicleCameraManager` | `PROJECT.StandardCarController`, `PROJECT.VehicleInputController`, `PROJECT.DefaultCameraSystem` |
 | `CheckpointManager` | `PROJECT.RaceTrackManager` (static) |
 | `SkidMarkManager` | `PROJECT.StandardCarController` (calls `AddSkidMarkSegment` statically) |
-| `RemoteCarController` | `TOOLKIT.AnimationState`, `TOOLKIT.AudioSource`, `BABYLON.NetworkManager` |
+| `RemoteCarController` | `TOOLKIT.Animator`, `TOOLKIT.AudioSource`, `BABYLON.NetworkManager` |
 
 ---
 
@@ -174,7 +174,7 @@ const car = this.getComponent("PROJECT.StandardCarController") as PROJECT.Standa
 const trackMgr = TOOLKIT.SceneManager.SearchForScriptComponentByName(this.scene, "PROJECT.RaceTrackManager") as PROJECT.RaceTrackManager;
 
 // Get first child with a matching script
-const animNode = this.getChildWithScript("TOOLKIT.AnimationState");
+const animatorNode = this.getChildWithScript(TOOLKIT.Animator.ClassName);
 ```
 
 ### Class Registration
