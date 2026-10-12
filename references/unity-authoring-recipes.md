@@ -95,7 +95,7 @@ How to call the typed commands is in `unity-editor-commands.md`. The export itse
 | Off-mesh links — `OffMeshLink`, AI Navigation `NavMeshLink` (width, direction, area, cost override, activation) | **Bake** — into the Recast navmesh, plus scene key `navigation.offmeshlinks` | Re-bake after adding or moving a link (§12) |
 | NavMeshAgent | **Toolkit** `NavigationAgent` (crowd) — crosses off-mesh links (auto or manual traversal) | Pro (§12) |
 | Animation clips | **Bake** (glTF animations, 30 fps) | Not licence-gated (§13) |
-| Animator state machines, blend trees, layers, avatar masks, root motion, events, StateMachineBehaviours, override controllers, humanoid IK | **Toolkit** `Animator` | Pro. A port of Unity's Animator: every Unity Animator exports as `TOOLKIT.Animator` with nothing added; clips are sampled by Unity's own Animator evaluation (Bake Into Pose, mirror, offsets exact); Unity's Apply Root Motion rules; override controllers and runtime swaps. Humanoid poses blend per bone, not in muscle space (§13) |
+| Animator state machines, blend trees, layers, avatar masks, root motion, events, StateMachineBehaviours, override controllers, humanoid IK | **Toolkit** `Animator` | Pro. A port of Unity's Animator: every Unity Animator exports as `TOOLKIT.Animator` with nothing added; clips are sampled by Unity's own Animator evaluation (Bake Into Pose, mirror, offsets exact); Unity's Apply Root Motion rules; override controllers and runtime swaps. Humanoid layers, masks and blends mix in Unity's muscle space (§13) |
 | AudioSource, AudioListener | **Toolkit** `AudioSource`: Unity's rolloff curves, spatial blend and stereo pan; the active camera is the listener | Pro (§14) |
 | Prefabs | **Toolkit** — layer-31 in-level prefabs, or asset containers | §15 |
 | Particle systems (Shuriken, every module; CPU-simulated), incl. Shader Graph particle materials | **Toolkit** `ShurikenParticles` | Pro. Noise, distortion and lit-particle shading approximated (§17) |
@@ -870,14 +870,15 @@ collide with everything.
 | Mass, drag, angular drag, use gravity, kinematic | **Direct** |
 | Rotation constraints | **Direct** |
 | **Position** constraints | **Toolkit** — frozen world axes are held every physics step (frozen velocity zeroed, coordinates restored), so gravity, forces, impulses and hits cannot move the body on them. Kinematic bodies are exempt. `RigidbodyPhysics.HoldFrozenAxes(body, x, y, z)` re-captures after a scripted teleport; `ReleaseFrozenAxes(body)` frees it |
-| Physics materials (friction, bounciness, combine modes) | **Direct**. No material = the exporter's Default Friction / Restitution (0.6 / 0) |
+| Physics materials (friction, bounciness, combine modes) | **Direct**. No material = the project's Physics default material, else Unity's built-in default (friction 0.6, bounciness 0, combine Average), as in Unity. The toolkit Default Friction / Restitution settings do not apply to colliders |
 | Triggers | **Direct**; events arrive once a script calls `enableCollisionEvents()`. A **MeshCollider** trigger is a convex hull trigger; a non-convex one is exported as convex with one export warning (and warns once at runtime on older exports) |
 | `Physics.gravity` | **Toolkit** — `SceneController.sceneOptions.defaultGravity` (default `(0,-9.81,0)`, levels only) |
 | Hinge / Fixed / Spring / Configurable / Character joints | **Toolkit** — Starter joint components: `BallSocketJoint`, `DistanceJoint`, `FixedHingeJoint`, `LockedJoint`, `PrismaticJoint`, `SixdofJoint`, `SliderJoint` (`Assets/[Starter]/Physics/`) |
 | Centre of mass | **Toolkit** — `PhysicsRoot.centerMass` |
 | Layer Collision Matrix, `CollisionFilter.collideWith` | **Direct** — shape filter masks (see *Collision layers* above) |
 | Layer-masked queries | **Toolkit** — `RigidbodyPhysics.Raycast(origin, dir, length, RigidbodyPhysics.LayerMaskQuery(mask))` hits only layers in `mask` (Unity layer-mask bits); `Shapecast({ ..., layerMask })` likewise |
-| Interpolation, collision detection mode | **Substitute** — not carried |
+| Interpolation | **Toolkit** for a Rigidbody moved by Animator root motion: None / Interpolate / Extrapolate as Unity, on Unity's fixed step (`Time.fixedDeltaTime`, exported). Other bodies step with Havok every frame |
+| Collision detection mode | **Substitute** — not carried |
 | WheelCollider | **Toolkit** — a chassis Rigidbody with ≥ 2 child wheels becomes a Havok raycast vehicle. Suspension and friction come from the toolkit **`RaycastWheel`** on each wheel; drive it from a script (`dlc/[Racing]/StandardCarController.ts`) |
 | CharacterController | **Toolkit** `CharacterController` (radius, height, centre, skin width, slope, step) |
 | Nested Rigidbodies | Ignored (warned) — one body per hierarchy branch |
@@ -1060,36 +1061,33 @@ Pose / Based Upon in its import settings as in Unity, and give the character a U
 |---|---|
 | States; transitions with conditions, exit time, (fixed) duration, offset, solo/mute; parameters | **Toolkit** ✅ |
 | Blend trees — 1D, 2D Simple Directional, 2D Freeform (both), **Direct** (incl. Normalized Blend Values, nested in other trees) | **Toolkit** ✅ |
-| Layers — weight (`setLayerWeight` / `getLayerWeight`), **override** and **additive** blending, avatar masks | **Toolkit** ✅ — additive adds its clip's motion relative to the additive reference pose (the clip's first frame unless one is set) on top of the layers below |
-| **Synced** layers (override motions per state) | **Toolkit** ✅ — follow the source layer's state, including mid-transition |
-| Entry transitions | **Toolkit** ✅ — evaluated in order when a machine is entered through Entry (a transition to a sub-state machine, or Exit from the root); like Unity, a layer **starts in its default state** |
-| Transitions in flight; interruption source (None, Current State, Next State, both orders), Ordered Interruption | **Toolkit** ✅ — Any State transitions are evaluated first (Unity order) and can always interrupt; `isInTransition(layer)` / `getAnimatorTransitionInfo(layer)` |
+| Layers — weight (`setLayerWeight` / `getLayerWeight`), **override** and **additive** blending, avatar masks | **Toolkit** ✅ — humanoids mix in Unity's muscle space (avatar muscle model exported once per avatar); additive adds its clip's motion relative to the additive reference pose (the clip's first frame unless one is set) on top of the layers below; only the base layer and Root-masked layers move the body |
+| **Synced** layers (override motions per state) | **Toolkit** ✅ — follow the source layer's state, including mid-transition; Timing as Unity |
+| Entry transitions | **Toolkit** ✅ — evaluated in order when a machine is entered through Entry (a transition to a sub-state machine, or Exit from the root); like Unity, a layer **starts in its default state** (a nested default state is entered directly, without hooks) |
+| Transitions in flight; interruption source (None, Current State, Next State, both orders), Ordered Interruption | **Toolkit** ✅ — Unity's rules: Any State transitions (root machine only) are evaluated first; Interruption Source None blocks every interruption, Any State included; an Any State transition in flight is interrupted only by Any State; an interrupted destination exits at once; `isInTransition(layer)` / `getAnimatorTransitionInfo(layer)` |
 | Can Transition To Self | **Toolkit** ✅ (Any State transitions); a state's own transition onto itself restarts it |
-| Sub-state machines | **Toolkit** ✅ — transitions to a machine enter through its entry transitions (else its default state); Exit follows the machine's outgoing transitions, else re-enters the parent through Entry |
+| Sub-state machines | **Toolkit** ✅ — transitions to a machine enter through its entry transitions (else its default state); Exit follows the machine's outgoing transitions, else the layer restarts from the **root** machine's Entry (any depth), as in Unity |
 | State speed + **speed multiplier parameter** (negative plays backwards), **cycle offset** + parameter, **mirror** + parameter; Animator `speed` | **Toolkit** ✅ — parameters are read live. A state with a speed multiplier parameter plays at that parameter's value, as in Unity. The toolkit's `ThirdPersonPlayerController` and `StandardPlayerController` set the Starter Assets `MotionSpeed` every frame as Unity's ThirdPersonController does (1, or the input magnitude when `analogMovement` is on; parameter name `animationStateParams.motionSpeed`); a custom script driving that controller must set it itself, or locomotion holds still |
 | `StateMachineBehaviour`s | **Toolkit** ✅ — all seven hooks in Unity's order: a class registered with `TOOLKIT.SceneManager.RegisterClass("<C# class name>", …)` (namespace-qualified name first) is created lazily, gets the exported public / `[SerializeField]` fields, and receives `onStateEnter` / `onStateUpdate` / `onStateExit` / `onStateMove` / `onStateIK(animator, stateInfo, layerIndex)` and `onStateMachineEnter` / `onStateMachineExit(animator, stateMachinePathHash)`; extending `TOOLKIT.StateMachineBehaviour` is optional. Machine-level behaviours also receive the state hooks of every state inside the machine. `onStateMachineBehaviourObservable` raises `{kind, behaviour, state, layer, properties}` for every hook. A missing class warns once per name |
 | `AnimatorOverrideController` | **Toolkit** ✅ — chains (override of an override) flatten to the root base, as Unity re-bases them; `getOverride` / `setOverride` / `applyOverrides` at runtime; controllers in `RuntimeAnimatorController` script fields travel with the character for runtime `runtimeAnimatorController` swaps (an override of the same base keeps state, time and parameters; any other swap resets, as in Unity) |
-| Root motion | **Toolkit** ✅ — Unity's Apply Root Motion rules with Bake Into Pose / Based Upon honoured: an `onAnimatorMove` taker, else (with `applyRootMotion`) the character's `TOOLKIT.CharacterController` / `TOOLKIT.ThirdPersonController`, a Havok body or the transform; `deltaPosition`, `velocity`, `bodyPosition`, `matchTarget` |
+| Root motion | **Toolkit** ✅ — Unity's Apply Root Motion rules with Bake Into Pose / Based Upon honoured: an `onAnimatorMove` taker, else (with `applyRootMotion`) the character's `TOOLKIT.CharacterController` (Unity `CharacterController.Move` semantics) / `TOOLKIT.ThirdPersonController`, a Havok body (Unity's fixed-step, friction and Interpolation rules) or the transform; Feet Pivot Active as Unity; `deltaPosition`, `velocity`, `bodyPosition`, `matchTarget` |
 | AnimationEvents | ✅ exact times, once per crossing: `onAnimatorEventObservable` and a same-named (or lower-camel) method on the Animator node's script components, as Unity's message |
 | Clip curves that drive Animator parameters | ✅ |
 | Property curves | ✅ GameObject active; enabled of toolkit scripts, lights and renderers; material floats and colours; light intensity / colour / range / spot angle (not HDRP); camera field of view and clip planes. Others are listed as `unmapped property` in the export summary |
 | Mirror (state, blend-tree child, parameter) | ✅ Unity-baked mirrored clip variants |
 | Humanoid clips | Sampled by Unity's Animator onto the first SkinnedMeshRenderer's bones; share clips across rigs with `AnimatorControlRig`'s rig mode (bone names must match) |
-| IK pass, Foot IK | ✅ Unity's IK API (`setIKPosition`, `setLookAtPosition`, …) in `onAnimatorIKObservable` / `onAnimatorIK` / `onStateIK`; Foot IK from Unity-baked goals |
+| IK pass, Foot IK | ✅ Unity's IK API (`setIKPosition`, `setLookAtPosition`, …) in `onAnimatorIKObservable` / `onAnimatorIK` / `onStateIK`; Foot IK from Unity-baked goals, with the avatar's Leg Stretch |
 | Skinning | Max **4** bone influences |
 | Blend shapes | ✅ (last frame only, no names); blend-shape animation ✅ |
 | Timeline / PlayableDirector | **Substitute** — a TypeScript component driving `Animator` or animation groups |
 
 **Deviations from Unity:**
 
-- **Humanoid poses blend per bone, not in Unity's muscle space.** Crossfades can drift a few centimetres; additive and
-  synced humanoid layers compose per bone (hips 8–16 cm on a test character with both).
-- **Humanoid root motion equals Unity's at `feetPivotActive` 0.** At Unity's default 1, Unity adds a feet-pivot
-  correction while clips blend that the runtime does not model (locomotion blends about 5 % slower in Unity, up to 18 cm
-  over a 30 s walk). For exact parity set `animator.feetPivotActive = 0` from a Unity script.
-- **Physics-driven characters** move with Havok, not PhysX: wall stops, slides and kinematic turns can differ slightly.
+- **Foot IK leg pose** can differ slightly from Unity's in some blends (up to 4° in a 1D locomotion blend tree, 1.4° for
+  an upper-body layer over Foot IK locomotion; elsewhere within 0.5°).
+- **Physics contact is Havok's**, not PhysX: root motion follows Unity's fixed-step, friction, Interpolation and
+  `CharacterController.Move` rules (within 1 cm of Unity), but contacts are solved by Havok.
 - **The hips never move to reach an IK goal.**
-- **Synced-layer Timing is an approximation** (`lerp(sourceLength, syncedLength, syncedWeight)`).
 - **Match target:** hands, and feet without baked goals, use their current offset from the root.
 - **VAT mode** runs the full state machine, but the GPU blends the four heaviest **base-layer** clips per instance;
   other layers, avatar masks and IK are skeleton-only (export summary line). Mirror, root motion and events work.

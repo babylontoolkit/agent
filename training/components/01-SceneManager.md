@@ -281,7 +281,11 @@ static GetDeltaSeconds(scene, applyAnimationRatio?): number  // delta seconds
 static GetDeltaMilliseconds(scene, applyAnimationRatio?): number
 static GetAnimationRatio(scene): number  // ratio for 60fps normalization
 static GameTimeMilliseconds: number      // timestamp of game start (set manually)
+static GetFrameDeltaMilliseconds(engine): number  // this frame's delta in ms before the scene's min / max clamp (paced)
+static SmoothFrameDelta: boolean         // default true: pace the frame delta like Unity's Time.deltaTime
 ```
+
+**Frame pacing.** The delta functions return a paced frame delta, like Unity's `Time.deltaTime` on a vsync display: the browser's measured frame time jitters by ±1–2 ms while frames still reach the screen one refresh apart, and that jitter made moving characters and following cameras step unevenly. `TOOLKIT.FrameDeltaSmoother` (one per engine) removes it, keeps game time locked to real time and passes real hitches and frame-rate changes through. Every script, the Animator, the camera rigs, Timeline and Cinemachine read it. Set `TOOLKIT.SceneManager.SmoothFrameDelta = false` to read Babylon's raw measured delta (`engine.getDeltaTime()`).
 
 **Usage inside a ScriptComponent** (preferred):
 ```typescript

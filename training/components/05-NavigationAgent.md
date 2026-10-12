@@ -181,7 +181,7 @@ agent.onNavCompleteObservable   // Observable<BABYLON.TransformNode> — destina
 
 ## AI Enemy — Complete Example
 
-> **Animated agents.** The agent drives the position and the `TOOLKIT.Animator` only animates from the agent's speed. If the character's Animator has Apply Root Motion on, take its root motion over so it does not fight the agent: set `agent.updatePosition = false` and copy `agent.getCurrentPosition()` in an `onAnimatorMoveObservable` observer — the "follow the agent" recipe in [03-Animator.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/03-Animator.md) §6.
+> **Animated agents.** The agent drives the position and the `TOOLKIT.Animator` only animates from the agent's speed. If the character's Animator has Apply Root Motion on, take its root motion over so it does not fight the agent: set `agent.updatePosition = false` and copy `agent.getCurrentPosition()` in an `onAnimatorMoveObservable` observer once the agent is in the crowd (`agent.getAgentIndex() >= 0`; before that it reports the origin) — the "follow the agent" recipe in [03-Animator.md](https://raw.githubusercontent.com/babylontoolkit/agent/main/training/components/03-Animator.md) §6.
 
 ```typescript
 namespace TOOLKIT {

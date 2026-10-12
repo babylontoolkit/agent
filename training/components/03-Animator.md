@@ -53,7 +53,7 @@ const isRunning: boolean = stateInfo.isName("Run");
 Every Unity `Animator` in the scene (enabled or not) exports as one `TOOLKIT.Animator` (schema `version: 1`). Nothing needs to be added in Unity.
 
 - **Controllers.** The Animator's `AnimatorController`, or its `AnimatorOverrideController`. A chain of override controllers (an override of an override) is flattened to its root base controller plus one combined clip map, as Unity itself re-bases it.
-- **Avatar.** Humanoid or generic, `humanScale`, every mapped humanoid bone, and the humanoid muscle-zero default pose (the Write Defaults value of human bones).
+- **Avatar.** Humanoid or generic, `humanScale`, every mapped humanoid bone, the humanoid muscle-zero default pose (the Write Defaults value of human bones), and the avatar's muscle model, Leg Stretch and feet bottom heights (written once per avatar), so humanoids blend and solve Foot IK as Unity does.
 - **Layers and masks.** Every layer with its weight, blending (override / additive), avatar mask (humanoid body parts and transform paths), sync source, Timing and IK Pass flag.
 - **State machines.** States, sub-state machines, Entry / Exit / Any State, transitions with conditions, exit time, fixed or normalized duration, offset, interruption source, ordered interruption, solo / mute, Can Transition To Self; state speed, tags, Write Defaults, Foot IK, mirror, cycle offset and their parameters; Motion Time parameters.
 - **Blend trees.** 1D, 2D Simple Directional, 2D Freeform Directional, 2D Freeform Cartesian and Direct, nested trees, child time scale, mirror and Normalize Blend Values.
@@ -206,13 +206,27 @@ export class AttackInputLock extends TOOLKIT.ScriptComponent {
 
 ## 5. Layers, Masks, Write Defaults, Synced and Additive Layers
 
-These follow Unity; there is nothing to call beyond `setLayerWeight`.
+These behave like Unity's; there is nothing to call beyond `setLayerWeight`.
 
-- **Override layers** replace the layers below by their weight; **additive layers** add their clip's motion relative to the clip's additive reference pose (its first frame by default). A layer at weight 0 still runs its state machine and fires its events.
+- **Humanoids blend in Unity's muscle space.** Layers, blend trees and crossfades of a humanoid character mix the clips' muscles and body (centre of mass), as Unity does, then turn them into bone rotations with the avatar's own muscle model (exported once per avatar). Partial-weight override layers, additive layers, Direct and 2D blend trees and mirrored states therefore give Unity's pose. Generic rigs (and a humanoid's non-human bones) blend per bone, as in Unity.
+- **Override layers** replace the layers below by their weight (only the body parts in their mask); **additive layers** add their clip's motion relative to the clip's additive reference pose (its first frame by default). A layer at weight 0 still runs its state machine and fires its events.
+- **The body moves only with Root.** The base layer and layers whose avatar mask includes Root move the humanoid's body (and so its Hips); a layer without Root changes only the limbs it covers — its weight never shifts the character.
 - **Avatar masks** apply on every layer, the base layer included (humanoid body parts and transform paths).
-- **Write Defaults:** a state with Write Defaults on writes the default value of every property the controller animates but the state does not; with it off, those properties keep their last value. Human bones default to the avatar's muscle-zero pose (Unity's), other properties to their value when the Animator bound.
-- **Synced layers** follow their source layer's states with their own motions; with Timing on, the source's playback is stretched by the synced layer's weight.
-- One transition can start per layer per tick; Any State transitions are checked first.
+- **Write Defaults:** a state with Write Defaults on writes the default value of every property the controller animates but the state does not; with it off, those properties keep their last value. Human bones default to the avatar's muscle-zero pose (Unity's), other properties to their value when the Animator bound. An empty state (no motion) with Write Defaults off on an upper layer holds that layer's last pose; with Write Defaults on it lets the layers below through.
+- **Direct blend trees** sum their children's weights without normalizing them, as Unity does.
+- **Synced layers** follow their source layer's states with their own motions; with Timing on, the source's playback is stretched to `lerp(sourceLength, syncedLength, syncedWeight)`, as in Unity.
+- **First frame:** the entry pose is on the skeleton from the moment the Animator binds (and after reactivation or a controller swap), so a character never shows its bind pose for a frame.
+
+### Entry, Exit and Any State
+
+These follow Unity's rules exactly; author them in Unity as usual.
+
+- One transition can start per layer per tick. Any State transitions are checked first, then the current state's own. Only the root machine's Any State counts (Unity ignores Any State nodes inside sub-state machines).
+- A transition whose **Interruption Source is None** is never interrupted — not even by Any State. An Any State transition in flight is interrupted only by other Any State transitions (with Ordered Interruption, only by ones listed above it). A state's own transition is interrupted by the source's and / or destination's transitions as its Interruption Source says.
+- When a transition is interrupted, the abandoned destination state exits at once; the frozen source exits when the new transition ends.
+- **Sub-state machines** are entered through their Entry transitions (in order, else their default state) when a transition targets the machine, and left only through their Exit node: `onStateMachineExit`, then the machine's outgoing transitions in the parent graph. When none passes, the layer **restarts from the root machine's Entry** (not the parent's), whatever the depth. An Exit from the root machine re-enters it through Entry.
+- A layer's first state, a default state inside a nested machine, `play` and `crossFade` raise no `onStateMachineEnter` / `onStateMachineExit`.
+- A `crossFade` starts on the next tick; its first tick advances the source and the blend, not the destination, and `getAnimatorTransitionInfo(layer).anyState` reports true during it, as in Unity.
 
 ---
 
@@ -235,14 +249,24 @@ animator.hasRootMotion: boolean
 animator.isHuman: boolean, animator.humanScale: number
 ```
 
+**Feet pivot (humanoids):** with the Unity Animator's Feet Pivot Active above 0 (Unity's default 1, exported as `animator.feetPivotActive`), a humanoid's root motion includes Unity's feet-pivot correction while clips blend, so blended locomotion covers Unity's distance and `pivotPosition` / `pivotWeight` equal Unity's. Set `feetPivotActive = 0` for the plain weighted blend of the clips' root motion.
+
 **Who moves the character** (once per tick, Unity's Apply Root Motion rules):
 
 1. **An `onAnimatorMove` taker**, if any: an `onAnimatorMoveObservable` observer, a script component on the Animator's node with an `onAnimatorMove()` method, or a playing state's `onStateMove` behaviour. A taker gets the motion and nothing else moves the character. It can apply the motion the built-in way with `applyBuiltinRootMotion()`.
 2. Otherwise, only when **`applyRootMotion`** is true, the first of:
-   - a **root-motion receiver** script on the node (one that implements `applyAnimatorRootMotion(deltaPosition, deltaRotation, deltaTime): boolean`). `TOOLKIT.CharacterController` and `TOOLKIT.ThirdPersonController` are receivers: they move their Havok capsule by the horizontal root velocity, so walls stop the character, and keep their own gravity and jumping;
+   - a **root-motion receiver** script on the node (one that implements `applyAnimatorRootMotion(deltaPosition, deltaRotation, deltaTime): boolean`). `TOOLKIT.CharacterController` applies the motion as Unity's `CharacterController.Move`, in the same frame: it climbs ledges up to the Step Offset, stops one Skin Width short of obstacles and slides along them, treats surfaces steeper than the Slope Limit as walls, and keeps its own gravity. `TOOLKIT.ThirdPersonController` moves its Havok capsule by the horizontal root velocity and keeps its own gravity and jumping;
    - a Havok `BABYLON.PhysicsCharacterController` assigned to **`animator.characterController`** in code;
    - the node's **Havok body**: a dynamic body gets velocities (the vertical part blended by `gravityWeight`), an animated body a target transform;
    - the **transform**.
+
+**Root motion on a Rigidbody** follows Unity's physics timing. The Animator ticks every frame, but Unity moves a Rigidbody only on fixed steps (`Time.fixedDeltaTime`, exported with the scene, default 0.02 s), so the runtime keeps that fixed clock per Animator:
+
+- a **kinematic** body collects every frame's movement and moves on the next fixed step; its turn is rewritten each frame, so, as in Unity, part of the turn is lost on frames without a step;
+- a **dynamic** body gets the root velocity every frame and loses Unity's ground friction on each fixed step (the combined friction of the body's and the ground's physics materials);
+- the Rigidbody's **Interpolation** setting is honoured: None shows the body stepping at the fixed rate (uneven at 60 fps, exactly like Unity), Interpolate / Extrapolate smooth it. Set Interpolate in Unity for a smooth root-motion Rigidbody.
+
+With **Animate Physics** as the Animator's update mode, it ticks inside the physics step and moves the body directly.
 
 With `applyRootMotion` off and no taker, the character stays in place (the clip's root motion is dropped, as in Unity). A generic clip that animates the Animator node's own transform (a door, a platform) moves the node while `applyRootMotion` is off.
 
@@ -313,6 +337,8 @@ export class AnimatedPatrol extends TOOLKIT.ScriptComponent {
         if (this.agent == null || this.animator == null || this.waypoints.length === 0) return;
         this.agent.updatePosition = false;
         this.animator.onAnimatorMoveObservable.add(() => {
+            // Until the agent joins the crowd (the navmesh loads after start) it reports the origin: keep the node in place.
+            if (this.agent.getAgentIndex() < 0) return;
             this.transform.position.copyFrom(this.agent.getCurrentPosition());
         });
     }
@@ -468,7 +494,7 @@ animator.getBoneTransform(bone: TOOLKIT.HumanBodyBones): BABYLON.TransformNode
 animator.bodyPosition = position; animator.bodyRotation = rotation;   // inside the IK pass only: moves / turns the hips
 ```
 
-**Foot IK** (the state checkbox): when any contributing state has Foot IK, each foot is solved onto the weighted blend of every contributing clip's baked foot goal, as Unity does. Mirrored clips use their mirrored goals.
+**Foot IK** (the state checkbox): when any weighted non-additive layer plays a state with Foot IK, each foot is solved onto the weighted blend of every contributing clip's baked foot goal (blended at the sole of the foot), as Unity does. Mirrored clips use their mirrored goals. The avatar's **Leg Stretch** is honoured: near full extension the legs lengthen slightly, as Unity's do, so the foot lands on its goal and the knee keeps bending. An almost straight knee always bends forward along its hinge. The small knee pops at walk / run starts and stops are Unity's own (same frames, same size).
 
 ```typescript
 /** Reaches the right hand toward a target and looks at it while the target is set. */
@@ -575,6 +601,7 @@ export class WeaponAnimationSwitcher extends TOOLKIT.ScriptComponent {
 
 ## 11. Update Modes, Culling, Enabling and Timeline
 
+- **Frame pacing:** every script, the Animator and the cameras read one paced frame delta (`TOOLKIT.SceneManager.GetDeltaSeconds`), which removes the browser's ±1–2 ms frame-time jitter like Unity's `Time.deltaTime`, so root motion and following cameras move evenly. It stays locked to real time and passes real hitches through. `TOOLKIT.SceneManager.SmoothFrameDelta = false` (default `true`) switches back to Babylon's raw measured delta.
 - **One tick per frame** after every script's `update` and before every `late` (Unity: Update → Animator → LateUpdate). The frame delta is clamped to `TOOLKIT.Animator.MAX_DELTA_TIME` (1/3 s). The first tick evaluates at time 0, like Unity's first frame. Clocks run in single precision, like Unity's, so exit times land on Unity's frames.
 - **`updateMode`** (`TOOLKIT.AnimatorUpdateMode`):
   - `Normal`: the frame delta × `scene.animationTimeScale`.
@@ -666,13 +693,11 @@ Static members: `TOOLKIT.Animator.ClassName` (`"TOOLKIT.Animator"`), `TOOLKIT.An
 
 ## 14. Deviations from Unity
 
-- **Humanoid poses blend per bone, not in Unity's muscle space.** Crossfades between humanoid clips can drift a few centimetres from Unity's pose. Additive and synced humanoid layers compose per bone in the bone's frame. On a test character with an additive and a synced layer, the hips sit 8–16 cm from Unity's.
-- **Humanoid root motion with Feet Pivot Active.** Root motion equals Unity's exactly when the Unity Animator's `feetPivotActive` is 0. At Unity's default of 1, Unity adds a feet-pivot correction while two or more clips blend (blend trees, transitions) that the runtime does not model. Unity's locomotion blends move about 5 % slower, up to 18 cm apart over a 30 s walk. The runtime reads `feetPivotActive` but evaluates as if it were 0. For exact parity, set `animator.feetPivotActive = 0` from a Unity script's `Awake`.
-- **Physics-driven characters differ by engine.** Unity moves Rigidbodies and CharacterControllers with PhysX; the runtime uses Havok. Wall stops, slides and kinematic turns can differ slightly.
+- **Foot IK leg pose in some blends.** The Foot IK leg pose can differ slightly from Unity's in some blends: up to 4° in a 1D locomotion blend tree and 1.4° for an upper-body layer over Foot IK locomotion on the test characters; elsewhere within 0.5°.
+- **Physics contact is Havok's.** Unity's fixed-step, friction, interpolation and `CharacterController.Move` rules are reproduced for root motion (root-motion characters stay within 1 cm of Unity), but contacts are solved by Havok, not PhysX.
 - **The hips never move to reach an IK goal** (Unity's full-body solver can shift the body).
-- **Synced-layer Timing is an approximation:** the source plays at `lerp(sourceLength, syncedLength, syncedWeight)`.
 - **Match target:** hands, and feet without baked goals, use their current offset from the root.
-- **Verified equal to Unity**, so they are not deviations: hashes (states, parameters and both transition hashes); override-of-override re-basing; behaviour hook order; event times; blend-tree weights; humanoid Foot IK in the air (Unity has no extra in-air foot correction to port).
+- **Verified equal to Unity**, so they are not deviations: humanoid layer, avatar-mask, additive and blend-tree poses (muscle space); synced-layer Timing; feet-pivot root motion; Entry / Exit / Any State flow; hashes (states, parameters and both transition hashes); override-of-override re-basing; behaviour hook order; event times; blend-tree weights; humanoid Foot IK in the air (Unity has no extra in-air foot correction to port).
 
 ---
 
