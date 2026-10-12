@@ -18,29 +18,40 @@ import * as TOOLKIT from "@babylonjs-toolkit/next";
 
 ## Engine Initialization
 
-Must be called once before any physics components are created, typically in your scene setup.
+Exported scenes configure physics automatically from the Scene Controller (Scene Options → Fixed Time Step) and Unity's
+Project Settings → Time → Fixed Timestep (exported as `fixeddeltatime`). Call it yourself only for scenes built in code.
 
 ```typescript
 static async RigidbodyPhysics.ConfigurePhysicsEngine(
     scene: BABYLON.Scene,
-    fixedTimeStep?: boolean,     // use a fixed physics timestep
-    subTimeStep?: number,        // substeps per frame (default 1)
-    maxWorldSweep?: number,      // max CCD sweep (default 100)
-    ccdEnabled?: boolean,        // continuous collision detection (default true)
-    ccdPenetration?: number,     // CCD penetration depth (default 0)
-    gravityLevel?: BABYLON.Vector3  // default (0, -9.81, 0)
+    fixedTimeStep?: boolean,          // true (default): Unity fixed timestep; false: one variable step per frame
+    subTimeStep?: number,             // legacy, unused in fixed-timestep mode (leave 0)
+    maxWorldSweep?: number,
+    ccdEnabled?: boolean,             // continuous collision detection (default true)
+    ccdPenetration?: number,          // default 0.0001
+    gravityLevel?: BABYLON.Vector3,   // default (0, -9.81, 0)
+    layerCollisionMatrix?: number[],
+    fixedDeltaTime?: number,          // Unity Time.fixedDeltaTime (default 0.02 s = 50 Hz)
+    maximumDeltaTime?: number         // Unity Maximum Allowed Timestep (default 1/3 s)
 ): Promise<void>
+
+// Hosts that create Havok themselves (ESM starter projects): call right after scene.enablePhysics(...)
+static RigidbodyPhysics.ConfigureFixedTimeStep(scene: BABYLON.Scene, fixedDeltaTime?: number, maximumAllowedTimestep?: number): void
 ```
 
-**Example (scene setup):**
+**How stepping works (fixed-timestep mode, the default):** physics advances in steps of exactly `fixedDeltaTime`, 0..N per
+rendered frame from real elapsed time, so it runs at real-time speed on 30, 60, 120 or 144 Hz displays, like Unity.
+`step()` / `fixed()` run once per physics step (Unity FixedUpdate) and `TOOLKIT.SceneManager.GetDeltaSeconds()` returns the
+step length inside them. Dynamic bodies are drawn per their Rigidbody Interpolation; bodies exported None are drawn
+interpolated by default for smooth motion (`TOOLKIT.RigidbodyInterpolator.DefaultMode = TOOLKIT.RigidbodyInterpolation.None`
+restores Unity's stepped drawing). For 60 Hz physics steps set Unity's Fixed Timestep to 0.0166667 and re-export.
+
+**Example (ESM host, `globals.ts`):**
 ```typescript
-await TOOLKIT.RigidbodyPhysics.ConfigurePhysicsEngine(
-    scene,
-    true,    // fixed timestep
-    2,       // 2 substeps for smoother simulation
-    100,
-    true
-);
+import { RigidbodyPhysics } from "@babylonjs-toolkit/next/scenemanager";
+
+scene.enablePhysics(new Vector3(0, -9.81, 0), new HavokPlugin(false));
+RigidbodyPhysics.ConfigureFixedTimeStep(scene); // an exported scene's fixeddeltatime overrides the 0.02 s default
 ```
 
 ---
