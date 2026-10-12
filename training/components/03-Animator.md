@@ -693,7 +693,7 @@ Static members: `TOOLKIT.Animator.ClassName` (`"TOOLKIT.Animator"`), `TOOLKIT.An
 
 ## 14. Deviations from Unity
 
-- **Foot IK leg pose in some blends.** The Foot IK leg pose can differ slightly from Unity's in some blends: up to 4° in a 1D locomotion blend tree and 1.4° for an upper-body layer over Foot IK locomotion on the test characters; elsewhere within 0.5°.
+- **Foot IK leg pose in some blends.** The Foot IK leg pose can differ slightly from Unity's in some blends: about 2° in a 1D locomotion blend tree and 0.8° for an upper-body layer over Foot IK locomotion on the test characters; elsewhere within 0.5°.
 - **Physics contact is Havok's.** Unity's fixed-step, friction, interpolation and `CharacterController.Move` rules are reproduced for root motion (root-motion characters stay within 1 cm of Unity), but contacts are solved by Havok, not PhysX.
 - **The hips never move to reach an IK goal** (Unity's full-body solver can shift the body).
 - **Match target:** hands, and feet without baked goals, use their current offset from the root.

@@ -1083,7 +1083,7 @@ Pose / Based Upon in its import settings as in Unity, and give the character a U
 
 **Deviations from Unity:**
 
-- **Foot IK leg pose** can differ slightly from Unity's in some blends (up to 4° in a 1D locomotion blend tree, 1.4° for
+- **Foot IK leg pose** can differ slightly from Unity's in some blends (about 2° in a 1D locomotion blend tree, 0.8° for
   an upper-body layer over Foot IK locomotion; elsewhere within 0.5°).
 - **Physics contact is Havok's**, not PhysX: root motion follows Unity's fixed-step, friction, Interpolation and
   `CharacterController.Move` rules (within 1 cm of Unity), but contacts are solved by Havok.
