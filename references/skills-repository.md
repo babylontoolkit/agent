@@ -88,6 +88,8 @@ skills/
 │           ├── dashboard.template.js
 │           ├── live.template.js
 │           └── data-schema.md
+│   └── scripts/
+│       └── dashboard.mjs
 ├── bt-recon/
 │   └── SKILL.md
 ├── bt-convert/
@@ -172,6 +174,7 @@ skills/
 - `bt-execute/templates/dashboard/dashboard.template.js`
 - `bt-execute/templates/dashboard/live.template.js`
 - `bt-execute/templates/dashboard/data-schema.md`
+- `bt-execute/scripts/dashboard.mjs`
 
 `bt-gauntlet` **cannot run its loop** (rubrics, templates, workspace layout, Unity pipeline) unless these are also present:
 
@@ -254,7 +257,7 @@ the appropriate global or local project location.
 - If you **cannot prompt** (non-interactive or autonomous run), **default to the Recommended global install method below (clone-and-copy into the per-user home directory)** and tell the user which method was used.
 
 **However you install, you MUST end with the [Post-Install Verification](#post-install-verification) step below.**
-An install that reports success but is missing `bt-atlas/scripts/`, `bt-design/references/` / `bt-design/templates/`, `bt-execute/templates/`, `bt-gauntlet/references/` or `bt-optimize/scripts/` is a FAILED install — go back and copy the missing files.
+An install that reports success but is missing `bt-atlas/scripts/`, `bt-design/references/` / `bt-design/templates/`, `bt-execute/templates/` + `bt-execute/scripts/`, `bt-gauntlet/references/` or `bt-optimize/scripts/` is a FAILED install — go back and copy the missing files.
 
 ### Recommended install method: clone the whole repo, copy whole folders (GLOBAL by default)
 
@@ -324,7 +327,7 @@ Copy-Item -Recurse -Force "$env:TEMP\bt-skills\skills\*" ".agents\skills\"   # C
 You are responsible for fetching **every file in the manifest above**, preserving the folder
 structure. For `bt-atlas` that means the `SKILL.md` **and** all four files under `scripts/`.
 For `bt-design` that means the `SKILL.md` **and** all files under `references/` and `templates/`.
-For `bt-execute` that means the `SKILL.md` **and** all four files under `templates/dashboard/`.
+For `bt-execute` that means the `SKILL.md`, all four files under `templates/dashboard/` **and** `scripts/dashboard.mjs`.
 For `bt-gauntlet` that means the `SKILL.md` **and** all six files under `references/`.
 For `bt-optimize` that means the `SKILL.md` **and** every file under `scripts/` (including `scripts/qa/`).
 Raw URL pattern:
@@ -361,6 +364,7 @@ https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/t
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/templates/dashboard/dashboard.template.js
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/templates/dashboard/live.template.js
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/templates/dashboard/data-schema.md
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/scripts/dashboard.mjs
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-gauntlet/references/critic-rubrics.md
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-gauntlet/references/loop-templates.md
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-gauntlet/references/spec-composition.md
@@ -515,7 +519,7 @@ for dir in ~/.claude/skills ~/.agents/skills; do
   for f in references/3d-hero-docs.md references/3d-hero-scroll.md templates/3d-hero-scroll/HeroScroll.tsx templates/3d-hero-scroll/hero-scroll.css templates/3d-hero-scroll/hero-scroll.d.ts templates/3d-hero-scroll/hero-scroll.html templates/3d-hero-scroll/hero-scroll.js; do
     [ -f "$dir/bt-design/$f" ] || MISSING="$MISSING $dir/bt-design/$f"
   done
-  for f in templates/dashboard/dashboard.html templates/dashboard/dashboard.template.js templates/dashboard/live.template.js templates/dashboard/data-schema.md; do
+  for f in templates/dashboard/dashboard.html templates/dashboard/dashboard.template.js templates/dashboard/live.template.js templates/dashboard/data-schema.md scripts/dashboard.mjs; do
     [ -f "$dir/bt-execute/$f" ] || MISSING="$MISSING $dir/bt-execute/$f"
   done
   for f in critic-rubrics.md loop-templates.md spec-composition.md target-images.md unity-pipeline.md workspace.md; do
@@ -558,7 +562,7 @@ foreach ($dir in $dirs) {
   foreach ($f in "references\3d-hero-docs.md","references\3d-hero-scroll.md","templates\3d-hero-scroll\HeroScroll.tsx","templates\3d-hero-scroll\hero-scroll.css","templates\3d-hero-scroll\hero-scroll.d.ts","templates\3d-hero-scroll\hero-scroll.html","templates\3d-hero-scroll\hero-scroll.js") {
     if (-not (Test-Path "$dir\bt-design\$f")) { $missing += "$dir\bt-design\$f" }
   }
-  foreach ($f in "templates\dashboard\dashboard.html","templates\dashboard\dashboard.template.js","templates\dashboard\live.template.js","templates\dashboard\data-schema.md") {
+  foreach ($f in "templates\dashboard\dashboard.html","templates\dashboard\dashboard.template.js","templates\dashboard\live.template.js","templates\dashboard\data-schema.md","scripts\dashboard.mjs") {
     if (-not (Test-Path "$dir\bt-execute\$f")) { $missing += "$dir\bt-execute\$f" }
   }
   foreach ($f in "critic-rubrics.md","loop-templates.md","spec-composition.md","target-images.md","unity-pipeline.md","workspace.md") {
@@ -687,7 +691,7 @@ Where each tool looks for PROJECT-LOCAL skills (only when the user explicitly re
 > for everything else (Codex, Copilot, Gemini CLI, Antigravity). By default use the
 > GLOBAL (per-user home) locations; use the project-local locations only when the user
 > explicitly asks for a project install. Copy **whole folders** into each — the
-> `bt-atlas/scripts/`, `bt-design/references/` + `bt-design/templates/`, `bt-execute/templates/`,
+> `bt-atlas/scripts/`, `bt-design/references/` + `bt-design/templates/`, `bt-execute/templates/` + `bt-execute/scripts/`,
 > `bt-gauntlet/references/` and `bt-optimize/scripts/` assets must be present in every location.
 
 ---
