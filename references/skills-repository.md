@@ -45,7 +45,7 @@ and some skills ship **additional required asset files** (scripts, references, t
 |-------|---------|--------------|-----------------|
 | [`bt-spec`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file on a new git branch. | `SKILL.md` |
 | [`bt-plan`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec. | `SKILL.md` |
-| [`bt-execute`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task (or all remaining tasks) from a plan/spec. | `SKILL.md` |
+| [`bt-execute`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task (or all remaining tasks) from a plan/spec. | `SKILL.md` **+ `templates/` (required for the feature dashboard)** |
 | [`bt-recon`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-recon/SKILL.md) | `/bt-recon` | Deep-dive existing code (a subsystem or the whole codebase) into an evidence-cited grounding spec plus a user guide. | `SKILL.md` |
 | [`bt-convert`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-convert/SKILL.md) | `/bt-convert` | Convert source code to Babylon Toolkit TypeScript. | `SKILL.md` |
 | [`bt-copycat`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-copycat/SKILL.md) | `/bt-copycat` | Re-create the specified website adapted to specified genre. | `SKILL.md` |
@@ -80,7 +80,12 @@ skills/
 ├── bt-plan/
 │   └── SKILL.md
 ├── bt-execute/
-│   └── SKILL.md
+│   ├── SKILL.md
+│   └── templates/
+│       └── dashboard/
+│           ├── dashboard.html
+│           ├── live.template.js
+│           └── dashboard.template.js
 ├── bt-recon/
 │   └── SKILL.md
 ├── bt-convert/
@@ -140,7 +145,14 @@ skills/
 - `bt-design/templates/3d-hero-scroll/hero-scroll.html`
 - `bt-design/templates/3d-hero-scroll/hero-scroll.js`
 
-All other skills (`bt-spec`, `bt-plan`, `bt-execute`, `bt-recon`, `bt-convert`, `bt-copycat`, `bt-landing`,
+`bt-execute` **cannot write a feature's dashboard** (and `bt-plan` cannot start one) unless these are also present:
+
+- `bt-execute/SKILL.md`
+- `bt-execute/templates/dashboard/dashboard.html`
+- `bt-execute/templates/dashboard/dashboard.template.js`
+- `bt-execute/templates/dashboard/live.template.js`
+
+All other skills (`bt-spec`, `bt-plan`, `bt-recon`, `bt-convert`, `bt-copycat`, `bt-landing`,
 `bt-prototype`, `bt-hero`, `bt-gauntlet`) are `SKILL.md`-only.
 
 > **THERE ARE 12 SKILLS TOTAL.** ALL 12 must be installed into EVERY target location.
@@ -268,6 +280,7 @@ Copy-Item -Recurse -Force "$env:TEMP\bt-skills\skills\*" ".agents\skills\"   # C
 You are responsible for fetching **every file in the manifest above**, preserving the folder
 structure. For `bt-atlas` that means the `SKILL.md` **and** all four files under `scripts/`.
 For `bt-design` that means the `SKILL.md` **and** all files under `references/` and `templates/`.
+For `bt-execute` that means the `SKILL.md` **and** all three files under `templates/dashboard/`.
 Raw URL pattern:
 
 ```
@@ -434,6 +447,9 @@ for dir in ~/.claude/skills ~/.agents/skills; do
   for f in references/3d-hero-docs.md references/3d-hero-scroll.md templates/3d-hero-scroll/HeroScroll.tsx templates/3d-hero-scroll/hero-scroll.css templates/3d-hero-scroll/hero-scroll.d.ts templates/3d-hero-scroll/hero-scroll.html templates/3d-hero-scroll/hero-scroll.js; do
     [ -f "$dir/bt-design/$f" ] || MISSING="$MISSING $dir/bt-design/$f"
   done
+  for f in templates/dashboard/dashboard.html templates/dashboard/dashboard.template.js templates/dashboard/live.template.js; do
+    [ -f "$dir/bt-execute/$f" ] || MISSING="$MISSING $dir/bt-execute/$f"
+  done
 done
 
 # REQUIRED: the Agent Persona must be present in ALL FOUR instruction files.
@@ -467,6 +483,9 @@ foreach ($dir in $dirs) {
   }
   foreach ($f in "references\3d-hero-docs.md","references\3d-hero-scroll.md","templates\3d-hero-scroll\HeroScroll.tsx","templates\3d-hero-scroll\hero-scroll.css","templates\3d-hero-scroll\hero-scroll.d.ts","templates\3d-hero-scroll\hero-scroll.html","templates\3d-hero-scroll\hero-scroll.js") {
     if (-not (Test-Path "$dir\bt-design\$f")) { $missing += "$dir\bt-design\$f" }
+  }
+  foreach ($f in "templates\dashboard\dashboard.html","templates\dashboard\dashboard.template.js","templates\dashboard\live.template.js") {
+    if (-not (Test-Path "$dir\bt-execute\$f")) { $missing += "$dir\bt-execute\$f" }
   }
 }
 

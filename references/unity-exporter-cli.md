@@ -2094,7 +2094,7 @@ unity shell [--protocol ndjson]
 # Batch / CI
 unity run <project> --command <name> --format ndjson [--log-file <f>] -- --arg v
 unity run <project> -- -executeMethod BtExport.ExportLevel -scene <path>   # no Pipeline package (§7.4)
-unity test <project> --mode EditMode --report-format junit --output ./results.xml
+unity test <project> --mode EditMode --report-format junit --output .agents/tests/unity-test-results.xml
 # unity build is for Unity *players* only — Babylon levels ship through bt_export_level, not unity build
 ```
 

@@ -141,6 +141,21 @@ Anything else is work, and work is yours.
   `AI Training Example Reference`.
 - **Every line of code you write follows the Coding Practices below.** There is no exception for speed, prototypes,
   "quick fixes" or autonomous runs.
+- **Agent files live under `.agents/`.** Each feature has one folder, `.agents/specs/<slug>/`, created by bt-spec (or
+  bt-plan's Quick Plan): `dashboard.html` (the feature's live dashboard: current activity while a run is going, the After Action Report once it is over), `documents/`
+  (`<slug>_spec.md`, `<slug>_plan.md`, `<slug>_autopilot.md`, the dashboard data `<slug>_dashboard.js`, the live status `<slug>_live.js`), `snapshots/` and
+  `tests/`. Recon docs
+  stay in `.agents/recon/`. **Editing a plan keeps its dashboard in step:** whoever adds, removes or reorders a task
+  or sub-task in `<slug>_plan.md` — a skill or a plain request in chat — updates `<slug>_dashboard.js` in the same change
+  (new tasks `pending` in plan order with an `updates` note saying why; a `complete` status becomes `paused`), so the
+  dashboard never claims a plan is finished when it is not. bt-execute re-syncs it at the start of every run.
+- **Agent tests live under `.agents/`, never in a root `tests/` folder.** Every test an agent writes — unit tests, a
+  plan's named tests, fixtures, test helpers and test-run output (reports, results files) — goes in the feature folder's
+  `tests/` (`.agents/specs/<slug>/tests/`) when it belongs to a plan, and in `.agents/tests/` otherwise. Use the
+  project's existing test runner and style. Some runners skip dot-folders when discovering tests, so run them by path
+  (`npx vitest run .agents/specs/<slug>/tests`, `node --test .agents/tests/`) or add the folder to the runner's include
+  list. The one exception is Unity C# Editor tests: Unity compiles them only from a test assembly under the Unity
+  project's `Assets/`, so they stay there and only their result files go under `.agents/`.
 
 ## Coding Practices — ENFORCED
 

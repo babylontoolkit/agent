@@ -292,7 +292,8 @@ Safe Mode (that is exit 7 — see §6). This is the fastest "does my C# compile?
 For C# Editor tooling only. Exported content is verified in the browser (`unity-authoring-recipes.md` §21).
 
 ```bash
-unity test "$PROJ" --mode EditMode --report-format junit --output ./test-results.xml --timeout 600
+mkdir -p .agents/tests
+unity test "$PROJ" --mode EditMode --report-format junit --output .agents/tests/unity-test-results.xml --timeout 600
 case $? in 0) echo pass ;; 8) echo "tests failed — do not retry" ;; *) echo "no verdict — infra, retry" ;; esac
 ```
 
