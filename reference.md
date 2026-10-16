@@ -143,7 +143,7 @@ Anything else is work, and work is yours.
   "quick fixes" or autonomous runs.
 - **Agent files live under `.agents/`.** Each feature has one folder, `.agents/specs/<slug>/`, created by bt-spec (or
   bt-plan's Quick Plan): `dashboard.html` (the feature's live dashboard: current activity while a run is going, the After Action Report once it is over), `documents/`
-  (`<slug>_spec.md`, `<slug>_plan.md`, `<slug>_autopilot.md`, the dashboard data `<slug>_dashboard.js`, the live status `<slug>_live.js`), `snapshots/` and
+  (`<slug>_spec.md`, `<slug>_plan.md`, `<slug>_autopilot.md`, the dashboard data `<slug>_dashboard.js`, the live status `<slug>_live.js`, git-ignored), `snapshots/` and
   `tests/`. Recon docs
   stay in `.agents/recon/`. **Editing a plan keeps its dashboard in step:** whoever adds, removes or reorders a task
   or sub-task in `<slug>_plan.md` — a skill or a plain request in chat — updates `<slug>_dashboard.js` in the same change

@@ -6,7 +6,7 @@
 >    never just its `SKILL.md`. Some skills fail at runtime without their assets.
 > 2. **INSTALL GLOBALLY BY DEFAULT, INTO BOTH LOCATIONS.** Always prefer the GLOBAL
 >    (per-user home) locations unless the user explicitly asks to install into the
->    project. You MUST install **ALL 12 SKILLS** into **BOTH** of these directories —
+>    project. You MUST install **ALL 13 SKILLS** into **BOTH** of these directories —
 >    never just one:
 >    - `~/.claude/skills/` — Claude Code
 >    - `~/.agents/skills/` — cross-agent standard read by VS Code / GitHub Copilot,
@@ -50,11 +50,12 @@ and some skills ship **additional required asset files** (scripts, references, t
 | [`bt-convert`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-convert/SKILL.md) | `/bt-convert` | Convert source code to Babylon Toolkit TypeScript. | `SKILL.md` |
 | [`bt-copycat`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-copycat/SKILL.md) | `/bt-copycat` | Re-create the specified website adapted to specified genre. | `SKILL.md` |
 | [`bt-landing`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-landing/SKILL.md) | `/bt-landing` | Re-design the landing page, splash screen, preloader and custom overlays. | `SKILL.md` |
-| [`bt-gauntlet`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-gauntlet/SKILL.md) | `/bt-gauntlet` | Agent based gauntlet loop engineering. | `SKILL.md` |
+| [`bt-gauntlet`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-gauntlet/SKILL.md) | `/bt-gauntlet` | Agent based gauntlet loop engineering. | `SKILL.md` **+ `references/` (required)** |
 | [`bt-prototype`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-prototype/SKILL.md) | `/bt-prototype` | Create any number of award winning frontend prototypes. | `SKILL.md` |
 | [`bt-design`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/SKILL.md) | `/bt-design` | Implement high quality frontend and in-game designs. | `SKILL.md` **+ `references/` and `templates/` (required for 3D scroll-hero)** |
 | [`bt-hero`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-hero/SKILL.md) | `/bt-hero` | Create smooth cinematic 3D scrolling hero sections. | `SKILL.md` |
 | [`bt-atlas`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-atlas/SKILL.md) | `/bt-atlas` | Generate texture atlas skin variations. | `SKILL.md` **+ `scripts/` (required Python)** |
+| [`bt-optimize`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/SKILL.md) | `/bt-optimize` | Make an exported Unity scene run fast in the browser: profile, fix the causes, merge static meshes and LOD groups, verify. | `SKILL.md` **+ `scripts/` (required C# engines and QA tools)** |
 
 Every tool derives the slash-command from the **folder name** (`bt-spec/` → `/bt-spec`) and reads
 the frontmatter `name` + `description` to decide when the skill applies. The `allowed-tools`
@@ -84,8 +85,9 @@ skills/
 │   └── templates/
 │       └── dashboard/
 │           ├── dashboard.html
+│           ├── dashboard.template.js
 │           ├── live.template.js
-│           └── dashboard.template.js
+│           └── data-schema.md
 ├── bt-recon/
 │   └── SKILL.md
 ├── bt-convert/
@@ -97,7 +99,14 @@ skills/
 ├── bt-prototype/
 │   └── SKILL.md
 ├── bt-gauntlet/
-│   └── SKILL.md
+│   ├── SKILL.md
+│   └── references/
+│       ├── critic-rubrics.md
+│       ├── loop-templates.md
+│       ├── spec-composition.md
+│       ├── target-images.md
+│       ├── unity-pipeline.md
+│       └── workspace.md
 ├── bt-design/
 │   ├── SKILL.md
 │   ├── references/
@@ -112,13 +121,24 @@ skills/
 │           └── hero-scroll.js
 ├── bt-hero/
 │   └── SKILL.md
-└── bt-atlas/
+├── bt-atlas/
+│   ├── SKILL.md
+│   └── scripts/
+│       ├── composite_skin.py
+│       ├── preview.py
+│       ├── uv_island_mask.py
+│       └── requirements.txt
+└── bt-optimize/
     ├── SKILL.md
     └── scripts/
-        ├── composite_skin.py
-        ├── preview.py
-        ├── uv_island_mask.py
-        └── requirements.txt
+        ├── BtCombine.cs
+        ├── BtOptimize.cs
+        └── qa/
+            ├── compare-browser.mjs
+            ├── compare-profiles.mjs
+            ├── gltf-stats.mjs
+            ├── package.json
+            └── profile-browser.mjs
 ```
 
 ### Required-asset manifest (verify EVERY file below exists after install)
@@ -151,11 +171,33 @@ skills/
 - `bt-execute/templates/dashboard/dashboard.html`
 - `bt-execute/templates/dashboard/dashboard.template.js`
 - `bt-execute/templates/dashboard/live.template.js`
+- `bt-execute/templates/dashboard/data-schema.md`
+
+`bt-gauntlet` **cannot run its loop** (rubrics, templates, workspace layout, Unity pipeline) unless these are also present:
+
+- `bt-gauntlet/SKILL.md`
+- `bt-gauntlet/references/critic-rubrics.md`
+- `bt-gauntlet/references/loop-templates.md`
+- `bt-gauntlet/references/spec-composition.md`
+- `bt-gauntlet/references/target-images.md`
+- `bt-gauntlet/references/unity-pipeline.md`
+- `bt-gauntlet/references/workspace.md`
+
+`bt-optimize` **cannot profile, tune or combine** unless these are also present:
+
+- `bt-optimize/SKILL.md`
+- `bt-optimize/scripts/BtCombine.cs`
+- `bt-optimize/scripts/BtOptimize.cs`
+- `bt-optimize/scripts/qa/compare-browser.mjs`
+- `bt-optimize/scripts/qa/compare-profiles.mjs`
+- `bt-optimize/scripts/qa/gltf-stats.mjs`
+- `bt-optimize/scripts/qa/package.json`
+- `bt-optimize/scripts/qa/profile-browser.mjs`
 
 All other skills (`bt-spec`, `bt-plan`, `bt-recon`, `bt-convert`, `bt-copycat`, `bt-landing`,
-`bt-prototype`, `bt-hero`, `bt-gauntlet`) are `SKILL.md`-only.
+`bt-prototype`, `bt-hero`) are `SKILL.md`-only.
 
-> **THERE ARE 12 SKILLS TOTAL.** ALL 12 must be installed into EVERY target location.
+> **THERE ARE 13 SKILLS TOTAL.** ALL 13 must be installed into EVERY target location.
 > A partial install is a FAILED install.
 
 ## Installation
@@ -212,7 +254,7 @@ the appropriate global or local project location.
 - If you **cannot prompt** (non-interactive or autonomous run), **default to the Recommended global install method below (clone-and-copy into the per-user home directory)** and tell the user which method was used.
 
 **However you install, you MUST end with the [Post-Install Verification](#post-install-verification) step below.**
-An install that reports success but is missing `bt-atlas/scripts/` or `bt-design/references/` / `bt-design/templates/` is a FAILED install — go back and copy the missing files.
+An install that reports success but is missing `bt-atlas/scripts/`, `bt-design/references/` / `bt-design/templates/`, `bt-execute/templates/`, `bt-gauntlet/references/` or `bt-optimize/scripts/` is a FAILED install — go back and copy the missing files.
 
 ### Recommended install method: clone the whole repo, copy whole folders (GLOBAL by default)
 
@@ -222,7 +264,8 @@ Cloning guarantees every asset comes along. Copy folders recursively (`-R` / `-r
 
 ```bash
 # 1. Clone the full repo (brings ALL skill assets, including bt-atlas/scripts/
-#    and bt-design/references/ + bt-design/templates/).
+#    bt-design/references/ + templates/, bt-execute/templates/, bt-gauntlet/references/
+#    and bt-optimize/scripts/).
 #    Remove any stale clone first — git clone fails if the folder already exists.
 rm -rf /tmp/bt-skills
 git clone --depth 1 https://github.com/babylontoolkit/skills.git /tmp/bt-skills
@@ -238,7 +281,8 @@ cp -R /tmp/bt-skills/skills/. ~/.agents/skills/    # Cross-agent standard: Codex
 
 ```powershell
 # 1. Clone the full repo (brings ALL skill assets, including bt-atlas/scripts/
-#    and bt-design/references/ + bt-design/templates/).
+#    bt-design/references/ + templates/, bt-execute/templates/, bt-gauntlet/references/
+#    and bt-optimize/scripts/).
 #    Remove any stale clone first — git clone fails if the folder already exists.
 Remove-Item -Recurse -Force "$env:TEMP\bt-skills" -ErrorAction SilentlyContinue
 git clone --depth 1 https://github.com/babylontoolkit/skills.git "$env:TEMP\bt-skills"
@@ -280,7 +324,9 @@ Copy-Item -Recurse -Force "$env:TEMP\bt-skills\skills\*" ".agents\skills\"   # C
 You are responsible for fetching **every file in the manifest above**, preserving the folder
 structure. For `bt-atlas` that means the `SKILL.md` **and** all four files under `scripts/`.
 For `bt-design` that means the `SKILL.md` **and** all files under `references/` and `templates/`.
-For `bt-execute` that means the `SKILL.md` **and** all three files under `templates/dashboard/`.
+For `bt-execute` that means the `SKILL.md` **and** all four files under `templates/dashboard/`.
+For `bt-gauntlet` that means the `SKILL.md` **and** all six files under `references/`.
+For `bt-optimize` that means the `SKILL.md` **and** every file under `scripts/` (including `scripts/qa/`).
 Raw URL pattern:
 
 ```
@@ -306,6 +352,28 @@ https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/re
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/templates/3d-hero-scroll/hero-scroll.css
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/templates/3d-hero-scroll/hero-scroll.html
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/templates/3d-hero-scroll/hero-scroll.js
+```
+
+Examples for `bt-execute`, `bt-gauntlet` and `bt-optimize` (every file under their asset folders — do not skip them):
+
+```
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/templates/dashboard/dashboard.html
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/templates/dashboard/dashboard.template.js
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/templates/dashboard/live.template.js
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/templates/dashboard/data-schema.md
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-gauntlet/references/critic-rubrics.md
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-gauntlet/references/loop-templates.md
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-gauntlet/references/spec-composition.md
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-gauntlet/references/target-images.md
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-gauntlet/references/unity-pipeline.md
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-gauntlet/references/workspace.md
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/scripts/BtCombine.cs
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/scripts/BtOptimize.cs
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/scripts/qa/compare-browser.mjs
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/scripts/qa/compare-profiles.mjs
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/scripts/qa/gltf-stats.mjs
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/scripts/qa/package.json
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/scripts/qa/profile-browser.mjs
 ```
 
 ## ⚠️ HARD REQUIREMENT: Install the Agent Persona
@@ -437,8 +505,8 @@ list to the actual target locations (GLOBAL paths shown by default; use the proj
 MISSING=""
 # Edit this list to EVERY location you installed to (GLOBAL paths shown; works in bash and zsh):
 for dir in ~/.claude/skills ~/.agents/skills; do
-  # ALL 12 skills must exist in EVERY location.
-  for skill in bt-spec bt-plan bt-execute bt-recon bt-convert bt-copycat bt-landing bt-prototype bt-design bt-hero bt-atlas bt-gauntlet; do
+  # ALL 13 skills must exist in EVERY location.
+  for skill in bt-spec bt-plan bt-execute bt-recon bt-convert bt-copycat bt-landing bt-prototype bt-design bt-hero bt-atlas bt-gauntlet bt-optimize; do
     [ -f "$dir/$skill/SKILL.md" ] || MISSING="$MISSING $dir/$skill/SKILL.md"
   done
   for f in composite_skin.py preview.py uv_island_mask.py requirements.txt; do
@@ -447,8 +515,14 @@ for dir in ~/.claude/skills ~/.agents/skills; do
   for f in references/3d-hero-docs.md references/3d-hero-scroll.md templates/3d-hero-scroll/HeroScroll.tsx templates/3d-hero-scroll/hero-scroll.css templates/3d-hero-scroll/hero-scroll.d.ts templates/3d-hero-scroll/hero-scroll.html templates/3d-hero-scroll/hero-scroll.js; do
     [ -f "$dir/bt-design/$f" ] || MISSING="$MISSING $dir/bt-design/$f"
   done
-  for f in templates/dashboard/dashboard.html templates/dashboard/dashboard.template.js templates/dashboard/live.template.js; do
+  for f in templates/dashboard/dashboard.html templates/dashboard/dashboard.template.js templates/dashboard/live.template.js templates/dashboard/data-schema.md; do
     [ -f "$dir/bt-execute/$f" ] || MISSING="$MISSING $dir/bt-execute/$f"
+  done
+  for f in critic-rubrics.md loop-templates.md spec-composition.md target-images.md unity-pipeline.md workspace.md; do
+    [ -f "$dir/bt-gauntlet/references/$f" ] || MISSING="$MISSING $dir/bt-gauntlet/references/$f"
+  done
+  for f in scripts/BtCombine.cs scripts/BtOptimize.cs scripts/qa/compare-browser.mjs scripts/qa/compare-profiles.mjs scripts/qa/gltf-stats.mjs scripts/qa/package.json scripts/qa/profile-browser.mjs; do
+    [ -f "$dir/bt-optimize/$f" ] || MISSING="$MISSING $dir/bt-optimize/$f"
   done
 done
 
@@ -474,8 +548,8 @@ $missing = @()
 # Edit this list to EVERY location you installed to (GLOBAL paths shown):
 $dirs = @("$env:USERPROFILE\.claude\skills", "$env:USERPROFILE\.agents\skills")
 foreach ($dir in $dirs) {
-  # ALL 12 skills must exist in EVERY location.
-  foreach ($skill in "bt-spec","bt-plan","bt-execute","bt-recon","bt-convert","bt-copycat","bt-landing","bt-prototype","bt-design","bt-hero","bt-atlas","bt-gauntlet") {
+  # ALL 13 skills must exist in EVERY location.
+  foreach ($skill in "bt-spec","bt-plan","bt-execute","bt-recon","bt-convert","bt-copycat","bt-landing","bt-prototype","bt-design","bt-hero","bt-atlas","bt-gauntlet","bt-optimize") {
     if (-not (Test-Path "$dir\$skill\SKILL.md")) { $missing += "$dir\$skill\SKILL.md" }
   }
   foreach ($f in "composite_skin.py","preview.py","uv_island_mask.py","requirements.txt") {
@@ -484,8 +558,14 @@ foreach ($dir in $dirs) {
   foreach ($f in "references\3d-hero-docs.md","references\3d-hero-scroll.md","templates\3d-hero-scroll\HeroScroll.tsx","templates\3d-hero-scroll\hero-scroll.css","templates\3d-hero-scroll\hero-scroll.d.ts","templates\3d-hero-scroll\hero-scroll.html","templates\3d-hero-scroll\hero-scroll.js") {
     if (-not (Test-Path "$dir\bt-design\$f")) { $missing += "$dir\bt-design\$f" }
   }
-  foreach ($f in "templates\dashboard\dashboard.html","templates\dashboard\dashboard.template.js","templates\dashboard\live.template.js") {
+  foreach ($f in "templates\dashboard\dashboard.html","templates\dashboard\dashboard.template.js","templates\dashboard\live.template.js","templates\dashboard\data-schema.md") {
     if (-not (Test-Path "$dir\bt-execute\$f")) { $missing += "$dir\bt-execute\$f" }
+  }
+  foreach ($f in "critic-rubrics.md","loop-templates.md","spec-composition.md","target-images.md","unity-pipeline.md","workspace.md") {
+    if (-not (Test-Path "$dir\bt-gauntlet\references\$f")) { $missing += "$dir\bt-gauntlet\references\$f" }
+  }
+  foreach ($f in "scripts\BtCombine.cs","scripts\BtOptimize.cs","scripts\qa\compare-browser.mjs","scripts\qa\compare-profiles.mjs","scripts\qa\gltf-stats.mjs","scripts\qa\package.json","scripts\qa\profile-browser.mjs") {
+    if (-not (Test-Path "$dir\bt-optimize\$f")) { $missing += "$dir\bt-optimize\$f" }
   }
 }
 
@@ -607,8 +687,8 @@ Where each tool looks for PROJECT-LOCAL skills (only when the user explicitly re
 > for everything else (Codex, Copilot, Gemini CLI, Antigravity). By default use the
 > GLOBAL (per-user home) locations; use the project-local locations only when the user
 > explicitly asks for a project install. Copy **whole folders** into each — the
-> `bt-atlas/scripts/` and `bt-design/references/` + `bt-design/templates/` assets must
-> be present in every location.
+> `bt-atlas/scripts/`, `bt-design/references/` + `bt-design/templates/`, `bt-execute/templates/`,
+> `bt-gauntlet/references/` and `bt-optimize/scripts/` assets must be present in every location.
 
 ---
 
