@@ -23,7 +23,6 @@ TOOLKIT.SceneManager.Version              // string — "9.16.1 - R1"
 TOOLKIT.SceneManager.Copyright            // string
 TOOLKIT.SceneManager.GlobalOptions        // any    — freeform key/value config store
 TOOLKIT.SceneManager.WindowState          // any    — window-scoped key/value store
-TOOLKIT.SceneManager.ServerEndPoint       // string — network game server URL
 TOOLKIT.SceneManager.EnableDebugMode      // boolean
 TOOLKIT.SceneManager.EnableUserInput      // boolean
 TOOLKIT.SceneManager.RenderLoopReady      // boolean

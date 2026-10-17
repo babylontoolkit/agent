@@ -11,7 +11,7 @@
 import * as TOOLKIT from "@babylonjs-toolkit/next";
 import { DefaultCameraSystem, StandardPlayerController, ThirdPersonPlayerController, DebugInformation, AssetPreloader, MobileInputController } from "@babylonjs-toolkit/next/project";
 // PROJECT starter classes are ONLY available from "@babylonjs-toolkit/next/project" — they are NOT exported from the root import.
-// ⚠️ The Colyseus networking classes (ColyseusGameServer, ColyseusNetworkEntity, ColyseusNetworkAvatar, BABYLON.NetworkManager) ship in the starter script bundle only — they are NOT in the npm package.
+// Networking is Fusion (NetworkRunner, NetworkBehaviour, …), also from "@babylonjs-toolkit/next/project" — see §6 and the Fusion Networking reference.
 ```
 
 ---
@@ -23,7 +23,7 @@ import { DefaultCameraSystem, StandardPlayerController, ThirdPersonPlayerControl
 3. [Component Registry](#3-component-registry)
 4. [SYSTEM: Camera](#4-system-camera)
 5. [SYSTEM: Player Controllers](#5-system-player-controllers)
-6. [SYSTEM: Network / Multiplayer](#6-system-network--multiplayer)
+6. [SYSTEM: Network / Multiplayer](#6-system-network--multiplayer) — Fusion networking
 7. [SYSTEM: Asset Loading](#7-system-asset-loading)
 8. [SYSTEM: Physics Joints](#8-system-physics-joints)
 9. [SYSTEM: Materials](#9-system-materials)
@@ -55,15 +55,14 @@ Scene
 │   ├── PROJECT.ThirdPersonPlayerController ← Pure third-person controller
 │   └── (Optional) TOOLKIT.Animator
 │
-├── NetworkManager (Multiplayer)
-│   └── PROJECT.ColyseusGameServer        ← Server connection & room join
+├── NetworkManager (Multiplayer — Fusion, §6)
+│   ├── PROJECT.NetworkSettings           ← Tick rates, prefab containers, server URL
+│   └── Game launcher script              ← new NetworkRunner(scene).startGame(...)
 │
-├── [Per networked entity]
-│   ├── PROJECT.ColyseusNetworkEntity     ← Create entity in room
-│   └── PROJECT.ColyseusNetworkAvatar     ← Avatar mesh management + label
-│
-├── [Remote players — spawned by network]
-│   └── PROJECT.RemotePlayerController   ← Replicated animation from server
+├── [Networked prefab — spawned by runner.spawn]
+│   ├── PROJECT.NetworkObject             ← Network identity and authority
+│   ├── PROJECT.NetworkRigidbody / NetworkTransform ← Replicated, smoothed motion
+│   └── Game NetworkBehaviour             ← Networked properties, RPCs, fixedUpdateNetwork
 │
 └── [Physics objects]
     ├── PROJECT.BallSocketJoint
@@ -165,10 +164,7 @@ namespace PROJECT {
 | `DefaultCameraSystem` | Main camera, post-processing, split-screen | Camera/ |
 | `StandardPlayerController` | Full first/third person character | Player/ |
 | `ThirdPersonPlayerController` | Third-person only character | Player/ |
-| `RemotePlayerController` | Networked remote player animation | Player/ |
-| `ColyseusGameServer` | Colyseus network server connection | Network/ |
-| `ColyseusNetworkEntity` | Per-entity network sync | Network/ |
-| `ColyseusNetworkAvatar` | Avatar mesh + nameplate management | Network/ |
+| Fusion networking (`NetworkRunner`, `NetworkObject`, `NetworkBehaviour`, …) | Multiplayer — see §6 | `[Fusion]` kit |
 | `AssetPreloader` | Pre-load mesh/container assets | Loader/ |
 | `AssetExporter` | Export / runtime asset scaffold | Loader/ |
 | `DebugInformation` | Dev console overlay and shortcuts | Inspector/ |
@@ -363,7 +359,6 @@ static PLAYER_HEIGHT: string = "playerHeight"   // Inspector key for height
 | `runKeyRequired` | `boolean` | `true` | Require sprint button |
 | `requireSprintButton` | `boolean` | `false` | Alt sprint required flag |
 | `playerNumber` | `TOOLKIT.PlayerNumber` | `One` | Player 1–4 slot |
-| `postNetworkAttributes` | `boolean` | `false` | Broadcast state to network |
 
 #### Climb / Vault System
 
@@ -507,264 +502,39 @@ All other properties, state methods, and animation integration are identical to 
 
 ---
 
-### CLASS: `RemotePlayerController`
+### Removed: `RemotePlayerController`
 
-**Namespace:** `PROJECT`  
-**Extends:** `TOOLKIT.ScriptComponent`  
-**File:** `Assets/[Starter]/Player/RemotePlayerController.ts`
-
-Drives the `TOOLKIT.Animator` of a remotely networked character using buffered network attributes. Reads 14 attribute slots from `TOOLKIT.EntityController.QueryBufferedAttribute`.
-
-#### Properties
-
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `updateStateParams` | `boolean` | `true` | Apply network attributes to animator |
-| `smoothMotionTime` | `number` | `0` | Smooth float interpolation time |
-| `smoothInputVectors` | `boolean` | `false` | Use smoothed float for input axes |
-
-#### Network Attribute Map (Buffer Index)
-
-| Index | Name | Type | Description |
-|---|---|---|---|
-| `0` | Direction | `integer` | `PlayerMoveDirection` enum |
-| `1` | Magnitude | `float` | Input magnitude 0..1 |
-| `2` | Horizontal | `float` | Input X axis |
-| `3` | Vertical | `float` | Input Z axis |
-| `4` | MouseX | `float` | Mouse/look X |
-| `5` | MouseY | `float` | Mouse/look Y |
-| `6` | Height | `float` | Vertical velocity |
-| `7` | Speed | `float` | Movement speed |
-| `8` | Action | `integer` | Action state enum |
-| `9` | Jumped | `bool` | Jump frame trigger |
-| `10` | Jump | `bool` | Is jumping |
-| `11` | FreeFall | `bool` | Is falling |
-| `12` | Sliding | `bool` | Is sliding |
-| `13` | Grounded | `bool` | Is grounded |
+`RemotePlayerController` and the controllers' `postNetworkAttributes` flag replicated a player through
+`TOOLKIT.EntityController` buffered attributes. That networking was removed. A networked character is a prefab with a
+`NetworkObject`, a `NetworkRigidbody` (or `NetworkTransform`), a `NetworkMecanimAnimator` and the game's own
+`NetworkBehaviour` that moves it in `fixedUpdateNetwork` from networked input — see §6.
 
 ---
 
 ## 6. SYSTEM: Network / Multiplayer
 
-The networking stack uses Colyseus Universal Game Room via `BABYLON.NetworkManager`.
+**All networking is Fusion networking** — a port of the Photon Fusion 2 programming model on a Colyseus 0.18 session
+server, in the `PROJECT` namespace (ESM: `@babylonjs-toolkit/next/project`). It supports every Fusion game mode
+(Single, Shared, Host, Client, dedicated Server, AutoHostOrClient), networked properties, RPCs, tick-based input,
+client-side prediction with re-simulation, interpolated and extrapolated transforms and Havok rigidbodies, animator
+replication, lag-compensated hitboxes, interest management, networked scene loading and host migration.
 
-> ⚠️ **Script-bundle only:** `ColyseusGameServer`, `ColyseusNetworkEntity`, `ColyseusNetworkAvatar`,
-> and `BABYLON.NetworkManager` are provided by the starter script bundle at runtime — they are
-> **not** in the `@babylonjs-toolkit/next` npm package and cannot be imported from it.
-> Only `TOOLKIT.EntityController` (attribute queries) and `TOOLKIT.RoomErrorMessage` are npm exports.
+**Read the [Fusion Networking reference](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/fusion-networking.md) before writing any multiplayer code.**
 
-### CLASS: `ColyseusGameServer`
+The old Colyseus starter classes — `ColyseusGameServer`, `ColyseusNetworkManager` / `BABYLON.NetworkManager`,
+`ColyseusNetworkEntity`, `ColyseusNetworkAvatar`, `RemotePlayerController`, `TOOLKIT.EntityController` and
+`SceneManager.ServerEndPoint` — were deleted with no compatibility layer. Never use them.
 
-**Namespace:** `PROJECT`  
-**Extends:** `TOOLKIT.ScriptComponent`  
-**File:** `Assets/[Starter]/Network/ColyseusGameServer.ts`
-
-Manages the Colyseus server connection, room creation/joining, and network lifecycle. Singleton accessible via `PROJECT.ColyseusGameServer.Instance`.
-
-#### Static Fields
-
-```typescript
-static MAX_FRAME_RATE: number = 200   // Max allowed network update rate
-static Instance: PROJECT.ColyseusGameServer  // Singleton accessor
-```
-
-#### Properties
-
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `projectName` | `string` | `"Game Project"` | Project identifier |
-| `autoJoinRoom` | `boolean` | `true` | Join room automatically on ready |
-| `playerUserName` | `string` | `"Player"` | Default display name |
-| `defaultRoomName` | `string` | `"default"` | Room to join |
-| `roomLogicModule` | `string` | `"DefaultLogic"` | Server-side logic module |
-| `maxClientsAllowed` | `number` | `8` | Max clients per room |
-| `patchUpdateRateFps` | `number` | `20` | State sync rate (max 200) |
-| `roomSimulateRateFps` | `number` | `60` | Server simulation rate (max 200) |
-| `networkBufferingTime` | `number` | `0.15` | Interpolation buffer (sec) |
-
-#### URL Parameters (Overrides)
-
-| Parameter | Overrides |
+| Need | Fusion |
 |---|---|
-| `?endpoint=wss://...` | `TOOLKIT.SceneManager.ServerEndPoint` |
-| `?player=Name` | `playerUserName` |
-| `?room=roomname` | `defaultRoomName` |
-| `?host=desc` | Creates a new hosted session |
-| `?join=roomId` | Joins existing room by ID |
-| `?solo=true` | Forces offline solo play (disables Colyseus) |
-
-#### API Methods
-
-```typescript
-async joinRoom(): Promise<void>
-// Connect to Colyseus server and join/create a room.
-// Called automatically if autoJoinRoom=true.
-
-isSoloSession(): boolean   // True if ?solo=true was passed
-isHostSession(): boolean   // True if ?host= was set
-getColyseusClient(): Colyseus.Client
-```
-
----
-
-### CLASS: `BABYLON.NetworkManager`
-
-**Module:** `BABYLON`  
-**File:** `Assets/[Starter]/Network/ColyseusNetworkManager.ts`
-
-Core static network management class. Handles entity creation/removal, interpolation, attribute posting, remote procedure calls.
-
-#### Static Observables
-
-```typescript
-static OnConnectObservable: Observable<IColyseusNetworkUser>
-static OnDisconnectObservable: Observable<IColyseusNetworkUser>
-static OnJoinRoomObservable: Observable<IColyseusNetworkUser>
-static OnLeaveRoomObservable: Observable<number>
-static OnCreateEntityObservable: Observable<IColyseusNetworkEntity>
-static OnRemoveEntityObservable: Observable<IColyseusNetworkEntity>
-static OnChatMessageObservable: Observable<IColyseusChatMessage>
-static OnPingReceivedObservable: Observable<any>
-static OnErrorMessageObservable: Observable<TOOLKIT.RoomErrorMessage>
-static OnRemoteProcedureCallObservable: Observable<any>
-```
-
-#### Static State API
-
-```typescript
-static IsAvailable(): boolean              // Colyseus library loaded
-static IsRoomAttached(): boolean           // Room connected to scene
-static HasJoinedRoom(): boolean            // Join confirmed
-static GetCurrentUser(): IColyseusNetworkUser
-static GetDefaultRoom(): UniversalGameRoom
-static GetNetworkTime(): number            // Server time in seconds
-static InterpolationBuffer: number         // Buffer delay (default 0.15s)
-```
-
-#### Entity Type API
-
-```typescript
-static IsLocalNetworkEntity(entity: BABYLON.TransformNode): boolean
-static IsRemoteNetworkEntity(entity: BABYLON.TransformNode): boolean
-static GetNetworkEntityType(entity: BABYLON.TransformNode): number  // 0=None, 1=Local, 2=Remote
-```
-
-#### Room Management
-
-```typescript
-static AttachDefaultRoom(scene: BABYLON.Scene, room: UniversalGameRoom): void
-static DetachDefaultRoom(): void
-```
-
-#### Entity Management
-
-```typescript
-static CreateNetworkEntity(
-    transform: BABYLON.TransformNode,
-    remotePrefab: string,          // Prefab name to spawn on remote clients
-    assetContainer: string,        // Asset container holding the prefab
-    movementEpsilon: number,
-    movementMethod: EntityMovementType,
-    interpolationMode: EntityInterpolation,
-    syncTransformNode: boolean,
-    customHandler: string,
-    bufferedAttributes: any,
-    creationAttributes: any
-): void
-
-static RemoveNetworkEntity(entityId: string): void
-```
-
-#### Attribute API
-
-```typescript
-static PostNetworkAttributes(transform: BABYLON.TransformNode, attributes: number[]): void
-// Post an array of numeric attributes (indexed 0..N) for this entity.
-// Remote clients read via TOOLKIT.EntityController.QueryBufferedAttribute
-
-static RegisterCustomInterpolationHandler(
-    name: string,
-    handler: (entity: IColyseusNetworkEntity, transform: BABYLON.TransformNode, deltaTime: number) => void
-): void
-```
-
----
-
-### CLASS: `ColyseusNetworkEntity`
-
-**Namespace:** `PROJECT`  
-**Extends:** `TOOLKIT.ScriptComponent`  
-**File:** `Assets/[Starter]/Network/ColyseusNetworkEntity.ts`
-
-Manages the network entity lifecycle for a single game object. Automatically creates the entity when the room is joined and destroys it on disconnect.
-
-#### Properties
-
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `autoCreate` | `boolean` | `true` | Create entity automatically |
-| `remotePrefab` | `string` | `null` | Prefab name to spawn remotely |
-| `assetContainer` | `string` | `null` | Asset container key |
-| `movementEpsilon` | `number` | `0.00001` | Minimum movement threshold |
-| `movementMethod` | `EntityMovementType` | `ClientAuthority` | 0=Client, 1=Server |
-| `interpolationMode` | `EntityInterpolation` | `Default` | 0=Default, 1=Hermite, 2=Custom |
-| `interpolationHandler` | `string` | `null` | Custom handler name for Custom mode |
-| `syncTransformNode` | `boolean` | `true` | Sync transform to network |
-| `runtimeAttributes` | `EntityAttribute[]` | `null` | Key-value attributes on creation |
-
-#### Enums
-
-```typescript
-enum EntityMovementType {
-    ClientAuthority = 0,  // Client moves authoritatively
-    ServerAuthority = 1   // Server controls position
-}
-
-enum EntityInterpolation {
-    Default = 0,  // Linear interpolation
-    Hermite = 1,  // Hermite spline interpolation
-    Custom  = 2   // Custom handler (set interpolationHandler)
-}
-```
-
-#### API
-
-```typescript
-createEntity(): void
-// Manually trigger network entity creation.
-// Called automatically when autoCreate=true and room is joined.
-```
-
----
-
-### CLASS: `ColyseusNetworkAvatar`
-
-**Namespace:** `PROJECT`  
-**Extends:** `TOOLKIT.ScriptComponent`, implements `TOOLKIT.IAssetPreloader`  
-**File:** `Assets/[Starter]/Network/ColyseusNetworkAvatar.ts`
-
-Manages avatar mesh loading (male/female GLB rigs) and floating nameplates for networked players.
-
-#### Properties
-
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `manageLabelTexture` | `boolean` | `true` | Create floating nameplate |
-| `textureResolution` | `number` | `512` | Label texture size in pixels |
-| `maxLabelWidth` | `number` | `960` | Max label pixel width |
-| `minLabelWidth` | `number` | `320` | Min label pixel width |
-| `labelOffsetX/Y` | `number` | `0 / 2.0` | Label world-space offset |
-| `labelHeight` | `number` | `64` | Label box height (pixels) |
-| `labelColor` | `BABYLON.Color3` | Green | Text color |
-| `labelAlpha` | `number` | `0.85` | Text alpha |
-| `rectColor` | `BABYLON.Color3` | Black | Background rectangle color |
-| `rectAlpha` | `number` | `0.65` | Background alpha |
-| `fontFamily` | `string` | `"Arial"` | Label font family |
-| `fontStyle` | `string` | `"Bold"` | Label font style |
-| `fontSize` | `number` | `36` | Label font size |
-| `fillRect` | `boolean` | `true` | Draw background rectangle |
-
-The component reads `defaultAvatar`, `maleAnimationRig`, and `femaleAnimationRig` from serialized Unity inspector references (as `.glb` filenames).
+| Connect / create or join a room | `new PROJECT.NetworkRunner(scene).startGame({ gameMode, sessionName })` |
+| Server URL | `NetworkSettings.serverUrl` (Unity) or `startGame({ config: { serverUrl } })` |
+| Spawn a remote player | `runner.spawn(prefab, position, rotation, player)` in `onPlayerJoined` |
+| Replicate player state | `Networked.*` properties on a `NetworkBehaviour` |
+| Replicate motion | `NetworkTransform` / `NetworkRigidbody` |
+| Replicate animation | `NetworkMecanimAnimator` |
+| Chat / events | An RPC (`Rpc.define`) |
+| Player joined / left | `onPlayerJoined` / `onPlayerLeft` callbacks |
 
 ---
 
@@ -1087,7 +857,6 @@ RegisterAssetContainer(scene, key, container): void
 InstantiatePrefabFromContainer(container, prefabName, newName): BABYLON.TransformNode
 
 // Properties
-ServerEndPoint: string             // Get/set Colyseus server URL
 HiddenLayerMask: number            // Layer mask for hidden objects
 VirtualJoystickEnabled: boolean    // Toggle virtual joystick mode
 ```
@@ -1120,18 +889,6 @@ SetLeftJoystickBuffer(x, y, invertY): void
 SetRightJoystickBuffer(x, y, invertY): void
 MobileControlsActive: boolean
 AllowMobileControls: boolean
-```
-
-### `TOOLKIT.EntityController` — Static Methods
-
-```typescript
-GetNetworkEntityId(transform): string
-GetNetworkEntityType(transform): number
-GetNetworkEntitySessionId(transform): string
-HasNetworkEntity(transform): boolean
-QueryNetworkAttribute(transform, key): string       // Named attribute
-QueryBufferedAttribute(transform, index): number    // Indexed attribute
-PostBufferedAttribute(transform, index, value): void  // Post ONE indexed attribute
 ```
 
 ### `TOOLKIT.WindowManager` — Static Methods
@@ -1252,24 +1009,27 @@ Player (with CharacterController physics)
 
 ### Online Multiplayer
 
+Fusion networking — full guide in the Fusion Networking reference.
+
 ```
 [Scene]
 CameraRig
   └── DefaultCameraSystem
 
 NetworkRoot
-  └── ColyseusGameServer
-        defaultRoomName="game", autoJoinRoom=true
+  ├── NetworkSettings
+  │     serverUrl="ws://localhost:2567", prefabContainers=["players.gltf"]
+  └── GameLauncher (script: NetworkRunner.startGame, onInput, onPlayerJoined → runner.spawn)
 
-LocalPlayer
-  ├── StandardPlayerController (enableInput=true, postNetworkAttributes=true)
-  ├── ColyseusNetworkEntity
-  │     remotePrefab="RemotePlayer", autoCreate=true
-  └── ColyseusNetworkAvatar (manageLabelTexture=true)
+SpawnPoints
+  └── Spawn0 … Spawn7
 
-[RemotePlayer Prefab — spawned by NetworkManager per remote client]
-  ├── RemotePlayerController (updateStateParams=true)
-  └── ColyseusNetworkAvatar (controlMode=1)
+[PlayerAvatar Prefab — in the players.gltf asset container, spawned per player]
+  ├── NetworkObject
+  ├── NetworkRigidbody (interpolationTarget = Visual)
+  ├── PlayerAvatar (NetworkBehaviour: networked properties, RPCs, fixedUpdateNetwork)
+  └── Visual
+        └── TOOLKIT.Animator + NetworkMecanimAnimator
 ```
 
 ### Mobile Game
@@ -1319,15 +1079,15 @@ Player
 - [ ] `enableInput=false` by default; set `true` on game start
 - [ ] `attachCamera=true` on `StandardPlayerController` for automatic camera binding
 - [ ] `TOOLKIT.Animator` on avatar child node for animation (every Unity Animator exports as one)
-- [ ] `postNetworkAttributes=true` if multiplayer
 
 ### Network Setup (if applicable)
 
-- [ ] `ColyseusGameServer` in scene with correct `defaultRoomName`
-- [ ] `ColyseusNetworkEntity` on local player — set `remotePrefab` to spawnable prefab name
-- [ ] Remote player prefab in asset container with `RemotePlayerController`
-- [ ] `animationStateParams` must match animator parameter names
-- [ ] Server endpoint configured via inspector OR `?endpoint=` URL param
+- [ ] `NetworkSettings` in the scene with `serverUrl` and every network prefab container in `prefabContainers`
+- [ ] `NetworkObject` on every networked prefab root and networked scene object
+- [ ] Exporter **Fusion Networking** option on (exported pages), or `ColyseusTransport.ClientModule` set (ESM)
+- [ ] Gameplay state only in networked properties, simulated in `fixedUpdateNetwork`
+- [ ] Tested at 150 ms latency / 2 % loss with the `NetworkStats` overlay (F8)
+- [ ] Production `wss://` server address from the user before publishing
 
 ### Mobile
 
@@ -1435,14 +1195,25 @@ protected async start(): Promise<void> {
 
 ### Multiplayer Chat Message
 
-```typescript
-// Send
-BABYLON.NetworkManager.GetDefaultRoom().send("chat", { text: "Hello!", user: "Player1" });
+A chat line is an RPC on a `NetworkBehaviour` (UMD form; ESM imports the same names from
+`@babylonjs-toolkit/next/project`):
 
-// Receive
-BABYLON.NetworkManager.OnChatMessageObservable.add((msg) => {
-    console.log(msg.user + ": " + msg.text);
-});
+```typescript
+/** RPCs: any player sends a chat line; every peer receives it. */
+protected static getRpcDefinitions(): PROJECT.RpcDefinitions {
+    return {
+        rpcChat: PROJECT.Rpc.define({ sources: PROJECT.RpcSources.All, targets: PROJECT.RpcTargets.All }, [PROJECT.Networked.string(120)])
+    };
+}
+
+/**
+ * Receives a chat line on every peer. Calling this.rpcChat("Hello!") sends it.
+ * @param text The message.
+ * @param info The sender (info.source) and tick.
+ */
+public rpcChat(text: string, info?: PROJECT.RpcInfo): void {
+    console.log(info.source.toString() + ": " + text);
+}
 ```
 
 ### Split-Screen Setup (2 Players)
@@ -1474,18 +1245,27 @@ const constraint = doorHinge.constraint;
 constraint.isCollisionsEnabled = false;
 ```
 
-### Network Entity with Custom Attributes
+### Networked Player State
+
+Replicated state is a networked property on a `NetworkBehaviour` (the old indexed `EntityController` attributes are
+gone). Only the state authority writes it; every peer reads it:
 
 ```typescript
-// On local player StandardPlayerController (postNetworkAttributes=true):
-// The controller automatically posts these attribute indices:
-// [0]=direction, [1]=magnitude, [2]=inputX, [3]=inputZ,
-// [4]=mouseX, [5]=mouseY, [6]=verticalVelocity, [7]=moveSpeed
-// [8]=actionState, [9]=jumpFrame, [10]=isJumping,
-// [11]=isFalling, [12]=isSliding, [13]=isGrounded
+/** The avatar's networked score; its change refreshes the scoreboard on every peer. */
+public declare score: number;
 
-// On RemotePlayerController — reads same indices automatically.
-// For custom attributes, use EntityController directly (one indexed value per call):
-TOOLKIT.EntityController.PostBufferedAttribute(this.transform, 14, myCustomValue1);
-TOOLKIT.EntityController.PostBufferedAttribute(this.transform, 15, myCustomValue2);
+/** Networked state ([Networked] properties). */
+protected static getNetworkedProperties(): PROJECT.NetworkedPropertyDefinitions {
+    return { score: PROJECT.Networked.int({ onChangedRender: "onScoreChanged" }) };
+}
+
+/** Scores a point on the state authority (call from fixedUpdateNetwork or an RPC receiver). */
+public addPoint(): void {
+    if (this.hasStateAuthority) this.score = this.score + 1;
+}
+
+/** onChangedRender callback: runs on every peer when score changes. */
+public onScoreChanged(): void {
+    // Update the scoreboard UI.
+}
 ```

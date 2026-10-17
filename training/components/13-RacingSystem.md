@@ -9,7 +9,7 @@
 
 ```typescript
 import * as TOOLKIT from "@babylonjs-toolkit/next";
-import { StandardCarController, VehicleInputController, VehicleCameraManager, RaceTrackManager, CheckpointManager, SkidMarkManager, RemoteCarController } from "@babylonjs-toolkit/next/project";
+import { StandardCarController, VehicleInputController, VehicleCameraManager, RaceTrackManager, CheckpointManager, SkidMarkManager } from "@babylonjs-toolkit/next/project";
 // PROJECT racing classes are ONLY available from "@babylonjs-toolkit/next/project" — they are NOT exported from the root import.
 // There is NO "@babylonjs-toolkit/next/racing/..." subpath — it does not exist and importing it crashes.
 ```
@@ -25,7 +25,7 @@ right for a sim/street racer and it is **not** what a kart game, a hover racer o
 racer feels like.
 
 **But it is tunable, and tuning it is usually better than writing your own vehicle.** The physics,
-skidmarks, checkpoint/lap tracking, AI autopilot, split-screen cameras and networking are all real
+skidmarks, checkpoint/lap tracking, AI autopilot and split-screen cameras are all real
 work you would otherwise repeat. Reach for a custom controller only when the movement is genuinely
 not a car — hovercraft, on-rails, top-down 2.5D, grid-based.
 
@@ -95,9 +95,9 @@ track the game actually calls for; the controller does not care what mesh it dri
 8. [CLASS: `CheckpointManager`](#8-class-checkpointmanager)
 9. [CLASS: `RaceTrackManager`](#9-class-racetrackmanager)
 10. [CLASS: `SkidMarkManager`](#10-class-skidmarkmanager)
-11. [CLASS: `RemoteCarController`](#11-class-remotecarcontroller)
-12. [CLASS: `NetworkCarPrediction`](#12-class-networkcarprediction)
-13. [CLASS: `VehicleNetworkLabel`](#13-class-vehiclenetworklabel)
+11. [Online Multiplayer (Fusion networking)](#11-online-multiplayer-fusion-networking)
+12. *(removed — `NetworkCarPrediction`)*
+13. *(removed — `VehicleNetworkLabel`)*
 14. [Interfaces & Data Structures](#14-interfaces--data-structures)
 15. [Enums](#15-enums)
 16. [Game Architecture Blueprint](#16-game-architecture-blueprint)
@@ -122,11 +122,6 @@ Scene
 │   ├── PROJECT.VehicleCameraManager    ← Follow camera + motion blur
 │   └── PROJECT.CheckpointManager       ← Per-player lap/checkpoint tracking
 │
-├── RemoteCar (Network Prefab)
-│   ├── PROJECT.RemoteCarController     ← Visual-only remote car
-│   ├── PROJECT.NetworkCarPrediction    ← Client-side interpolation
-│   └── PROJECT.VehicleNetworkLabel     ← Floating player name plate
-│
 └── SideCam (optional child of PlayerCar)
     └── PROJECT.SideCameraController    ← Picture-in-picture side view
 ```
@@ -140,7 +135,6 @@ Scene
 | `VehicleCameraManager` | `PROJECT.StandardCarController`, `PROJECT.VehicleInputController`, `PROJECT.DefaultCameraSystem` |
 | `CheckpointManager` | `PROJECT.RaceTrackManager` (static) |
 | `SkidMarkManager` | `PROJECT.StandardCarController` (calls `AddSkidMarkSegment` statically) |
-| `RemoteCarController` | `TOOLKIT.Animator`, `TOOLKIT.AudioSource`, `BABYLON.NetworkManager` |
 
 ---
 
@@ -196,9 +190,6 @@ TOOLKIT.SceneManager.RegisterClass("PROJECT.StandardCarController", StandardCarC
 | `CheckpointManager` | Lap counting, checkpoint tracking | Each racing entity |
 | `RaceTrackManager` | Track spline, checkpoints, leaderboard | Singleton on TrackManager object |
 | `SkidMarkManager` | GPU skidmark decals | Singleton on TrackManager object |
-| `RemoteCarController` | Visual-only replicated car | Network remote car prefab |
-| `NetworkCarPrediction` | Client-side transform interpolation | Network remote car prefab |
-| `VehicleNetworkLabel` | Floating nameplate over car | Network remote car prefab |
 
 ---
 
@@ -885,129 +876,26 @@ this.m_frontLeftWheelSkid = PROJECT.SkidMarkManager.AddSkidMarkSegment(
 
 ---
 
-## 11. CLASS: `RemoteCarController`
+## 11. Online Multiplayer (Fusion networking)
 
-**Namespace:** `PROJECT`  
-**Extends:** `TOOLKIT.ScriptComponent`  
-**File:** `Assets/[Racing]/Scripts/RemoteCarController.ts`
+`RemoteCarController`, `NetworkCarPrediction`, `VehicleNetworkLabel` and `StandardCarController.postNetworkAttributes`
+were removed with the old Colyseus networking. Online racing uses **Fusion networking** — read the
+[Fusion Networking reference](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/fusion-networking.md) first.
 
-Visual-only controller for remotely networked cars. Does not simulate physics — only plays animations, audio, particle effects, and skidmarks for cars owned by other clients.
+`StandardCarController` is not networked: it simulates in its own frame loop, which client prediction cannot rewind.
+A networked car or kart is its own `NetworkBehaviour` that drives the Havok body from networked input in
+`fixedUpdateNetwork`, on a prefab with:
 
-### Properties
+- `NetworkObject` on the root, and the prefab inside an asset container listed on `NetworkSettings.prefabContainers`;
+- `NetworkRigidbody` with `renderMode` **Extrapolate** (remote cars are drawn where they are now) and its
+  `interpolationTarget` set to the visual child — attach the camera, name label and effects to that child;
+- optionally `NetworkMecanimAnimator` (call its `setTrigger`), and `HitboxRoot` + `Hitbox` for lag-compensated item hits;
+- a name label made in `spawned()` from a networked `string` property set by an RPC, guarded with `runner.isPlayer`.
 
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `centerOfMass` | `number` | `0.4` | Visual center-of-mass offset |
-| `burnoutWheelPitch` | `number` | `0.85` | Burnout audio pitch |
-| `linkTrackManager` | `boolean` | `true` | Register with track manager |
-| `playVehicleSounds` | `boolean` | `true` | Enable audio playback |
-| `smokeTexture` | `BABYLON.Texture` | `null` | Smoke particle texture |
-| `skidThreashold` | `number` | `0.65` | Skid detection threshold |
-| `smokeIntensity` | `number` | `150` | Smoke emission count |
-| `smokeOpacity` | `number` | `0.1` | Smoke opacity |
-| `smokeDonuts` | `number` | `2.0` | Smoke multiplier during donuts |
-
-### Wheel Contact API
-
-```typescript
-getFrontLeftWheelContact(): boolean
-getFrontRightWheelContact(): boolean
-getRearLeftWheelContact(): boolean
-getRearRightWheelContact(): boolean
-getFrontLeftWheelContactTag(): string     // Surface tag
-getFrontLeftWheelContactPoint(): BABYLON.Vector3
-getFrontLeftWheelContactNormal(): BABYLON.Vector3
-// (same pattern for all 4 wheels)
-```
-
-### Network Attributes Read (via `TOOLKIT.EntityController.QueryBufferedAttribute`)
-
-The remote car reads these from the network entity buffer:
-- Index 0: `pitchLevel` — Engine audio pitch
-- Index 1: `brakeState` — Brake lights flag
-- Index 2: `reverseState` — Reverse lights flag
-- Index 3: `burnoutState` — Burnout flag
-- Index 4: `steerAngle` — Steering wheel angle
-- Index 5–8: `SKID_FL/FR/RL/RR` — Per-wheel skid intensities
-- Index 9–12: `SPIN_FL/FR/RL/RR` — Per-wheel rotation speeds
-
----
-
-## 12. CLASS: `NetworkCarPrediction`
-
-**Namespace:** `PROJECT`  
-**Extends:** `TOOLKIT.ScriptComponent`  
-**File:** `Assets/[Racing]/Scripts/NetworkCarPrediction.ts`
-
-> ⚠️ **Script-bundle only:** `NetworkCarPrediction` (like `BABYLON.NetworkManager` it depends on)
-> ships in the starter script bundle — it is **not** in the `@babylonjs-toolkit/next` npm package
-> and cannot be imported from `"@babylonjs-toolkit/next/project"`.
-
-Registers a custom interpolation handler with `BABYLON.NetworkManager` for vehicle client-side prediction. The actual prediction algorithm is a stub for custom implementation.
-
-### Properties
-
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `autoRegister` | `boolean` | `true` | Auto-register handler on awake |
-| `handlerName` | `string` | `"VehiclePrediction"` | Key to register handler under |
-| `extrapolateTimeMs` | `number` | `200` | Max extrapolation window (ms) |
-
-### Public API
-
-```typescript
-register(): void
-// Manually register the interpolation handler.
-// Called automatically on awake if autoRegister is true.
-```
-
-### Extension Pattern
-
-Override `HandleUpdate` to implement custom prediction:
-```typescript
-private HandleUpdate(
-    networkEntity: BABYLON.IColyseusNetworkEntity,
-    remoteTransform: BABYLON.TransformNode,
-    deltaTime: number
-): void {
-    // Implement position/rotation interpolation here
-    // Use extrapolateTimeMs to bound your prediction window
-}
-```
-
----
-
-## 13. CLASS: `VehicleNetworkLabel`
-
-**Namespace:** `PROJECT`  
-**Extends:** `TOOLKIT.ScriptComponent`  
-**File:** `Assets/[Racing]/Scripts/VehicleNetworkLabel.ts`
-
-Creates a floating GUI nameplate over networked cars using Babylon.js GUI `AdvancedDynamicTexture`. Auto-creates from `TOOLKIT.EntityController.QueryNetworkAttribute(transform, "ownerName")`.
-
-### Properties
-
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `autoCreate` | `boolean` | `true` | Auto-create label when room joined |
-| `offsetX` | `number` | `0` | Pixel offset X from car center |
-| `offsetY` | `number` | `0` | Pixel offset Y (height above car) |
-| `labelColor` | `BABYLON.Color3` | White | Name text color |
-| `borderColor` | `BABYLON.Color3` | Teal (#00D7D3) | Rectangle border color |
-| `backgroundColor` | `BABYLON.Color3` | Dark teal (#007977) | Rectangle fill color |
-| `label` | `BABYLON.GUI.TextBlock` | `null` | Text block (public, accessible) |
-| `rect` | `BABYLON.GUI.Rectangle` | `null` | Background rectangle (public) |
-
-### Public API
-
-```typescript
-createLabel(name: string): void
-// Manually create a nameplate. Automatically called with ownerName from network.
-
-static GetFullscreenUI(scene: BABYLON.Scene, sampling?: number): BABYLON.GUI.AdvancedDynamicTexture
-// Get or create the shared fullscreen Advanced Dynamic Texture.
-// Singleton — all labels share the same ADT instance.
-```
+The Fusion kit's sample (`Assets/[Fusion]/Samples`: `NetworkTestBed`, `NetworkSampleKart`, the launcher) is a
+working networked kart with input, boost, a lag-compensated zap, an animator trigger and name labels — start from it.
+`RaceTrackManager`, `CheckpointManager` and `SkidMarkManager` stay local presentation; put race results (laps, finish
+ticks) in networked properties.
 
 ---
 
@@ -1146,23 +1034,27 @@ const ZAxis = 2;  // Default
 
 ### Online Multiplayer Race
 
+Fusion networking (§11):
+
 ```
 [Scene]
-  NetworkManager
-    └── ColyseusGameServer (from Starter system)
+  TrackManager
+    ├── RaceTrackManager
+    └── SkidMarkManager
 
-  LocalPlayerCar
-    ├── StandardCarController
-    ├── VehicleInputController (enableInput=true)
-    ├── VehicleCameraManager
-    ├── CheckpointManager
-    └── ColyseusNetworkEntity (from Starter)
-          postNetworkAttributes=true on StandardCarController
+  NetworkRoot
+    ├── NetworkSettings (serverUrl, prefabContainers=["karts.gltf"])
+    └── RaceLauncher (NetworkRunner.startGame, onInput, onPlayerJoined → runner.spawn)
 
-  [RemoteCar Prefab — spawned by NetworkManager]
-    ├── RemoteCarController
-    ├── NetworkCarPrediction
-    └── VehicleNetworkLabel
+  SpawnPoints
+    └── Spawn0 … Spawn7
+
+  [Kart Prefab — in the karts.gltf asset container, spawned per player]
+    ├── NetworkObject
+    ├── NetworkRigidbody (renderMode=Extrapolate, interpolationTarget=Visual)
+    ├── Kart NetworkBehaviour (drives the body from networked input in fixedUpdateNetwork)
+    ├── HitboxRoot → Hitbox (optional, for item hits)
+    └── Visual (camera target, name label, effects)
 ```
 
 ---
