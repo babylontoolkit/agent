@@ -6,7 +6,7 @@
 >    never just its `SKILL.md`. Some skills fail at runtime without their assets.
 > 2. **INSTALL GLOBALLY BY DEFAULT, INTO BOTH LOCATIONS.** Always prefer the GLOBAL
 >    (per-user home) locations unless the user explicitly asks to install into the
->    project. You MUST install **ALL 13 SKILLS** into **BOTH** of these directories —
+>    project. You MUST install **ALL 14 SKILLS** into **BOTH** of these directories —
 >    never just one:
 >    - `~/.claude/skills/` — Claude Code
 >    - `~/.agents/skills/` — cross-agent standard read by VS Code / GitHub Copilot,
@@ -56,6 +56,7 @@ and some skills ship **additional required asset files** (scripts, references, t
 | [`bt-hero`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-hero/SKILL.md) | `/bt-hero` | Create smooth cinematic 3D scrolling hero sections. | `SKILL.md` |
 | [`bt-atlas`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-atlas/SKILL.md) | `/bt-atlas` | Generate texture atlas skin variations. | `SKILL.md` **+ `scripts/` (required Python)** |
 | [`bt-optimize`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/SKILL.md) | `/bt-optimize` | Make an exported Unity scene run fast in the browser: profile, fix the causes, merge static meshes and LOD groups, verify. | `SKILL.md` **+ `scripts/` (required C# engines and QA tools)** |
+| [`bt-profile`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-profile/SKILL.md) | `/bt-profile` | Find what makes a web game (or any web app) slow: drive it in Chrome through a repeatable scenario, profile every frame and GPU pipeline compile, map the time to your code, list the fixes (or apply them with `--auto-fix`), with a live dashboard. | `SKILL.md` **+ `scripts/` and `templates/` (required Node tools and scenario templates)** |
 
 Every tool derives the slash-command from the **folder name** (`bt-spec/` → `/bt-spec`) and reads
 the frontmatter `name` + `description` to decide when the skill applies. The `allowed-tools`
@@ -130,17 +131,34 @@ skills/
 │       ├── preview.py
 │       ├── uv_island_mask.py
 │       └── requirements.txt
-└── bt-optimize/
+├── bt-optimize/
+│   ├── SKILL.md
+│   └── scripts/
+│       ├── BtCombine.cs
+│       ├── BtOptimize.cs
+│       └── qa/
+│           ├── compare-browser.mjs
+│           ├── compare-profiles.mjs
+│           ├── gltf-stats.mjs
+│           ├── package.json
+│           └── profile-browser.mjs
+└── bt-profile/
     ├── SKILL.md
-    └── scripts/
-        ├── BtCombine.cs
-        ├── BtOptimize.cs
-        └── qa/
-            ├── compare-browser.mjs
-            ├── compare-profiles.mjs
-            ├── gltf-stats.mjs
-            ├── package.json
-            └── profile-browser.mjs
+    ├── scripts/
+    │   ├── analyze.mjs
+    │   ├── compare.mjs
+    │   ├── package.json
+    │   ├── profile.mjs
+    │   ├── progress.mjs
+    │   ├── report.mjs
+    │   └── lib/
+    │       ├── chrome.mjs
+    │       ├── probe.mjs
+    │       ├── progress-panel.mjs
+    │       └── symbolize.mjs
+    └── templates/
+        ├── census.template.mjs
+        └── scenario.template.mjs
 ```
 
 ### Required-asset manifest (verify EVERY file below exists after install)
@@ -197,10 +215,26 @@ skills/
 - `bt-optimize/scripts/qa/package.json`
 - `bt-optimize/scripts/qa/profile-browser.mjs`
 
+`bt-profile` **cannot capture, analyze or report** unless these are also present:
+
+- `bt-profile/SKILL.md`
+- `bt-profile/scripts/analyze.mjs`
+- `bt-profile/scripts/compare.mjs`
+- `bt-profile/scripts/package.json`
+- `bt-profile/scripts/profile.mjs`
+- `bt-profile/scripts/progress.mjs`
+- `bt-profile/scripts/report.mjs`
+- `bt-profile/scripts/lib/chrome.mjs`
+- `bt-profile/scripts/lib/probe.mjs`
+- `bt-profile/scripts/lib/progress-panel.mjs`
+- `bt-profile/scripts/lib/symbolize.mjs`
+- `bt-profile/templates/census.template.mjs`
+- `bt-profile/templates/scenario.template.mjs`
+
 All other skills (`bt-spec`, `bt-plan`, `bt-recon`, `bt-convert`, `bt-copycat`, `bt-landing`,
 `bt-prototype`, `bt-hero`) are `SKILL.md`-only.
 
-> **THERE ARE 13 SKILLS TOTAL.** ALL 13 must be installed into EVERY target location.
+> **THERE ARE 14 SKILLS TOTAL.** ALL 14 must be installed into EVERY target location.
 > A partial install is a FAILED install.
 
 ## Installation
@@ -257,7 +291,7 @@ the appropriate global or local project location.
 - If you **cannot prompt** (non-interactive or autonomous run), **default to the Recommended global install method below (clone-and-copy into the per-user home directory)** and tell the user which method was used.
 
 **However you install, you MUST end with the [Post-Install Verification](#post-install-verification) step below.**
-An install that reports success but is missing `bt-atlas/scripts/`, `bt-design/references/` / `bt-design/templates/`, `bt-execute/templates/` + `bt-execute/scripts/`, `bt-gauntlet/references/` or `bt-optimize/scripts/` is a FAILED install — go back and copy the missing files.
+An install that reports success but is missing `bt-atlas/scripts/`, `bt-design/references/` / `bt-design/templates/`, `bt-execute/templates/` + `bt-execute/scripts/`, `bt-gauntlet/references/`, `bt-optimize/scripts/` or `bt-profile/scripts/` + `bt-profile/templates/` is a FAILED install — go back and copy the missing files.
 
 ### Recommended install method: clone the whole repo, copy whole folders (GLOBAL by default)
 
@@ -268,7 +302,7 @@ Cloning guarantees every asset comes along. Copy folders recursively (`-R` / `-r
 ```bash
 # 1. Clone the full repo (brings ALL skill assets, including bt-atlas/scripts/
 #    bt-design/references/ + templates/, bt-execute/templates/, bt-gauntlet/references/
-#    and bt-optimize/scripts/).
+#    bt-optimize/scripts/ and bt-profile/scripts/ + templates/).
 #    Remove any stale clone first — git clone fails if the folder already exists.
 rm -rf /tmp/bt-skills
 git clone --depth 1 https://github.com/babylontoolkit/skills.git /tmp/bt-skills
@@ -285,7 +319,7 @@ cp -R /tmp/bt-skills/skills/. ~/.agents/skills/    # Cross-agent standard: Codex
 ```powershell
 # 1. Clone the full repo (brings ALL skill assets, including bt-atlas/scripts/
 #    bt-design/references/ + templates/, bt-execute/templates/, bt-gauntlet/references/
-#    and bt-optimize/scripts/).
+#    bt-optimize/scripts/ and bt-profile/scripts/ + templates/).
 #    Remove any stale clone first — git clone fails if the folder already exists.
 Remove-Item -Recurse -Force "$env:TEMP\bt-skills" -ErrorAction SilentlyContinue
 git clone --depth 1 https://github.com/babylontoolkit/skills.git "$env:TEMP\bt-skills"
@@ -330,6 +364,7 @@ For `bt-design` that means the `SKILL.md` **and** all files under `references/` 
 For `bt-execute` that means the `SKILL.md`, all four files under `templates/dashboard/` **and** `scripts/dashboard.mjs`.
 For `bt-gauntlet` that means the `SKILL.md` **and** all six files under `references/`.
 For `bt-optimize` that means the `SKILL.md` **and** every file under `scripts/` (including `scripts/qa/`).
+For `bt-profile` that means the `SKILL.md` **and** every file under `scripts/` (including `scripts/lib/`) and `templates/`.
 Raw URL pattern:
 
 ```
@@ -357,7 +392,7 @@ https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/te
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/templates/3d-hero-scroll/hero-scroll.js
 ```
 
-Examples for `bt-execute`, `bt-gauntlet` and `bt-optimize` (every file under their asset folders — do not skip them):
+Examples for `bt-execute`, `bt-gauntlet`, `bt-optimize` and `bt-profile` (every file under their asset folders — do not skip them):
 
 ```
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/templates/dashboard/dashboard.html
@@ -378,6 +413,18 @@ https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/scripts/qa/gltf-stats.mjs
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/scripts/qa/package.json
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/scripts/qa/profile-browser.mjs
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-profile/scripts/analyze.mjs
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-profile/scripts/compare.mjs
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-profile/scripts/package.json
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-profile/scripts/profile.mjs
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-profile/scripts/progress.mjs
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-profile/scripts/report.mjs
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-profile/scripts/lib/chrome.mjs
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-profile/scripts/lib/probe.mjs
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-profile/scripts/lib/progress-panel.mjs
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-profile/scripts/lib/symbolize.mjs
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-profile/templates/census.template.mjs
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-profile/templates/scenario.template.mjs
 ```
 
 ## ⚠️ HARD REQUIREMENT: Install the Agent Persona
@@ -509,8 +556,8 @@ list to the actual target locations (GLOBAL paths shown by default; use the proj
 MISSING=""
 # Edit this list to EVERY location you installed to (GLOBAL paths shown; works in bash and zsh):
 for dir in ~/.claude/skills ~/.agents/skills; do
-  # ALL 13 skills must exist in EVERY location.
-  for skill in bt-spec bt-plan bt-execute bt-recon bt-convert bt-copycat bt-landing bt-prototype bt-design bt-hero bt-atlas bt-gauntlet bt-optimize; do
+  # ALL 14 skills must exist in EVERY location.
+  for skill in bt-spec bt-plan bt-execute bt-recon bt-convert bt-copycat bt-landing bt-prototype bt-design bt-hero bt-atlas bt-gauntlet bt-optimize bt-profile; do
     [ -f "$dir/$skill/SKILL.md" ] || MISSING="$MISSING $dir/$skill/SKILL.md"
   done
   for f in composite_skin.py preview.py uv_island_mask.py requirements.txt; do
@@ -527,6 +574,9 @@ for dir in ~/.claude/skills ~/.agents/skills; do
   done
   for f in scripts/BtCombine.cs scripts/BtOptimize.cs scripts/qa/compare-browser.mjs scripts/qa/compare-profiles.mjs scripts/qa/gltf-stats.mjs scripts/qa/package.json scripts/qa/profile-browser.mjs; do
     [ -f "$dir/bt-optimize/$f" ] || MISSING="$MISSING $dir/bt-optimize/$f"
+  done
+  for f in scripts/analyze.mjs scripts/compare.mjs scripts/package.json scripts/profile.mjs scripts/progress.mjs scripts/report.mjs scripts/lib/chrome.mjs scripts/lib/probe.mjs scripts/lib/progress-panel.mjs scripts/lib/symbolize.mjs templates/census.template.mjs templates/scenario.template.mjs; do
+    [ -f "$dir/bt-profile/$f" ] || MISSING="$MISSING $dir/bt-profile/$f"
   done
 done
 
@@ -552,8 +602,8 @@ $missing = @()
 # Edit this list to EVERY location you installed to (GLOBAL paths shown):
 $dirs = @("$env:USERPROFILE\.claude\skills", "$env:USERPROFILE\.agents\skills")
 foreach ($dir in $dirs) {
-  # ALL 13 skills must exist in EVERY location.
-  foreach ($skill in "bt-spec","bt-plan","bt-execute","bt-recon","bt-convert","bt-copycat","bt-landing","bt-prototype","bt-design","bt-hero","bt-atlas","bt-gauntlet","bt-optimize") {
+  # ALL 14 skills must exist in EVERY location.
+  foreach ($skill in "bt-spec","bt-plan","bt-execute","bt-recon","bt-convert","bt-copycat","bt-landing","bt-prototype","bt-design","bt-hero","bt-atlas","bt-gauntlet","bt-optimize","bt-profile") {
     if (-not (Test-Path "$dir\$skill\SKILL.md")) { $missing += "$dir\$skill\SKILL.md" }
   }
   foreach ($f in "composite_skin.py","preview.py","uv_island_mask.py","requirements.txt") {
@@ -570,6 +620,9 @@ foreach ($dir in $dirs) {
   }
   foreach ($f in "scripts\BtCombine.cs","scripts\BtOptimize.cs","scripts\qa\compare-browser.mjs","scripts\qa\compare-profiles.mjs","scripts\qa\gltf-stats.mjs","scripts\qa\package.json","scripts\qa\profile-browser.mjs") {
     if (-not (Test-Path "$dir\bt-optimize\$f")) { $missing += "$dir\bt-optimize\$f" }
+  }
+  foreach ($f in "scripts\analyze.mjs","scripts\compare.mjs","scripts\package.json","scripts\profile.mjs","scripts\progress.mjs","scripts\report.mjs","scripts\lib\chrome.mjs","scripts\lib\probe.mjs","scripts\lib\progress-panel.mjs","scripts\lib\symbolize.mjs","templates\census.template.mjs","templates\scenario.template.mjs") {
+    if (-not (Test-Path "$dir\bt-profile\$f")) { $missing += "$dir\bt-profile\$f" }
   }
 }
 
@@ -693,7 +746,7 @@ Where each tool looks for PROJECT-LOCAL skills (only when the user explicitly re
 > GLOBAL (per-user home) locations; use the project-local locations only when the user
 > explicitly asks for a project install. Copy **whole folders** into each — the
 > `bt-atlas/scripts/`, `bt-design/references/` + `bt-design/templates/`, `bt-execute/templates/` + `bt-execute/scripts/`,
-> `bt-gauntlet/references/` and `bt-optimize/scripts/` assets must be present in every location.
+> `bt-gauntlet/references/`, `bt-optimize/scripts/` and `bt-profile/scripts/` + `bt-profile/templates/` assets must be present in every location.
 
 ---
 

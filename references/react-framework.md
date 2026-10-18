@@ -10,6 +10,8 @@ This `agentic react framework submodule` allows easy intergration of the interac
 
 * Important: Always use the default ES6 versions of BabylonJS, Babylon Toolkit, Babylon Toolkit React Framework and Babylon Toolkit Starter Projects, unless otherwise instructed to use the UMD versions.
 
+* **ENFORCED — React never carries per-frame game values.** React state, props, context and stores hold what changes on discrete events (screens, menus, pause, score, lap, health after damage). A value that changes every frame — speed, RPM, needles, timers, bars, markers — never goes through `useState` / `setState`, a store or a per-frame `EventBus` message: the HUD renders once and one frame loop writes it into the DOM through refs, only when the shown value changes. The rules, the reasons (a profiled HUD spent 36% of the main thread re-rendering) and the code to copy are in https://raw.githubusercontent.com/babylontoolkit/agent/main/references/ui-design-system.md › **Live HUD Values — ENFORCED**. HUD code that breaks it is not finished.
+
 ### Node Package Installation Requirements
 
 These packages are `REQUIRED` by the react framework submodule. If they are NOT installed in project `package.json`, please install them. Esbuild 0.28.0 or greater is required.

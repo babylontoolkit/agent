@@ -440,7 +440,24 @@ style.fontWeight = '600';
 
 ### Performance Optimization
 
+> **ENFORCED — change a control only when its shown value changes.** Any property change marks the
+> `AdvancedDynamicTexture` dirty, and on the next frame it re-runs layout, redraws its 2D canvas (the invalidated
+> region) and **re-uploads the whole canvas to the GPU** (`DynamicTexture.update` → `updateDynamicTexture`). A
+> `TextBlock.text` or a needle `rotation` assigned every frame pays all three every frame, even when the value did not
+> change. Quantize per-frame values (an integer speed, an angle to 0.1°, a timer to its shown digits), compare with
+> the last value written, and assign only on change. A per-frame value is never a reason to pick GPU GUI over the DOM —
+> the DOM is cheaper for it (`ui-design-system.md` › **Live HUD Values — ENFORCED**, whose rules apply here too).
+
 ```typescript
+// Per-frame values: assign only when the shown value changes.
+let shownSpeed = -1;
+scene.onBeforeRenderObservable.add(() => {
+  const roundedSpeed = Math.round(vehicle.getSpeedKmh());
+  if (roundedSpeed === shownSpeed) return;   // unchanged: no layout, no redraw, no texture upload
+  shownSpeed = roundedSpeed;
+  speedText.text = String(roundedSpeed);
+});
+
 // Bitmap cache: pre-render complex controls to a static bitmap.
 // Use for controls with many children that don't change every frame.
 complexControl.useBitmapCache = true;

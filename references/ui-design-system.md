@@ -2,6 +2,11 @@
 
 **IMPORTANT. THIS DOCUMENT PROVIDES CRUCIAL USER INTERFACE INSTRUCTIONS. ALWAYS READ THIS ENTIRE DOCUMENT TO THE END OF FILE BEFORE CREATING, EDITING, OR REVIEWING UI CODE**
 
+> **ENFORCED — Live HUD Values.** A HUD value that changes every frame (speed, RPM, needles, timers, bars, markers)
+> **never goes through React state, props, context, a store or a per-frame EventBus message.** The HUD renders once;
+> one frame loop writes those values into the DOM through refs, only when what is shown changes. HUD code that breaks
+> this is not finished. Read **Live HUD Values — ENFORCED** below before writing or reviewing any HUD.
+
 ## Frontend Design Skills
 
 When enabled, use the `Babylon Toolkit Design Skill` for all user interface design, including things like:
@@ -265,25 +270,26 @@ with the load (a bar, stage names, counts), never an endless "please wait".
 **What it manages:**
 
 #### HUDs (Heads-Up Displays)
-Always-visible during gameplay. Lives in the overlay at `pointer-events: none` so input passes through to the canvas. Updated via `GameManager.EventBus` messages from the `SceneController`.
+Always-visible during gameplay. Lives in the overlay at `pointer-events: none` so input passes through to the canvas. **Discrete state** (score, health, ammo, lap, position) arrives through `GameManager.EventBus` messages from the `SceneController` and lives in React state. **Per-frame telemetry** (speed, RPM, timers, bars, markers) never does: it is read by the HUD's frame loop and written through refs — see **Live HUD Values — ENFORCED**.
 
 ```tsx
-// HUD bar at the top of screen
+// HUD bar at the top of screen — discrete state, set from EventBus messages
 <div className="hud-top">
   <div className="hud-health">
     <span>HP</span>
-    <div className="health-bar"><div style={{ width: `${hp}%` }} /></div>
+    {/* a bar scales, it never changes width */}
+    <div className="health-bar"><div className="health-fill" style={{ transform: `scaleX(${hp / 100})` }} /></div>
   </div>
   <div className="hud-score">Score: {score}</div>
   <div className="hud-ammo">Ammo: {ammo}</div>
   <div className="hud-minimap">
-    {/* Minimap canvas or image */}
+    {/* Minimap canvas or image; the player marker moves through the frame loop */}
   </div>
 </div>
 
-// Bottom speed / race HUD
+// Bottom speed / race HUD — the speedometer is telemetry (frame loop + refs); the lap is state
 <div className="hud-bottom">
-  <div className="hud-speedometer">{Math.round(speed)} km/h</div>
+  <Speedometer />
   <div className="hud-lap">Lap {lap} / {totalLaps}</div>
 </div>
 ```
@@ -341,15 +347,15 @@ Full-screen blocking UI for pause menus, settings, inventory, dialogue boxes. Se
 import { useState, useEffect, useCallback } from 'react';
 import { useUnifiedNavigation } from '../system/platform';
 import GameManager from '../globals';
+import { Speedometer } from './speedometer';   // telemetry: frame loop + refs (Live HUD Values — ENFORCED)
 import './overlay.css';
 
 function CustomOverlay() {
   const { navigate } = useUnifiedNavigation();
 
-  // HUD state
+  // HUD state — discrete values only, each set by an event. Speed is telemetry: it is NOT state (see <Speedometer />).
   const [score, setScore]   = useState(0);
   const [hp, setHp]         = useState(100);
-  const [speed, setSpeed]   = useState(0);
   const [ammo, setAmmo]     = useState(30);
 
   // Modal/popup state
@@ -362,7 +368,6 @@ function CustomOverlay() {
   useEffect(() => {
     const onScore  = (d: { score: number })    => setScore(d.score);
     const onHp     = (d: { hp: number })       => setHp(d.hp);
-    const onSpeed  = (d: { speed: number })    => setSpeed(d.speed);
     const onAmmo   = (d: { ammo: number })     => setAmmo(d.ammo);
     const onPause  = (d: { paused: boolean })  => setIsPaused(d.paused);
     const onWin    = ()                        => setLevelComplete(true);
@@ -370,7 +375,6 @@ function CustomOverlay() {
 
     GameManager.EventBus.OnMessage('hud:score',    onScore);
     GameManager.EventBus.OnMessage('hud:hp',       onHp);
-    GameManager.EventBus.OnMessage('hud:speed',    onSpeed);
     GameManager.EventBus.OnMessage('hud:ammo',     onAmmo);
     GameManager.EventBus.OnMessage('game:pause',   onPause);
     GameManager.EventBus.OnMessage('game:win',     onWin);
@@ -379,7 +383,6 @@ function CustomOverlay() {
     return () => {
       GameManager.EventBus.RemoveHandler('hud:score',  onScore);
       GameManager.EventBus.RemoveHandler('hud:hp',     onHp);
-      GameManager.EventBus.RemoveHandler('hud:speed',  onSpeed);
       GameManager.EventBus.RemoveHandler('hud:ammo',   onAmmo);
       GameManager.EventBus.RemoveHandler('game:pause', onPause);
       GameManager.EventBus.RemoveHandler('game:win',   onWin);
@@ -396,9 +399,9 @@ function CustomOverlay() {
         <div className="hud" style={{ pointerEvents: 'none' }}>
           <div className="hud-score">Score: {score}</div>
           <div className="hud-health-bar">
-            <div className="hud-health-fill" style={{ width: `${hp}%` }} />
+            <div className="hud-health-fill" style={{ transform: `scaleX(${hp / 100})` }} />
           </div>
-          <div className="hud-speed">{Math.round(speed)} km/h</div>
+          <Speedometer />
           <button style={{ pointerEvents: 'auto' }}
             onClick={() => GameManager.EventBus.PostMessage('game:pause', { paused: true })}>
             ❚❚
@@ -459,6 +462,182 @@ function CustomOverlay() {
 export default CustomOverlay;
 ```
 
+## Live HUD Values — ENFORCED
+
+> **A value that changes every frame NEVER goes through React.** Speed, RPM, needle angles, timers, boost and
+> charge bars, distance, altitude, a moving minimap marker: none of them may be React state (`useState`,
+> `useReducer`, `setState`), a prop, a context value, a store update (Zustand, Redux, signals wired into
+> React), or a per-frame `GameManager.EventBus` message. The HUD renders its markup **once** and **one frame loop**
+> writes the live values straight into the DOM through refs, **only when what is shown changes**.
+>
+> **This is a requirement, not a preference.** HUD code that pushes per-frame values through React is not
+> finished, exactly like code that does not compile: fix it before you report the task done. It applies to every
+> HUD you create, edit or review, in every skill, prototype and quick fix, with no exception for speed or demos.
+
+**Why it is enforced.** A per-frame `setState` makes React re-render the HUD 60 times a second: every gauge,
+every SVG tick and label is rebuilt as JSX, diffed and garbage-collected, even when nothing visible changed. In a
+profiled racing game (Park City, BurnTheAphalt) the HUD's five per-frame `setState` calls cost **1.8 ms of every
+frame — 36% of the main thread's work, as much as BabylonJS itself — and 34 MB/s of garbage**. The same HUD written
+to these rules costs **0 ms of React per frame**: main thread 37% → 20% busy, allocations 41.7 → 8 MB/s, same look,
+same 60 fps. The development build exaggerates React's share, but the production build pays the same way.
+
+### State or telemetry — decide for every HUD value
+
+| Kind | What it is | Examples | How it reaches the screen |
+|---|---|---|---|
+| **State** | Changes on a discrete event, a few times a second at most | which screen or modal is open, pause, gear, lap 2 / 3, race position, score after a hit, health after damage, ammo after a shot, an achievement toast | React state, set from a `GameManager.EventBus` message or a callback — **set only when the value actually changed** |
+| **Telemetry** | Changes continuously, potentially every frame | speed, RPM, needle and arc positions, lap and countdown timers, boost / nitro / stamina / charge bars, distance, altitude, a minimap marker, a reticle that follows a target | **Never React.** One frame loop reads it and writes it to the DOM through refs (rules below) |
+
+When unsure, it is telemetry. A value the game changes in `update()` is telemetry.
+
+### The rules
+
+1. **No React for telemetry.** Never put a telemetry value in React state, props, context or a store, and never post
+   it on the EventBus per frame (each post allocates and wakes every listener). Discrete **state** stays in React.
+2. **The game publishes, the HUD polls.** The game writes plain numbers onto `GameManager.GlobalState` (setting a
+   number allocates nothing), or the HUD keeps a reference to the script component it shows and calls its getters
+   (`controller.getAmericanSpeed()`). The HUD reads them in its frame loop. Nothing is pushed per frame.
+3. **One frame loop per HUD**, `useFrameLoop` below (`requestAnimationFrame`, stopped on unmount). Not one loop per
+   widget, never `setInterval`.
+4. **Render once, write through refs.** HUD components render their markup a single time. Static furniture — dial
+   ticks, numerals, bezels, labels, frames — is `memo`-ized or static SVG / CSS and never re-renders. The frame loop
+   writes only the live elements, through `useRef` refs.
+5. **Write only when the shown value changes.** Quantize first (an integer speed, a needle angle to 0.1°, a timer to
+   the digits it shows, a bar to 0.1% or 1 px), compare with the last value written, and skip the DOM write when it
+   is the same.
+6. **Only cheap properties, never layout.**
+   - **Numbers and text:** `element.textContent` (the `writeText` helper below).
+   - **Needles, markers, reticles:** `style.transform` (`rotate`, `translate`).
+   - **Bars:** `style.transform = scaleX(fraction)` with `transform-origin: left`.
+   - **Arcs, rings and circular progress:** draw the full shape once with `pathLength={1}` and `strokeDasharray="1 1"`,
+     then write `style.strokeDashoffset = 1 - fraction`.
+   - **Fades:** `style.opacity`. **State styles** (redline, low fuel): `classList.toggle`, and only when the state flips.
+   - **Never write per frame:** `width`, `height`, `top`, `left`, `margin`, `font-size`, `innerHTML`, or SVG geometry
+     (`d`, `points`, `x` / `y`).
+   - **Never read layout in the loop:** `offsetWidth`, `getBoundingClientRect`, `getComputedStyle` force a reflow.
+7. **No allocation in the loop.** No per-frame objects, arrays, closures or JSX. Build a string only after the
+   quantized value changed.
+8. **Budget:** the HUD costs at most **0.5 ms of main-thread time per frame** and allocates nothing in steady
+   play. Proof: profile the gameplay (`bt-profile`) — the `react` owner must sit near **0%** during play phases.
+
+The same rule holds in `@babylonjs/gui`: every property change marks the GUI dirty, and the next frame re-lays it
+out, redraws its canvas and re-uploads the whole texture to the GPU. Change a GUI control only when its shown value
+changes (`babylon-gui.md` › Performance Optimization).
+
+### The canonical pattern — copy it
+
+```tsx
+// src/chrome/hud-frame.ts — the HUD's frame loop and write helper
+import { useEffect, useRef } from 'react';
+
+/**
+ * Runs `onFrame` once per browser frame while the component is mounted: the HUD's single telemetry loop.
+ * The latest callback is always the one called, so it can read fresh props without restarting the loop.
+ * @param onFrame - called every frame with the frame's timestamp in milliseconds
+ */
+export function useFrameLoop(onFrame: (timeMs: number) => void): void {
+  const latestOnFrame = useRef(onFrame);
+  useEffect(() => { latestOnFrame.current = onFrame; });
+  useEffect(() => {
+    let frameHandle = 0;
+    const loop = (timeMs: number): void => {
+      latestOnFrame.current(timeMs);
+      frameHandle = requestAnimationFrame(loop);
+    };
+    frameHandle = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(frameHandle);
+  }, []);
+}
+
+/**
+ * Writes text into an element only when it differs from what is already shown.
+ * @param element - the live text element, or null before it mounts
+ * @param text - the text to show
+ */
+export function writeText(element: HTMLElement | null, text: string): void {
+  if (element !== null && element.textContent !== text) element.textContent = text;
+}
+```
+
+```tsx
+// src/chrome/speedometer.tsx — a gauge whose needle, arc and readout never re-render React
+import { memo, useRef } from 'react';
+import GameManager from '../globals';
+import { useFrameLoop, writeText } from './hud-frame';
+
+/** Full-scale speed of the dial, in km/h. */
+const MAX_SPEED_KMH = 240;
+/** Needle angle at zero speed, and the dial's total sweep, in degrees. */
+const NEEDLE_REST_DEGREES = -135;
+const NEEDLE_SWEEP_DEGREES = 270;
+/** The dial's full sweep arc (300 × 300 view box), drawn once and lit up to the needle by stroke-dashoffset. */
+const FULL_SWEEP_ARC = 'M 44 256 A 150 150 0 1 1 256 256';
+
+/** The dial's ticks, numerals and bezel: static, so they render once and never again. */
+const DialFace = memo(function DialFace() {
+  return <svg className="dial-face" viewBox="0 0 300 300">{/* ticks + numerals */}</svg>;
+});
+
+/** Speedometer: the frame loop writes the needle, the lit arc and the readout — React renders it once. */
+export function Speedometer() {
+  const needleRef = useRef<HTMLDivElement>(null);
+  const sweepRef = useRef<SVGPathElement>(null);
+  const readoutRef = useRef<HTMLSpanElement>(null);
+  const shown = useRef({ speed: -1, angle: Number.NaN });
+
+  useFrameLoop(() => {
+    // The game writes GlobalState.playerSpeedKmh in its update(); reading it allocates nothing.
+    const speedKmh: number = GameManager.GlobalState.playerSpeedKmh ?? 0;
+    const fraction = Math.min(1, Math.max(0, speedKmh / MAX_SPEED_KMH));
+
+    const roundedSpeed = Math.round(speedKmh);
+    if (roundedSpeed !== shown.current.speed) {
+      shown.current.speed = roundedSpeed;
+      writeText(readoutRef.current, String(roundedSpeed));
+    }
+    const angle = Math.round((NEEDLE_REST_DEGREES + NEEDLE_SWEEP_DEGREES * fraction) * 10) / 10;
+    if (angle !== shown.current.angle) {
+      shown.current.angle = angle;
+      if (needleRef.current) needleRef.current.style.transform = `rotate(${angle}deg)`;
+      if (sweepRef.current) sweepRef.current.style.strokeDashoffset = String(1 - fraction);
+    }
+  });
+
+  return (
+    <div className="speedometer">
+      <DialFace />
+      <svg className="dial-sweep" viewBox="0 0 300 300">
+        <path ref={sweepRef} d={FULL_SWEEP_ARC} pathLength={1} strokeDasharray="1 1" style={{ strokeDashoffset: 1 }} />
+      </svg>
+      <div ref={needleRef} className="dial-needle" />
+      <span ref={readoutRef} className="dial-readout">0</span>
+    </div>
+  );
+}
+```
+
+```typescript
+// The game side, in the SceneController or the vehicle's own component: publish, never push.
+protected update(): void {
+    GameManager.GlobalState.playerSpeedKmh = this.vehicle.getSpeedKmh();
+}
+```
+
+A bar is the same pattern with one line: `fillRef.current.style.transform = \`scaleX(${fraction})\`` (CSS
+`transform-origin: left`). A timer writes `writeText(timerRef.current, formatted)` only when its shown digits change.
+Several widgets share the HUD's one `useFrameLoop`, or each calls it in its own component — never `setInterval`, never
+a loop per value.
+
+### Self-check before you report a HUD done
+
+- [ ] Every per-frame value is classified as telemetry and reaches the screen only through the frame loop and refs.
+- [ ] Inside `requestAnimationFrame` callbacks, `useFrameLoop`, `scene.onBeforeRenderObservable` / `onAfterRenderObservable`
+      and a component's `update()` / `lateUpdate()`, there is no `set…(` state setter, no `dispatch(`, no store update
+      and no `EventBus.PostMessage(`. Search for them; any hit is a violation to fix.
+- [ ] No HUD element writes `width`, `height`, `top`, `left`, `innerHTML` or SVG geometry per frame, and the loop reads no layout.
+- [ ] Static furniture is memoized or static, and the loop skips unchanged values.
+- [ ] When the game can be profiled, `bt-profile` shows the `react` owner near 0% during play.
+
 ## Choosing the UI Layer — Native GPU GUI vs DOM React vs Raw HTML
 
 This is the **most critical architectural decision** when building game UI. Choose the wrong layer and you will fight z-ordering, compositing, input event conflicts, or severe performance issues.
@@ -467,7 +646,8 @@ This is the **most critical architectural decision** when building game UI. Choo
 
 | Requirement | DOM Overlay (React/CustomOverlay) | GPU GUI (@babylonjs/gui) | Raw HTML / CSS |
 |-------------|----------------------------------|--------------------------|----------------|
-| Score, ammo, speed HUD | ✅ Best — zero GPU cost | ✅ OK | ❌ Avoid |
+| Score, ammo, lap, position HUD (discrete state) | ✅ Best — zero GPU cost | ✅ OK | ❌ Avoid |
+| Speed, RPM, needles, timers, bars — values that change every frame | ✅ Best — refs + one frame loop, **never React state** (Live HUD Values — ENFORCED) | ⚠️ Each change re-lays out, redraws and re-uploads the whole GUI texture | ❌ Avoid |
 | Health bar above 3D character | ❌ Difficult | ✅ Best — use `linkWithMesh` | ❌ Avoid |
 | Pause / settings / inventory menus | ✅ Best — full CSS, Tailwind | ⚠️ Limited styling | ❌ Avoid in-game |
 | Cockpit / in-game monitor | ❌ Not possible | ✅ Best — texture mode on mesh | ❌ Avoid |
@@ -494,6 +674,8 @@ This is the **most critical architectural decision** when building game UI. Choo
 3. **Use native HTML/CSS** for everything *outside* the game viewport — landing pages, marketing sites, documentation, pre-game setup screens. The game engine should not be rendering these.
 
 4. **Never mix DOM and GPU GUI for the same logical UI element.** Pick one layer and own it completely. Mixing creates z-ordering battles and double input handling.
+
+5. **Whatever the layer, per-frame values follow Live HUD Values — ENFORCED.** In the DOM: refs and one frame loop, never React state. In `@babylonjs/gui`: change a control's property only when its shown value changes. Choosing GPU GUI is never a way to make per-frame updates cheap — it makes them dearer.
 
 #### Unity-authored UI (exported Canvas / UIDocument)
 

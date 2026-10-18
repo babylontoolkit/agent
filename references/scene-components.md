@@ -163,6 +163,38 @@ When asked to create a scene `component reference` for interfactive gltf scene f
 
 You can then generate a `component reference` markdown result breakdown of all the components in the scene. Be sure to include anything need that other AI can use to create game logic using interactive scene components. Cross reference any components found with with the AI Training Example Reference at https://raw.githubusercontent.com/babylontoolkit/agent/main/references/training-reference.md for detailed class information.
 
+## Pre-warm behind the splash — no first-visit freeze
+
+The toolkit compiles and pre-warms what a game draws while the splash is up, so a first visit (or a cold browser or GPU driver
+start) does not freeze the first time something appears.
+
+- **Automatic at the reveal** ("PREPARING GAME"): every enabled mesh and post process, every hidden or disabled mesh (compiled,
+  never enabled), effect layers, mirrors, probes and render-target cameras. On WebGPU the whole scene is drawn once with culling
+  off so its pipelines are built. Every idle particle system (plain, GPU, `TOOLKIT.ShurikenParticles`, `TOOLKIT.VisualEffect`) is
+  drawn once, invisibly, and returned exactly to its state.
+- **Content spawned later**: register it before the reveal — `TOOLKIT.SceneShaderWarmup.WarmPrefab(container, "PrefabName")`, or
+  the whole container without a name. A hidden copy without script components is drawn behind the splash and disposed. For a
+  particle system your code creates idle: `TOOLKIT.SceneShaderWarmup.WarmParticleSystem(system)`.
+- **Safety net** (WebGPU, on by default): after the reveal, a draw whose pipeline is not built yet is skipped for a frame or two
+  while it builds asynchronously, instead of freezing every tab. `TOOLKIT.SceneShaderWarmup.SetSafetyNetEnabled(engine, false)`
+  restores the synchronous build.
+- **Late-compile detector** (development builds: localhost, LAN addresses, `.local` names, or
+  `TOOLKIT.SceneManager.GlobalOptions.developmentMode = true`): every shader or pipeline created after the reveal is logged with
+  its cause, plus a summary 5 s after the reveal. Read them from code with `SceneShaderWarmup.GetLateCompiles(scene)` /
+  `OnLateCompileObservable`, or log the list again with `LogLateCompileSummary(scene)`. A finished game drives this list to zero.
+
+**Authoring rules — the variants code cannot find.** New shader variants come from state changes during play:
+1. Create every light at load; dim, re-colour or move it instead of adding or enabling one during play — the light count is
+   part of every lit material's shader.
+2. Create mirrors, minimap and render-target cameras, reflection probes and glow / highlight layers at load; stop their refresh
+   instead of creating them later.
+3. Prefer one material per look; look-alike variants each compile their own shader.
+4. Set fog, clip planes, morph targets and bone counts at load; toggling them during play creates new variants.
+5. The first instance (or thin instance) of a mesh compiles an instanced variant: create instanced content before the reveal or
+   register its prefab.
+6. Give an animated texture its non-default offset, scale or rotation at load (or animate it from its first frame): moving a
+   texture transform away from the identity during play compiles a texture-transform variant.
+
 ## Declaration File Class Information
 
 Check the declaration files for detail class information

@@ -462,7 +462,7 @@ private onLevelComplete(): void {
 
 ### Event Bus Pattern for React ↔ Game Communication
 
-The `EventBus` bridges game code and React UI components:
+The `EventBus` bridges game code and React UI components **for discrete events only** — a score change, a pickup, a lap, a message. **Never post a per-frame value** (speed, RPM, a timer, a bar) on it, and never put one in React state: the game writes it onto `GameManager.GlobalState` (`GameManager.GlobalState.playerSpeedKmh = speed` in `update()`), and the HUD's frame loop reads it and writes the DOM through refs. That rule is ENFORCED — see `references/ui-design-system.md` › **Live HUD Values — ENFORCED**.
 
 ```typescript
 // From game code (SceneController):
