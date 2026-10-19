@@ -63,7 +63,7 @@ networking runs at the same frame time and renders pixel-identical to the runtim
 | Part | Where | What it does |
 |---|---|---|
 | Runtime | `PROJECT.*` in the toolkit runtime (ESM: `@babylonjs-toolkit/next/project`; UMD: `babylon.toolkit.js`) | Runner, tick loop, state, prediction, interpolation, RPCs, lag compensation, scenes, host migration |
-| Session server | `@babylonjs-toolkit/fusion-server` (Colyseus 0.18.9, Node ≥ 22) | Rooms `fusion_session` (one per session name) and `fusion_lobby`; relay, Shared-mode store, host election, dedicated Server mode |
+| Session server | `@babylonjs-toolkit/server` — the Babylon Game Server (CLI `babylon-game-server`, image `ghcr.io/mackeyk24/babylon-game-server`; Colyseus 0.18.9, Node ≥ 22) | Rooms `fusion_session` (one per session name) and `fusion_lobby`; relay, Shared-mode store, host election, dedicated Server mode; opt-in TLS, auth and UDP |
 | Browser client | `@colyseus/sdk` 0.18.5 | Never bundled by the toolkit: the exporter adds it to exported pages, ESM hosts import it (§4) |
 | Unity authoring | The toolkit's Fusion kit, `Assets/[Fusion]` (menu **Babylon Toolkit → Content Components → Fusion**) | `NetworkSettings`, `NetworkObject`, `NetworkTransform`, `NetworkRigidbody`, `NetworkMecanimAnimator`, `HitboxRoot`, `Hitbox` |
 | Exporter option | **Fusion Networking** (`NetworkLibrary`) | Adds the Colyseus client script to exported pages |
@@ -90,9 +90,11 @@ Objects this peer simulates authoritatively render between ticks (`localAlpha`).
 delayed by an adaptive interpolation delay (33–250 ms). A client draws remote objects on the timeline its snapshots
 arrive on.
 
-**Transport facts.** Every channel travels reliably over one WebSocket. `RpcChannel.Unreliable` frames (snapshots,
-inputs, acks, unreliable RPCs) are only dropped by the network conditions simulator, in tests and from the stats
-overlay. There are no Photon Cloud features — no regions, NAT punch-through or relay choice; every peer is relayed
+**Transport facts.** Reliable WebSocket; when the server enables UDP, unreliable frames ride WebTransport datagrams.
+`RpcChannel.Unreliable` frames (snapshots, inputs, acks, unreliable RPCs) then travel as datagrams for browsers that
+connect over HTTP/3 (frames over 1000 bytes stay on the reliable stream); everyone else, and every reliable frame,
+uses the WebSocket, and both kinds of player share one session. Without UDP, unreliable frames are only dropped by the
+network conditions simulator, in tests and from the stats overlay. The stats overlay names the active link. There are no Photon Cloud features — no regions, NAT punch-through or relay choice; every peer is relayed
 by the session server.
 
 ---
@@ -176,14 +178,31 @@ Rules:
 
 ### 4.3 The session server
 
-The server is the toolkit's `@babylonjs-toolkit/fusion-server` package (Node ≥ 22). It loads the toolkit's UMD
-runtime, so its session rules and its dedicated runner are the same code as the browser's. **It is not on the npm
-registry**; if the project has no copy of the package, ask the user where it is — do not write a server.
+The server is the Babylon Game Server, `@babylonjs-toolkit/server` (Node ≥ 22), on npm and as a Docker image once
+published. It loads the toolkit's UMD runtime, so its session rules and its dedicated runner are the same code as the
+browser's. It holds no game code: never write a session server — run this one.
 
 ```bash
-npm install && npm run build         # inside the server package
-npm start -- --port 2567             # Fusion server listening on ws://localhost:2567
+npx @babylonjs-toolkit/server                              # Babylon Game Server <version> listening on ws://localhost:2567
+docker run -p 2567:2567 ghcr.io/mackeyk24/babylon-game-server
+npx babylon-game-server init                               # config file, .env.example, Dockerfile, deployment recipes
 ```
+
+Settings come from flags > `GAME_SERVER_*` environment variables > `babylon-game-server.config.(mjs|js|json)` >
+defaults; the package README lists every option. Three are opt-in and **off by default**:
+
+- **TLS** — `--tls` with `--tls-cert-file`/`--tls-key-file` (reloaded on renewal), PEM text in
+  `GAME_SERVER_TLS_CERT_PEM`/`_KEY_PEM`, or `--tls-dev-cert` for local work (mkcert; refused in production). Leave it
+  off when the platform edge or a proxy terminates TLS.
+- **Auth** — `--auth --auth-mode shared-secret|jwt|webhook|custom` (`GAME_SERVER_AUTH_*`). Every join must carry a
+  token the server verifies at matchmaking; the game passes it as `startGame({ authToken })` (§5).
+- **UDP** — `--udp` (needs `--tls`): WebTransport over HTTP/3 on the same port number, UDP beside TCP. It needs the
+  port open for UDP and a host that forwards inbound UDP (VMs, Kubernetes, AWS NLB with `TCP_QUIC`); Fly.io, Railway,
+  Render, DigitalOcean App Platform and Heroku run WebSocket only.
+
+It also serves `/game-server/health`, `/game-server/ready`, `/game-server/info` and `/metrics`, applies abuse limits
+(`GAME_SERVER_ALLOWED_ORIGINS` for production origins, join rate, session and message caps), drains on `SIGTERM` and
+scales out over Redis.
 
 Point the game at it with `NetworkSettings.serverUrl` (authored in Unity) or `startGame({ config: { serverUrl } })`.
 Keep the URL in one place in game code: `ws://localhost:2567` while developing, the user's hosted `wss://` address for
@@ -308,9 +327,16 @@ SceneManager.RegisterClass("MY.GameLauncher", GameLauncher);
 
 `startGame` fields (a plain object; only `gameMode` is required): `sessionName`, `playerCount` (8), `sessionProperties`,
 `isOpen`, `isVisible`, `scene` (`SceneRef`), `sceneManager`, `objectProvider`, `config` (a partial
-`NetworkProjectConfig` laid over `NetworkSettings`), `connectionToken` (`Uint8Array`), `authValues`, `inputDefinition`,
-`transport`, `hostMigrationToken`, `hostMigrationResume`. Sessions are found by name: the same `sessionName` joins the
-same room.
+`NetworkProjectConfig` laid over `NetworkSettings`), `connectionToken` (`Uint8Array`), `authValues`, `authToken`,
+`transportPreference`, `inputDefinition`, `transport`, `hostMigrationToken`, `hostMigrationResume`. Sessions are found
+by name: the same `sessionName` joins the same room.
+
+- `authToken` — the token the server verifies when it enables auth (a JWT from the game's identity provider, a shared
+  secret, or a session token the auth webhook checks). It is sent with every matchmaking call, the lobby included, and
+  ignored when auth is off.
+- `transportPreference` — `NetworkTransportPreference.Auto` (default: WebTransport when the server offers it and the
+  browser supports it, else WebSocket), `WebSocket`, or `WebTransport` (fails with `ConnectionRefused` when it cannot
+  be used).
 
 `spawn(prefab, position?, rotation?, inputAuthority?, onBeforeSpawned?, flags?)` is **synchronous** and returns the
 `NetworkObject`. `prefab` is the prefab node name, its prefab GUID, its prefab id or a `NetworkObject`. Spawn on the
@@ -325,7 +351,8 @@ Other runner members you will use: `isRunning`, `isServer`, `isClient`, `isPlaye
 **Lobby and approval.** `runner.joinSessionLobby()` lists sessions through `onSessionListUpdated(runner, sessions)`
 (each `SessionInfo` has `name`, `playerCount`, `maxPlayers`, `isOpen`, `isVisible`, `properties`). The host approves
 joiners in `onConnectRequest(runner, request, token)`: call `request.refuse()` to turn one away; an unanswered request
-is accepted. There is no kick: refuse at join time.
+is accepted. With server auth on, `request.authIdentity` is the server-verified `{ userId, claims }` (`null` when auth
+is off) — trust it, never a client-sent name. There is no kick: refuse at join time.
 
 ---
 
@@ -579,12 +606,34 @@ destroys the runner. To customise loading, subclass `NetworkSceneManagerDefault`
 
 ## 11. Dedicated server (Server mode)
 
-The server process can host a headless `Server`-mode runner for a session. It loads the same exported scene the
-browsers load, over HTTP, on a Babylon `NullEngine` with Havok and no materials or textures. Browsers join it with
-`GameMode.Client` and the same `sessionName`.
+The server process can host headless `Server`-mode runners. Each loads the same exported scene the browsers load, on a
+Babylon `NullEngine` with Havok and no materials or textures. Browsers join with `GameMode.Client` and the session name.
+
+Dedicated scenes are allow-listed in the server config file; only their `sceneRoot` and `projectScripts` locations are
+ever loaded:
+
+```js
+// babylon-game-server.config.mjs
+export default {
+    dedicated: {
+        scenes: [{ name: "arena", sceneRoot: "https://cdn.example.com/arena/", sceneFile: "Level01.gltf", projectScripts: [], maxPlayers: 8, onDemand: true, idleSeconds: 60 }],
+        boot: [{ sessionName: "arena-1", sceneName: "arena" }]
+    }
+};
+```
+
+| Starts | How |
+|---|---|
+| At boot | Each `dedicated.boot` entry; it never closes |
+| From the admin API | `POST /game-server/admin/dedicated` `{ sceneName, sessionName }` with `Authorization: Bearer <GAME_SERVER_ADMIN_TOKEN>` |
+| On demand | A `Client` join with `sessionProperties: { dedicatedScene: "arena" }` for a scene with `onDemand: true`; it closes once empty for the reconnect grace plus `idleSeconds` |
+
+`sceneRoot` is an `http(s)://` URL or a folder on the server (the exporter's dev server while developing).
+`limits.maxDedicatedSessions` (default 4) caps them per process. The legacy single-session flags still work and become
+one scene plus one boot entry:
 
 ```bash
-npm start -- --dedicated arena \
+npx babylon-game-server --dedicated arena \
   --scene-root https://localhost:4444/scenes/ \
   --scene Level01.gltf
 ```
@@ -592,11 +641,10 @@ npm start -- --dedicated arena \
 | Flag | Meaning | Default |
 |---|---|---|
 | `--dedicated <sessionName>` | Hosts a Server-mode session clients join by this name | none |
-| `--scene-root <url>` | Folder URL the exported scene is served from (the exporter's dev server while developing) | `http://localhost:8877/scenes/` |
+| `--scene-root <url>` | Folder URL or path the exported scene is served from | `http://localhost:8877/scenes/` |
 | `--scene <file>` | Exported scene file (required with `--dedicated`) | none |
 | `--project-script <url>` | Extra script bundle to load first (repeatable); the scene's own project bundle auto-loads | none |
 | `--players <n>` | Most players accepted | 8 |
-| `--port <n>` | Listen port | 2567 |
 
 Requirements for code that runs on a dedicated server:
 
@@ -660,7 +708,8 @@ private async restartAfterHostMigration(oldRunner: NetworkRunner, token: HostMig
   and each scene's frames deterministically.
 - **The kit's sample** (`Assets/[Fusion]/Samples`): the `NetworkTestBed` scene, a `NetworkSampleKart` prefab (input,
   boost, a lag-compensated zap, animator trigger, name RPC) and a launcher that reads
-  `?fusionMode=&fusionSession=&fusionServer=&fusionStats=1` from the page URL. Start from it when building a
+  `?fusionMode=&fusionSession=&fusionServer=&fusionStats=1&fusionToken=&fusionTransport=&fusionDedicatedScene=` from
+  the page URL (`fusionServer` URL-encoded). Start from it when building a
   networked vehicle or character.
 - **Common failures:**
 
@@ -673,6 +722,12 @@ private async restartAfterHostMigration(oldRunner: NetworkRunner, token: HostMig
 | Remote objects stutter | Visuals not on the `interpolationTarget` child, or code moving the object in `update()` |
 | Effects play twice / jitter on a client | One-shot work in `fixedUpdateNetwork` without an `isForward` gate |
 | Dedicated server ignores input | No `setDefaultInputDefinition` in the game bundle |
+| `InvalidAuthentication: no token was sent` / `…: the token is not valid…` | Server auth is on: pass `startGame({ authToken })` with a token the server's auth mode accepts (check the JWT's issuer, audience and key) |
+| `AuthenticationTicketExpired: the token has expired` | Fetch a fresh token from the identity provider, then start again |
+| `IncompatibleConfiguration: … network protocol …` | The server and the game's runtime speak different `NETWORK_PROTOCOL_VERSION`s — update the side the message names |
+| `ConnectionRefused: the origin … is not allowed` | Add the page's origin to the server's `GAME_SERVER_ALLOWED_ORIGINS` |
+| `ConnectionRefused: too many join requests …` | Over the per-address join rate; behind a shared proxy set `GAME_SERVER_TRUST_PROXY`, else stop the retry loop |
+| `ConnectionRefused: the game server does not offer WebTransport…` | `transportPreference: WebTransport` without server UDP (or the browser lacks WebTransport) — use `Auto` |
 
 ---
 
@@ -680,8 +735,7 @@ private async restartAfterHostMigration(oldRunner: NetworkRunner, token: HostMig
 
 | Fusion feature | Instead |
 |---|---|
-| Photon Cloud: regions, NAT punch-through, cloud connection, `CustomPhotonAppSettings` | The Colyseus server (`serverUrl`); every peer is relayed |
-| Unreliable UDP / WebTransport | Everything is reliable WebSocket |
+| Photon Cloud: regions, NAT punch-through, cloud connection, `CustomPhotonAppSettings` | The Babylon Game Server (`serverUrl`); every peer is relayed |
 | Several runners in one page (`PeerMode.Multiple`) | One runner per page; `LoopbackHub` in tests |
 | Area-of-interest cell grid, gizmos | Radius areas (`addPlayerAreaOfInterest`) |
 | Capsule hitboxes, BVH tuning | Box and sphere hitboxes; `broadRadius` broad phase |

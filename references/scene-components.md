@@ -168,10 +168,17 @@ You can then generate a `component reference` markdown result breakdown of all t
 The toolkit compiles and pre-warms what a game draws while the splash is up, so a first visit (or a cold browser or GPU driver
 start) does not freeze the first time something appears.
 
-- **Automatic at the reveal** ("PREPARING GAME"): every enabled mesh and post process, every hidden or disabled mesh (compiled,
-  never enabled), effect layers, mirrors, probes and render-target cameras. On WebGPU the whole scene is drawn once with culling
-  off so its pipelines are built. Every idle particle system (plain, GPU, `TOOLKIT.ShurikenParticles`, `TOOLKIT.VisualEffect`) is
-  drawn once, invisibly, and returned exactly to its state.
+- **Automatic at the reveal** ("PREWARM", the splash's last stage — it always runs, nothing skips it): every enabled mesh and post
+  process, every hidden or disabled mesh (compiled, never enabled), effect layers, mirrors, probes and render-target cameras. On
+  WebGPU the whole scene is drawn once with culling off so its pipelines are built. Every idle particle system (plain, GPU,
+  `TOOLKIT.ShurikenParticles`, `TOOLKIT.VisualEffect`) is drawn once, invisibly, and returned exactly to its state. It first waits
+  for any scene load still in flight and runs again for what a late load added.
+- **What the splash says** (`TOOLKIT.SplashNarrator`, the only toolkit writer to the page loader; engine.html and the React
+  splash both show it): four headlines, each once and never going back, with the bar's percentage in its own band — Loading Scene
+  0-19 %, Compiling Shaders 20-79 %, Optimizing Graphics 80-99 % (the PREWARM stage), Ready 100 % — a plain subtitle held at least
+  1.5 s ("Building the world", "Compiling n of m shaders", "Warming up shaders", "Preparing effects", "Almost ready") and one
+  forward-only bar for the whole load, full only at Ready. Do not post your
+  own loader status during the splash; reword it through `SplashNarrator.STATUS_TEXT` / `SUBTITLE_TEXT` if a game needs to.
 - **Content spawned later**: register it before the reveal — `TOOLKIT.SceneShaderWarmup.WarmPrefab(container, "PrefabName")`, or
   the whole container without a name. A hidden copy without script components is drawn behind the splash and disposed. For a
   particle system your code creates idle: `TOOLKIT.SceneShaderWarmup.WarmParticleSystem(system)`.
