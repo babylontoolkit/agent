@@ -159,12 +159,16 @@ Anything else is work, and work is yours.
   rebuild or "repair" its dashboard. Look in `.agents/archive/` only when the user asks about that work, and work on an
   archived feature where it now is, only when the user points at it. A new slug must match no folder in
   `.agents/specs/` and none anywhere under `.agents/archive/`, so archived work can always be moved back.
-- **Agent files live under `.agents/`.** Each feature has one folder, `.agents/specs/<slug>/`, created by bt-spec (or
+- **Agent files live under `.agents/`, and everything about one piece of work stays in its slug folder** — so the
+  folder moves to `.agents/archive/` (or anywhere) as one piece. Each feature has one folder, `.agents/specs/<slug>/`, created by bt-spec (or
   bt-plan's Quick Plan): `dashboard.html` (the feature's live dashboard — the `bt-plan` commands to copy once it is specced, the
-  `bt-execute` commands once it is planned, current activity while a run is going, the After Action Report once it is over), `documents/`
-  (`<slug>_spec.md`, `<slug>_plan.md`, `<slug>_autopilot.md`, the dashboard data `<slug>_dashboard.js`, the live status `<slug>_live.js`, git-ignored), `snapshots/` and
-  `tests/`. Recon docs
-  stay in `.agents/recon/`. **Editing a plan keeps its dashboard in step:** whoever adds, removes or reorders a task
+  `bt-execute` commands once it is planned, current activity while a run is going, the Execution debrief with the After Action Report once it is over, linking
+  the plan summary), `documents/`
+  (`<slug>_spec.md`, `<slug>_plan.md`, `<slug>_autopilot.md`, the dashboard data `<slug>_dashboard.js`, the live status `<slug>_live.js` (git-ignored),
+  and once the plan is complete the plain-language plan summary `<slug>_summary.html` with its data `<slug>_summary.js`), `snapshots/`,
+  `tests/` and, when the spec's brief cites recons, `recon/` (bt-spec's copies of them). A profile keeps its recons in
+  `.agents/profile/<slug>/recon/`, next to its `findings.md`. General recons, of a subsystem or the whole codebase, stay in
+  `.agents/recon/`. **Editing a plan keeps its dashboard in step:** whoever adds, removes or reorders a task
   or sub-task in `<slug>_plan.md` — a skill or a plain request in chat — updates `<slug>_dashboard.js` in the same change
   (new tasks `pending` in plan order with an `updates` note saying why; a `complete` status becomes `paused`), so the
   dashboard never claims a plan is finished when it is not. bt-execute re-syncs it at the start of every run.
