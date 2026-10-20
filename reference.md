@@ -146,21 +146,25 @@ Anything else is work, and work is yours.
 - **"Spec" means the `bt-spec` skill.** When the user says *spec*, *speccing* or *spec out* — "spec out a mute toggle",
   "let's spec this", "can you spec the save system" — run the `bt-spec` skill with their words as the brief. Never write
   a spec by hand in chat or into a file of your own instead.
-- **The default `.agents` folders.** Every project's `.agents/` holds four folders, always, created together:
-  `archive/` (the project's archive — finished or shelved work moved out of the way, kept in the layout it came from,
-  e.g. `.agents/archive/specs/<slug>/`), `profile/` (bt-profile results), `recon/` (bt-recon results) and `specs/` (the
-  current features). Whoever creates any folder under `.agents/` — a skill or a plain request — first makes sure all
-  four exist, each with an empty `.gitkeep` so git keeps it while it is empty (write only a missing `.gitkeep`; never
+- **The default `.agents` folders.** Every project's `.agents/` holds five folders, always, created together:
+  `specs/` (the features being worked on), `complete/` (finished work under active review — kept small),
+  `archived/` (the long-running store of older completed work, laid out however the user chooses),
+  `profile/` (bt-profile results) and `recon/` (bt-recon results).
+  A feature's whole slug folder moves as one piece — `specs/<slug>/` → `complete/<slug>/` → `archived/` — and
+  **only the user moves it**, when they are ready: an agent never moves, copies or renames a feature folder.
+  Whoever creates any folder under `.agents/` — a skill or a plain request — first makes sure all
+  five exist, each with an empty `.gitkeep` so git keeps it while it is empty (write only a missing `.gitkeep`; never
   touch what a folder holds). Skill-specific folders (`gauntlet/`, `optimize/`, `prototypes/`, `tests/`) are still
   created only when their skill needs them.
-- **A missing feature folder is deliberate.** The user moves finished or shelved work into `.agents/archive/`, or
-  deletes it. A spec, plan, recon or profile folder that is no longer where a link, a log or an earlier session says it
-  was has been archived or removed on purpose: never recreate it, never report it as missing or broken, and never
-  rebuild or "repair" its dashboard. Look in `.agents/archive/` only when the user asks about that work, and work on an
-  archived feature where it now is, only when the user points at it. A new slug must match no folder in
-  `.agents/specs/` and none anywhere under `.agents/archive/`, so archived work can always be moved back.
+- **A missing feature folder is deliberate.** The user moves finished work into `.agents/complete/` for review, older
+  completed work on into `.agents/archived/`, or deletes it. A spec, plan, recon or profile folder that is no longer where a link, a log or an
+  earlier session says it was has been moved or removed on purpose: never recreate it, never report it as missing or
+  broken, and never rebuild or "repair" its dashboard. Look in `complete/` or `archived/` only when the user asks about
+  that work, and work on a feature where it now is, only when the user points at it — a reopened plan runs from
+  wherever its folder is. A new slug must match no folder in `.agents/specs/`, `.agents/complete/` or
+  anywhere under `.agents/archived/`, so any feature can always be moved back.
 - **Agent files live under `.agents/`, and everything about one piece of work stays in its slug folder** — so the
-  folder moves to `.agents/archive/` (or anywhere) as one piece. Each feature has one folder, `.agents/specs/<slug>/`, created by bt-spec (or
+  folder moves to `.agents/complete/`, `.agents/archived/` (or anywhere) as one piece. Each feature has one folder, `.agents/specs/<slug>/`, created by bt-spec (or
   bt-plan's Quick Plan): `dashboard.html` (the feature's live dashboard — the `bt-plan` commands to copy once it is specced, the
   `bt-execute` commands once it is planned, current activity while a run is going, the Execution debrief with the After Action Report once it is over, linking
   the plan summary), `documents/`
