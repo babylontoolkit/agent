@@ -6,8 +6,9 @@ The Babylon Toolkit's networking is a port of the Photon Fusion 2 programming mo
 NETCODE, SESSION OR SERVER CODE.**
 
 Babylon Toolkit Networking supports every network mode of the original model: `Single`, `Shared`, `Host`, `Client`,
-`Server` (a dedicated headless server) and `AutoHostOrClient`. The classes are in the `PROJECT` namespace and keep
-the original API's type names with camelCase members (`runner.spawn`, `fixedUpdateNetwork`, `object.hasStateAuthority`).
+`Server` (a dedicated headless server) and `AutoHostOrClient`. It is built into the toolkit: the classes are in the
+`TOOLKIT` namespace (UMD `babylon.toolkit.js`; ESM `@babylonjs-toolkit/next`), so no project bundle or extra import is
+needed, and they keep the original API's type names with camelCase members (`runner.spawn`, `fixedUpdateNetwork`, `object.hasStateAuthority`).
 A Photon, Netcode for GameObjects (NGO) or Mirror script ports by renaming (§15).
 
 **This is the only networking code path.** The old Colyseus helpers were deleted with no compatibility layer:
@@ -20,7 +21,7 @@ feature on the classes below.
 | Read together with | For |
 |---|---|
 | `scene-components.md` | The `ScriptComponent` lifecycle every network behaviour inherits |
-| `node-esm.md` / `classic.md` | ESM imports vs the UMD `PROJECT.*` globals |
+| `node-esm.md` / `classic.md` | ESM imports vs the UMD `TOOLKIT.*` globals |
 | `unity-exporter-cli.md` | Attaching components in Unity from the terminal, exporting, the dev server |
 | `unity-authoring-recipes.md` | Authoring the level and prefabs the network spawns |
 
@@ -63,10 +64,10 @@ networking runs at the same frame time and renders pixel-identical to the runtim
 
 | Part | Where | What it does |
 |---|---|---|
-| Runtime | `PROJECT.*` in the toolkit runtime (ESM: `@babylonjs-toolkit/next/project`; UMD: `babylon.toolkit.js`) | Runner, tick loop, state, prediction, interpolation, RPCs, lag compensation, scenes, host migration |
+| Runtime | `TOOLKIT.*`, built into the toolkit runtime (UMD: `babylon.toolkit.js`; ESM: `@babylonjs-toolkit/next`; source `APP/src/pro/Networking`) | Runner, tick loop, state, prediction, interpolation, RPCs, lag compensation, scenes, host migration |
 | Session server | `@babylonjs-toolkit/server` — the Babylon Game Server (CLI `babylon-game-server`, image `ghcr.io/mackeyk24/babylon-game-server`; Colyseus 0.18.9, Node ≥ 22) | Rooms `fusion_session` (one per session name) and `fusion_lobby`; relay, Shared-mode store, host election, dedicated Server mode; opt-in TLS, auth and UDP |
 | Browser client | `@colyseus/sdk` 0.18.5 | Never bundled by the toolkit: the exporter adds it to exported pages, ESM hosts import it (§4) |
-| Unity authoring | The toolkit's network kit, `Assets/[Network]` (menu **Babylon Toolkit → Content Components → Network**) | `NetworkSettings`, `NetworkObject`, `NetworkTransform`, `NetworkRigidbody`, `NetworkMecanimAnimator`, `HitboxRoot`, `Hitbox` |
+| Unity authoring | Built-in exporter components in `CanvasTools.dll` (Add Component → **Babylon Toolkit → Content Components → Network**); no kit folder to import | `NetworkSettings`, `NetworkObject`, `NetworkTransform`, `NetworkRigidbody`, `NetworkMecanimAnimator`, `HitboxRoot`, `Hitbox` |
 | Exporter option | **Babylon Toolkit Networking** (`NetworkLibrary`) | Adds the Colyseus client script to exported pages |
 
 **The tick model.** The runner drives itself from `scene.onBeforeRenderObservable` (first observer), so every
@@ -119,9 +120,11 @@ needs Host/Client or Server; it is not available in Shared mode, as in the origi
 
 ### 4.1 Unity: author the networked level and prefabs
 
-Attach the kit components from the terminal like any `EditorScriptComponent` (`unity-exporter-cli.md`), then export.
+The components ship with the exporter (`CanvasTools.dll`), so every project has them: Add Component → **Babylon Toolkit →
+Content Components → Network**. Attach them from the terminal like any `EditorScriptComponent` (`unity-exporter-cli.md`),
+then export.
 
-| Component (C# `BabylonToolkit.Fusion.X` → `PROJECT.X`) | Put it on | Fields (exported names) |
+| Component (C# `BabylonToolkit.Fusion.X` → `TOOLKIT.X`) | Put it on | Fields (exported names) |
 |---|---|---|
 | `NetworkSettings` | One GameObject in the scene | `tickRate` 60, `serverSendRate` 30, `clientSendRate` 60, `physicsSimulation` (`SimulateAlways` / `SimulateForward` / `Disabled`), `lagCompensationBufferMs` 500, `interpolationDelayMinimumMs` 33, `interpolationDelayMaximumMs` 250, `prefabContainers` (exported asset-container `.gltf` files holding the network prefabs, in load order), `sceneFiles` (networked scene `.gltf` files; `SceneRef` index i is entry i), `serverUrl` (`ws://localhost:2567`) |
 | `NetworkObject` | The root of every networked prefab and every networked scene-placed object | `allowStateAuthorityOverride` true, `isMasterClientObject` false, `destroyWhenStateAuthorityLeaves` false, `useAreaOfInterest` false. `prefabGuid` and `sceneObjectGuid` are filled at export |
@@ -163,7 +166,7 @@ Rules:
   npm install @colyseus/sdk@0.18.5
   ```
   ```typescript
-  import { ColyseusTransport } from '@babylonjs-toolkit/next/project';
+  import { ColyseusTransport } from '@babylonjs-toolkit/next';
 
   /** Hands the Colyseus browser client to the toolkit transport (it is never bundled by the toolkit). */
   async function loadNetworkClient(): Promise<void> {
@@ -173,15 +176,16 @@ Rules:
 
   Without it, `startGame` resolves `{ ok: false }` with `"Colyseus client not loaded …"`. `Single` mode needs no
   client.
-- **Imports.** ESM: every class in this document comes from `'@babylonjs-toolkit/next/project'` with no `PROJECT.`
-  prefix (`import { NetworkRunner, NetworkBehaviour, Networked, GameMode } from '@babylonjs-toolkit/next/project'`).
-  UMD and Unity-attached scripts: `PROJECT.NetworkRunner`, `PROJECT.Networked`, …
+- **Imports.** ESM: every class in this document comes from the toolkit package `'@babylonjs-toolkit/next'` with no
+  `TOOLKIT.` prefix (`import { NetworkRunner, NetworkBehaviour, Networked, GameMode } from '@babylonjs-toolkit/next'`).
+  UMD and Unity-attached scripts: `TOOLKIT.NetworkRunner`, `TOOLKIT.Networked`, … from `babylon.toolkit.js`. A game's
+  own networked classes stay in its own namespace (or ES module) and extend `TOOLKIT.NetworkBehaviour`.
 
 ### 4.3 The session server
 
 The server is the Babylon Game Server, `@babylonjs-toolkit/server` (Node ≥ 22), on npm and as a Docker image once
-published. It loads the toolkit's UMD runtime, so its session rules and its dedicated runner are the same code as the
-browser's. It holds no game code: never write a session server — run this one.
+published. It loads the toolkit's UMD runtime and takes the `TOOLKIT.*` networking classes from it, so its session
+rules and its dedicated runner are the same code as the browser's. It holds no game code: never write a session server — run this one.
 
 ```bash
 npx @babylonjs-toolkit/server                              # Babylon Game Server <version> listening on ws://localhost:2567
@@ -220,11 +224,11 @@ players. ESM form:
 
 ```typescript
 import { TransformNode, Scene, Quaternion } from '@babylonjs/core';
-import { ScriptComponent, InputController, SceneManager } from '@babylonjs-toolkit/next';
 import {
+    ScriptComponent, InputController, SceneManager,
     NetworkRunner, NetworkObject, NetworkInput, NetworkButtons, Networked, PlayerRef, GameMode, StartGameArgs,
     StartGameResult, INetworkRunnerCallbacks, NetworkedStructDefinition, ShutdownReason
-} from '@babylonjs-toolkit/next/project';
+} from '@babylonjs-toolkit/next';
 
 /** Button bits of the player input struct. */
 export const BUTTON_JUMP: number = 0;
@@ -366,11 +370,11 @@ the class is constructed.
 
 ```typescript
 import { TransformNode, Scene, PhysicsBody, Vector3 } from '@babylonjs/core';
-import { SceneManager } from '@babylonjs-toolkit/next';
 import {
+    SceneManager,
     NetworkBehaviour, Networked, NetworkedPropertyDefinitions, RpcDefinitions, Rpc, RpcSources, RpcTargets, RpcInfo,
     TickTimer, NetworkButtons, NetworkArray, ChangeDetector, ChangeDetectorSource
-} from '@babylonjs-toolkit/next/project';
+} from '@babylonjs-toolkit/next';
 import { PlayerInput, BUTTON_JUMP } from './GameLauncher';
 
 /** Jump impulse in m/s and the jump cooldown in seconds. */
@@ -471,8 +475,9 @@ export class PlayerAvatar extends NetworkBehaviour {
 SceneManager.RegisterClass("MY.PlayerAvatar", PlayerAvatar);
 ```
 
-UMD and Unity-attached scripts use the same class inside `namespace MY { … }` with `PROJECT.`-prefixed types (the
-exporter compiles Unity-attached scripts into the project bundle, `unity-exporter-cli.md` §8.2). The class name
+UMD and Unity-attached scripts use the same class inside `namespace MY { … }` with `TOOLKIT.`-prefixed networking types
+(`class PlayerAvatar extends TOOLKIT.NetworkBehaviour`). The game's own classes are compiled into the project bundle
+(`unity-exporter-cli.md` §8.2); the networking classes come from the toolkit bundle. The class name
 registered with `RegisterClass` must match the `klass` the Unity component exports.
 
 **Property factories** (each takes optional `{ defaultValue, onChangedRender, precision }`):
@@ -564,7 +569,7 @@ the targets:
 
 ```typescript
 // In fixedUpdateNetwork: a hitscan shot, resolved on the server from this player's view.
-// HitOptions, LagCompensatedHit and NetworkObject come from '@babylonjs-toolkit/next/project'.
+// HitOptions, LagCompensatedHit and NetworkObject come from '@babylonjs-toolkit/next'.
 if (this.runner.isServer && input.buttons.isSet(BUTTON_FIRE)) {
     const options: HitOptions = HitOptions.SubtickAccuracy | HitOptions.IgnoreInputAuthority;
     const hit: LagCompensatedHit | null = this.runner.lagCompensation.raycast(muzzle, forward, SHOT_RANGE, this.object.inputAuthority, options);
@@ -644,7 +649,7 @@ npx babylon-game-server --dedicated arena \
 | `--dedicated <sessionName>` | Hosts a Server-mode session clients join by this name | none |
 | `--scene-root <url>` | Folder URL or path the exported scene is served from | `http://localhost:8877/scenes/` |
 | `--scene <file>` | Exported scene file (required with `--dedicated`) | none |
-| `--project-script <url>` | Extra script bundle to load first (repeatable); the scene's own project bundle auto-loads | none |
+| `--project-script <url>` | Extra script bundle to load first (repeatable); the scene's own project bundle (its game classes) auto-loads after the toolkit bundle | none |
 | `--players <n>` | Most players accepted | 8 |
 
 Requirements for code that runs on a dedicated server:
@@ -665,7 +670,7 @@ player with the lowest player id and every remaining peer gets `onHostMigration(
 token:
 
 ```typescript
-// Launcher methods. Imports add HostMigrationToken and HostMigrationObject from '@babylonjs-toolkit/next/project'.
+// Launcher methods. Imports add HostMigrationToken and HostMigrationObject from '@babylonjs-toolkit/next'.
 /** The host left: shut this runner down and restart as the new host or as a client. */
 public onHostMigration(runner: NetworkRunner, token: HostMigrationToken): void {
     this.restartAfterHostMigration(runner, token).catch((error: unknown) => console.error("host migration failed", error));
@@ -707,11 +712,12 @@ private async restartAfterHostMigration(oldRunner: NetworkRunner, token: HostMig
 - **Unit tests without a server:** `LoopbackHub` runs several runners in one process —
   `startGame({ gameMode, transport: hub.createTransport() })` per runner on `NullEngine` scenes, then advance the hub
   and each scene's frames deterministically.
-- **The kit's sample** (`Assets/[Network]/Samples`): the `NetworkTestBed` scene, a `NetworkSampleKart` prefab (input,
-  boost, a lag-compensated zap, animator trigger, name RPC) and a launcher that reads
+- **The sample** (`Assets/Networking/Samples`; the folder may be moved anywhere): the `NetworkTestBed` scene, a
+  `NetworkSampleKart` prefab (input, boost, a lag-compensated zap, animator trigger, name RPC) and a launcher that reads
   `?fusionMode=&fusionSession=&fusionServer=&fusionStats=1&fusionToken=&fusionTransport=&fusionDedicatedScene=` from
-  the page URL (`fusionServer` URL-encoded). Start from it when building a
-  networked vehicle or character.
+  the page URL (`fusionServer` URL-encoded). Its scripts are game classes in the sample's own namespace: `MY.NetworkSampleKart`
+  extends `TOOLKIT.NetworkBehaviour`, and `MY.NetworkSampleLauncher` is the launcher.
+  Start from it when building a networked vehicle or character.
 - **Common failures:**
 
 | Symptom | Cause |
@@ -789,8 +795,8 @@ becomes the string `"lap"`. Positions are `BABYLON.Vector3`, rotations `BABYLON.
 | `NetworkManager.StartHost / StartServer / StartClient` | `runner.startGame({ gameMode: GameMode.Host / Server / Client })` |
 | `OnClientConnectedCallback` / `OnClientDisconnectCallback` | `onPlayerJoined` / `onPlayerLeft` |
 | `ConnectionApprovalCallback` | `onConnectRequest` |
-| `NetworkTransform`, `NetworkRigidbody`, `NetworkAnimator` | The network kit components (§4.1, §8) |
+| `NetworkTransform`, `NetworkRigidbody`, `NetworkAnimator` | The exporter's built-in network components (§4.1, §8) |
 | `NetworkManager.SceneManager.LoadScene`, `ServerChangeScene` | `runner.loadScene` |
 
-Exact signatures for every class are in the toolkit typings (ESM `@babylonjs-toolkit/next/project` →
-`project.d.ts`; UMD `babylon.toolkit.d.ts`). Read them before using a member this document does not show.
+Exact signatures for every class are in the toolkit typings (ESM `@babylonjs-toolkit/next` → `lib/index.d.ts`; UMD
+`babylon.toolkit.d.ts`). Read them before using a member this document does not show.

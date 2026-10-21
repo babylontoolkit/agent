@@ -883,7 +883,8 @@ were removed with the old Colyseus networking. Online racing uses **Babylon Tool
 [Babylon Toolkit Networking reference](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/networking.md) first.
 
 `StandardCarController` is not networked: it simulates in its own frame loop, which client prediction cannot rewind.
-A networked car or kart is its own `NetworkBehaviour` that drives the Havok body from networked input in
+A networked car or kart is its own class extending `TOOLKIT.NetworkBehaviour` (networking is built into the toolkit;
+the components below come with the exporter) that drives the Havok body from networked input in
 `fixedUpdateNetwork`, on a prefab with:
 
 - `NetworkObject` on the root, and the prefab inside an asset container listed on `NetworkSettings.prefabContainers`;
@@ -892,8 +893,8 @@ A networked car or kart is its own `NetworkBehaviour` that drives the Havok body
 - optionally `NetworkMecanimAnimator` (call its `setTrigger`), and `HitboxRoot` + `Hitbox` for lag-compensated item hits;
 - a name label made in `spawned()` from a networked `string` property set by an RPC, guarded with `runner.isPlayer`.
 
-The network kit's sample (`Assets/[Network]/Samples`: `NetworkTestBed`, `NetworkSampleKart`, the launcher) is a
-working networked kart with input, boost, a lag-compensated zap, an animator trigger and name labels — start from it.
+The networking sample (`Assets/Networking/Samples`, movable anywhere: `NetworkTestBed`, `NetworkSampleKart`, the
+launcher) is a working networked kart with input, boost, a lag-compensated zap, an animator trigger and name labels — start from it.
 `RaceTrackManager`, `CheckpointManager` and `SkidMarkManager` stay local presentation; put race results (laps, finish
 ticks) in networked properties.
 

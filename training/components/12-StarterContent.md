@@ -11,7 +11,7 @@
 import * as TOOLKIT from "@babylonjs-toolkit/next";
 import { DefaultCameraSystem, StandardPlayerController, ThirdPersonPlayerController, DebugInformation, AssetPreloader, MobileInputController } from "@babylonjs-toolkit/next/project";
 // PROJECT starter classes are ONLY available from "@babylonjs-toolkit/next/project" — they are NOT exported from the root import.
-// Networking is Babylon Toolkit Networking (NetworkRunner, NetworkBehaviour, …), also from "@babylonjs-toolkit/next/project" — see §6 and the Babylon Toolkit Networking reference.
+// Networking is Babylon Toolkit Networking (TOOLKIT.NetworkRunner, TOOLKIT.NetworkBehaviour, …), built into the root "@babylonjs-toolkit/next" import — see §6 and the Babylon Toolkit Networking reference.
 ```
 
 ---
@@ -56,13 +56,13 @@ Scene
 │   └── (Optional) TOOLKIT.Animator
 │
 ├── NetworkManager (Multiplayer — Babylon Toolkit Networking, §6)
-│   ├── PROJECT.NetworkSettings           ← Tick rates, prefab containers, server URL
-│   └── Game launcher script              ← new NetworkRunner(scene).startGame(...)
+│   ├── TOOLKIT.NetworkSettings           ← Tick rates, prefab containers, server URL
+│   └── Game launcher script              ← new TOOLKIT.NetworkRunner(scene).startGame(...)
 │
 ├── [Networked prefab — spawned by runner.spawn]
-│   ├── PROJECT.NetworkObject             ← Network identity and authority
-│   ├── PROJECT.NetworkRigidbody / NetworkTransform ← Replicated, smoothed motion
-│   └── Game NetworkBehaviour             ← Networked properties, RPCs, fixedUpdateNetwork
+│   ├── TOOLKIT.NetworkObject             ← Network identity and authority
+│   ├── TOOLKIT.NetworkRigidbody / NetworkTransform ← Replicated, smoothed motion
+│   └── Game class extends TOOLKIT.NetworkBehaviour ← Networked properties, RPCs, fixedUpdateNetwork
 │
 └── [Physics objects]
     ├── PROJECT.BallSocketJoint
@@ -164,7 +164,7 @@ namespace PROJECT {
 | `DefaultCameraSystem` | Main camera, post-processing, split-screen | Camera/ |
 | `StandardPlayerController` | Full first/third person character | Player/ |
 | `ThirdPersonPlayerController` | Third-person only character | Player/ |
-| Babylon Toolkit Networking (`NetworkRunner`, `NetworkObject`, `NetworkBehaviour`, …) | Multiplayer — see §6 | `[Network]` kit |
+| Babylon Toolkit Networking (`TOOLKIT.NetworkRunner`, `TOOLKIT.NetworkObject`, `TOOLKIT.NetworkBehaviour`, …) | Multiplayer — see §6 | Built into the toolkit (`TOOLKIT`); Unity components in the exporter |
 | `AssetPreloader` | Pre-load mesh/container assets | Loader/ |
 | `AssetExporter` | Export / runtime asset scaffold | Loader/ |
 | `DebugInformation` | Dev console overlay and shortcuts | Inspector/ |
@@ -514,7 +514,10 @@ All other properties, state methods, and animation integration are identical to 
 ## 6. SYSTEM: Network / Multiplayer
 
 **All networking is Babylon Toolkit Networking** — the toolkit's multiplayer stack on a Colyseus 0.18 session
-server, in the `PROJECT` namespace (ESM: `@babylonjs-toolkit/next/project`). It supports every network mode
+server, built into the toolkit in the `TOOLKIT` namespace (UMD `babylon.toolkit.js`; ESM: the root
+`@babylonjs-toolkit/next` import), so no project bundle or extra import is needed. The Unity components ship with the
+exporter (Add Component → **Babylon Toolkit → Content Components → Network**). A game's own networked classes stay in
+its project namespace and extend `TOOLKIT.NetworkBehaviour`. It supports every network mode
 (Single, Shared, Host, Client, dedicated Server, AutoHostOrClient), networked properties, RPCs, tick-based input,
 client-side prediction with re-simulation, interpolated and extrapolated transforms and Havok rigidbodies, animator
 replication, lag-compensated hitboxes, interest management, networked scene loading and host migration.
@@ -527,7 +530,7 @@ The old Colyseus starter classes — `ColyseusGameServer`, `ColyseusNetworkManag
 
 | Need | Babylon Toolkit Networking |
 |---|---|
-| Connect / create or join a room | `new PROJECT.NetworkRunner(scene).startGame({ gameMode, sessionName })` |
+| Connect / create or join a room | `new TOOLKIT.NetworkRunner(scene).startGame({ gameMode, sessionName })` |
 | Server URL | `NetworkSettings.serverUrl` (Unity) or `startGame({ config: { serverUrl } })` |
 | Spawn a remote player | `runner.spawn(prefab, position, rotation, player)` in `onPlayerJoined` |
 | Replicate player state | `Networked.*` properties on a `NetworkBehaviour` |
@@ -1196,13 +1199,13 @@ protected async start(): Promise<void> {
 ### Multiplayer Chat Message
 
 A chat line is an RPC on a `NetworkBehaviour` (UMD form; ESM imports the same names from
-`@babylonjs-toolkit/next/project`):
+`@babylonjs-toolkit/next`):
 
 ```typescript
 /** RPCs: any player sends a chat line; every peer receives it. */
-protected static getRpcDefinitions(): PROJECT.RpcDefinitions {
+protected static getRpcDefinitions(): TOOLKIT.RpcDefinitions {
     return {
-        rpcChat: PROJECT.Rpc.define({ sources: PROJECT.RpcSources.All, targets: PROJECT.RpcTargets.All }, [PROJECT.Networked.string(120)])
+        rpcChat: TOOLKIT.Rpc.define({ sources: TOOLKIT.RpcSources.All, targets: TOOLKIT.RpcTargets.All }, [TOOLKIT.Networked.string(120)])
     };
 }
 
@@ -1211,7 +1214,7 @@ protected static getRpcDefinitions(): PROJECT.RpcDefinitions {
  * @param text The message.
  * @param info The sender (info.source) and tick.
  */
-public rpcChat(text: string, info?: PROJECT.RpcInfo): void {
+public rpcChat(text: string, info?: TOOLKIT.RpcInfo): void {
     console.log(info.source.toString() + ": " + text);
 }
 ```
@@ -1255,8 +1258,8 @@ gone). Only the state authority writes it; every peer reads it:
 public declare score: number;
 
 /** Networked state ([Networked] properties). */
-protected static getNetworkedProperties(): PROJECT.NetworkedPropertyDefinitions {
-    return { score: PROJECT.Networked.int({ onChangedRender: "onScoreChanged" }) };
+protected static getNetworkedProperties(): TOOLKIT.NetworkedPropertyDefinitions {
+    return { score: TOOLKIT.Networked.int({ onChangedRender: "onScoreChanged" }) };
 }
 
 /** Scores a point on the state authority (call from fixedUpdateNetwork or an RPC receiver). */
