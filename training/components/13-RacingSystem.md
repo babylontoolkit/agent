@@ -95,7 +95,7 @@ track the game actually calls for; the controller does not care what mesh it dri
 8. [CLASS: `CheckpointManager`](#8-class-checkpointmanager)
 9. [CLASS: `RaceTrackManager`](#9-class-racetrackmanager)
 10. [CLASS: `SkidMarkManager`](#10-class-skidmarkmanager)
-11. [Online Multiplayer (Fusion networking)](#11-online-multiplayer-fusion-networking)
+11. [Online Multiplayer (Babylon Toolkit Networking)](#11-online-multiplayer-babylon-toolkit-networking)
 12. *(removed — `NetworkCarPrediction`)*
 13. *(removed — `VehicleNetworkLabel`)*
 14. [Interfaces & Data Structures](#14-interfaces--data-structures)
@@ -876,11 +876,11 @@ this.m_frontLeftWheelSkid = PROJECT.SkidMarkManager.AddSkidMarkSegment(
 
 ---
 
-## 11. Online Multiplayer (Fusion networking)
+## 11. Online Multiplayer (Babylon Toolkit Networking)
 
 `RemoteCarController`, `NetworkCarPrediction`, `VehicleNetworkLabel` and `StandardCarController.postNetworkAttributes`
-were removed with the old Colyseus networking. Online racing uses **Fusion networking** — read the
-[Fusion Networking reference](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/fusion-networking.md) first.
+were removed with the old Colyseus networking. Online racing uses **Babylon Toolkit Networking** — read the
+[Babylon Toolkit Networking reference](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/networking.md) first.
 
 `StandardCarController` is not networked: it simulates in its own frame loop, which client prediction cannot rewind.
 A networked car or kart is its own `NetworkBehaviour` that drives the Havok body from networked input in
@@ -892,7 +892,7 @@ A networked car or kart is its own `NetworkBehaviour` that drives the Havok body
 - optionally `NetworkMecanimAnimator` (call its `setTrigger`), and `HitboxRoot` + `Hitbox` for lag-compensated item hits;
 - a name label made in `spawned()` from a networked `string` property set by an RPC, guarded with `runner.isPlayer`.
 
-The Fusion kit's sample (`Assets/[Fusion]/Samples`: `NetworkTestBed`, `NetworkSampleKart`, the launcher) is a
+The network kit's sample (`Assets/[Network]/Samples`: `NetworkTestBed`, `NetworkSampleKart`, the launcher) is a
 working networked kart with input, boost, a lag-compensated zap, an animator trigger and name labels — start from it.
 `RaceTrackManager`, `CheckpointManager` and `SkidMarkManager` stay local presentation; put race results (laps, finish
 ticks) in networked properties.
@@ -1034,7 +1034,7 @@ const ZAxis = 2;  // Default
 
 ### Online Multiplayer Race
 
-Fusion networking (§11):
+Babylon Toolkit Networking (§11):
 
 ```
 [Scene]

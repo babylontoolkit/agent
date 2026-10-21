@@ -11,7 +11,7 @@
 import * as TOOLKIT from "@babylonjs-toolkit/next";
 import { DefaultCameraSystem, StandardPlayerController, ThirdPersonPlayerController, DebugInformation, AssetPreloader, MobileInputController } from "@babylonjs-toolkit/next/project";
 // PROJECT starter classes are ONLY available from "@babylonjs-toolkit/next/project" — they are NOT exported from the root import.
-// Networking is Fusion (NetworkRunner, NetworkBehaviour, …), also from "@babylonjs-toolkit/next/project" — see §6 and the Fusion Networking reference.
+// Networking is Babylon Toolkit Networking (NetworkRunner, NetworkBehaviour, …), also from "@babylonjs-toolkit/next/project" — see §6 and the Babylon Toolkit Networking reference.
 ```
 
 ---
@@ -23,7 +23,7 @@ import { DefaultCameraSystem, StandardPlayerController, ThirdPersonPlayerControl
 3. [Component Registry](#3-component-registry)
 4. [SYSTEM: Camera](#4-system-camera)
 5. [SYSTEM: Player Controllers](#5-system-player-controllers)
-6. [SYSTEM: Network / Multiplayer](#6-system-network--multiplayer) — Fusion networking
+6. [SYSTEM: Network / Multiplayer](#6-system-network--multiplayer) — Babylon Toolkit Networking
 7. [SYSTEM: Asset Loading](#7-system-asset-loading)
 8. [SYSTEM: Physics Joints](#8-system-physics-joints)
 9. [SYSTEM: Materials](#9-system-materials)
@@ -55,7 +55,7 @@ Scene
 │   ├── PROJECT.ThirdPersonPlayerController ← Pure third-person controller
 │   └── (Optional) TOOLKIT.Animator
 │
-├── NetworkManager (Multiplayer — Fusion, §6)
+├── NetworkManager (Multiplayer — Babylon Toolkit Networking, §6)
 │   ├── PROJECT.NetworkSettings           ← Tick rates, prefab containers, server URL
 │   └── Game launcher script              ← new NetworkRunner(scene).startGame(...)
 │
@@ -164,7 +164,7 @@ namespace PROJECT {
 | `DefaultCameraSystem` | Main camera, post-processing, split-screen | Camera/ |
 | `StandardPlayerController` | Full first/third person character | Player/ |
 | `ThirdPersonPlayerController` | Third-person only character | Player/ |
-| Fusion networking (`NetworkRunner`, `NetworkObject`, `NetworkBehaviour`, …) | Multiplayer — see §6 | `[Fusion]` kit |
+| Babylon Toolkit Networking (`NetworkRunner`, `NetworkObject`, `NetworkBehaviour`, …) | Multiplayer — see §6 | `[Network]` kit |
 | `AssetPreloader` | Pre-load mesh/container assets | Loader/ |
 | `AssetExporter` | Export / runtime asset scaffold | Loader/ |
 | `DebugInformation` | Dev console overlay and shortcuts | Inspector/ |
@@ -513,19 +513,19 @@ All other properties, state methods, and animation integration are identical to 
 
 ## 6. SYSTEM: Network / Multiplayer
 
-**All networking is Fusion networking** — a port of the Photon Fusion 2 programming model on a Colyseus 0.18 session
-server, in the `PROJECT` namespace (ESM: `@babylonjs-toolkit/next/project`). It supports every Fusion game mode
+**All networking is Babylon Toolkit Networking** — the toolkit's multiplayer stack on a Colyseus 0.18 session
+server, in the `PROJECT` namespace (ESM: `@babylonjs-toolkit/next/project`). It supports every network mode
 (Single, Shared, Host, Client, dedicated Server, AutoHostOrClient), networked properties, RPCs, tick-based input,
 client-side prediction with re-simulation, interpolated and extrapolated transforms and Havok rigidbodies, animator
 replication, lag-compensated hitboxes, interest management, networked scene loading and host migration.
 
-**Read the [Fusion Networking reference](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/fusion-networking.md) before writing any multiplayer code.**
+**Read the [Babylon Toolkit Networking reference](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/networking.md) before writing any multiplayer code.**
 
 The old Colyseus starter classes — `ColyseusGameServer`, `ColyseusNetworkManager` / `BABYLON.NetworkManager`,
 `ColyseusNetworkEntity`, `ColyseusNetworkAvatar`, `RemotePlayerController`, `TOOLKIT.EntityController` and
 `SceneManager.ServerEndPoint` — were deleted with no compatibility layer. Never use them.
 
-| Need | Fusion |
+| Need | Babylon Toolkit Networking |
 |---|---|
 | Connect / create or join a room | `new PROJECT.NetworkRunner(scene).startGame({ gameMode, sessionName })` |
 | Server URL | `NetworkSettings.serverUrl` (Unity) or `startGame({ config: { serverUrl } })` |
@@ -1009,7 +1009,7 @@ Player (with CharacterController physics)
 
 ### Online Multiplayer
 
-Fusion networking — full guide in the Fusion Networking reference.
+Babylon Toolkit Networking — full guide in the Babylon Toolkit Networking reference.
 
 ```
 [Scene]
@@ -1084,7 +1084,7 @@ Player
 
 - [ ] `NetworkSettings` in the scene with `serverUrl` and every network prefab container in `prefabContainers`
 - [ ] `NetworkObject` on every networked prefab root and networked scene object
-- [ ] Exporter **Fusion Networking** option on (exported pages), or `ColyseusTransport.ClientModule` set (ESM)
+- [ ] Exporter **Babylon Toolkit Networking** option on (exported pages), or `ColyseusTransport.ClientModule` set (ESM)
 - [ ] Gameplay state only in networked properties, simulated in `fixedUpdateNetwork`
 - [ ] Tested at 150 ms latency / 2 % loss with the `NetworkStats` overlay (F8)
 - [ ] Production `wss://` server address from the user before publishing

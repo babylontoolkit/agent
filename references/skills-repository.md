@@ -712,7 +712,7 @@ The sub-documents `unity-exporter-cli.md`, `unity-editor-commands.md`, `unity-au
 | `sprite-*`, `tilemap-*` | ⚠️ SpriteRenderer and TilemapRenderer export as toolkit carriers (Pro, §17); 2D physics does not |
 | `ui-imgui`, `2d-pixel-perfect`, `manage-sprite-atlas` | ❌ Editor-only features with no exporter path (§22) |
 | `localization`, `implement-in-app-purchases`, `levelplay-unity-integration`, `build-live-game`, `setup-vivox-voice-chat`, `optimize-web` | ❌ Unity-runtime services and Unity WebGL player tuning — never used; build the web-side version (`unity-authoring-recipes.md` §22) |
-| `setup-multiplayer-services` | ❌ Unity Multiplayer Services (Relay, Lobby, NGO) — never used; multiplayer is the toolkit's Fusion networking (`fusion-networking.md`) |
+| `setup-multiplayer-services` | ❌ Unity Multiplayer Services (Relay, Lobby, NGO) — never used; multiplayer is Babylon Toolkit Networking (`networking.md`) |
 
 > **Licence.** Unity's skills are © Unity Technologies under the **Unity Companion License**, which covers use in
 > Unity-dependent projects. Installing them unchanged is fine; do not copy their text into other documents.

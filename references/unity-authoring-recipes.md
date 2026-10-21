@@ -1392,7 +1392,7 @@ few lines in a script component:
 | Unity service | Babylon-side version |
 |---|---|
 | In-App Purchasing, LevelPlay ads | Web payments / ad SDKs (`project-installer.md`) |
-| Unity Gaming Services Multiplayer, Netcode for GameObjects, Mirror, Photon Fusion | The toolkit's Fusion networking (`fusion-networking.md`) — author `NetworkObject` / `NetworkTransform` / `NetworkRigidbody` from the Fusion kit, never Unity's netcode components |
+| Unity Gaming Services Multiplayer, Netcode for GameObjects, Mirror, Photon | Babylon Toolkit Networking (`networking.md`) — author `NetworkObject` / `NetworkTransform` / `NetworkRigidbody` from the network kit, never Unity's netcode components |
 | Vivox, Cloud Save, Remote Config | Web backends, WebRTC / WebSocket services |
 | Localization | DOM/React i18n (`ui-design-system.md`, `react-framework.md`) |
 | Unity WebGL player settings, IL2CPP, Brotli | The web build in `project-installer.md` |

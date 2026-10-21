@@ -41,7 +41,7 @@ Three things make it different in kind, not degree:
 | Input | Keyboard, mouse, gamepad, and mobile touch joysticks |
 | Audio | Spatial 3D sound and music management |
 | Worlds | Terrain, water, sky, foliage, particles and effects |
-| Multiplayer | Photon Fusion 2–style networking: Shared, Host/Client and dedicated-server modes, client prediction, lag compensation, host migration |
+| Multiplayer | Babylon Toolkit Networking: Shared, Host/Client and dedicated-server modes, client prediction, lag compensation, host migration |
 
 ## Why That Makes AI Game Generation Actually Work
 

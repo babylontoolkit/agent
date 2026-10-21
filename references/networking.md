@@ -1,13 +1,14 @@
-## Fusion Networking — Multiplayer For Babylon Toolkit Games
+## Babylon Toolkit Networking — Multiplayer For Babylon Toolkit Games
+
+The Babylon Toolkit's networking is a port of the Photon Fusion 2 programming model (Fusion 2.1.1) to TypeScript. It runs on a Colyseus 0.18 session server.
 
 **IMPORTANT. THIS DOCUMENT IS THE ONLY NETWORKING REFERENCE. READ IT TO THE END BEFORE WRITING ANY MULTIPLAYER,
 NETCODE, SESSION OR SERVER CODE.**
 
-The Babylon Toolkit's networking is a port of the **Photon Fusion 2** programming model (Fusion 2.1.1) to TypeScript.
-It runs on a **Colyseus 0.18** session server. Every Fusion game mode works: `Single`, `Shared`, `Host`, `Client`,
+Babylon Toolkit Networking supports every network mode of the original model: `Single`, `Shared`, `Host`, `Client`,
 `Server` (a dedicated headless server) and `AutoHostOrClient`. The classes are in the `PROJECT` namespace and keep
-Fusion's type names with camelCase members (`runner.spawn`, `fixedUpdateNetwork`, `object.hasStateAuthority`).
-A Fusion, Netcode for GameObjects (NGO) or Mirror script ports by renaming (§15).
+the original API's type names with camelCase members (`runner.spawn`, `fixedUpdateNetwork`, `object.hasStateAuthority`).
+A Photon, Netcode for GameObjects (NGO) or Mirror script ports by renaming (§15).
 
 **This is the only networking code path.** The old Colyseus helpers were deleted with no compatibility layer:
 `TOOLKIT.EntityController`, `SceneManager.ServerEndPoint`, `ColyseusGameServer`, `ColyseusNetworkEntity`,
@@ -40,7 +41,7 @@ feature on the classes below.
 | Smooth remote motion | `NetworkTransform` / `NetworkRigidbody`: linear or Hermite interpolation, extrapolation for vehicles, error correction, teleports | §8 |
 | Networked physics | `NetworkRigidbody` over Havok; physics steps on the network tick | §8 |
 | Networked animation | `NetworkMecanimAnimator` replicates the `TOOLKIT.Animator` parameters, states, layer weights and triggers | §8 |
-| RPCs | `Rpc.define(...)` with Fusion's sources / targets rules, plus static RPCs | §7 |
+| RPCs | `Rpc.define(...)` with the original API's sources / targets rules, plus static RPCs | §7 |
 | Change callbacks | `onChangedRender` on a property, or a `ChangeDetector` | §6 |
 | Lag-compensated hits | `HitboxRoot` + `Hitbox`, `runner.lagCompensation.raycast` / `overlapSphere` / `overlapBox` at the shooter's view | §9 |
 | Interest management | `useAreaOfInterest` objects + `runner.addPlayerAreaOfInterest` each tick; per-behaviour `replicateTo` | §9 |
@@ -65,8 +66,8 @@ networking runs at the same frame time and renders pixel-identical to the runtim
 | Runtime | `PROJECT.*` in the toolkit runtime (ESM: `@babylonjs-toolkit/next/project`; UMD: `babylon.toolkit.js`) | Runner, tick loop, state, prediction, interpolation, RPCs, lag compensation, scenes, host migration |
 | Session server | `@babylonjs-toolkit/server` — the Babylon Game Server (CLI `babylon-game-server`, image `ghcr.io/mackeyk24/babylon-game-server`; Colyseus 0.18.9, Node ≥ 22) | Rooms `fusion_session` (one per session name) and `fusion_lobby`; relay, Shared-mode store, host election, dedicated Server mode; opt-in TLS, auth and UDP |
 | Browser client | `@colyseus/sdk` 0.18.5 | Never bundled by the toolkit: the exporter adds it to exported pages, ESM hosts import it (§4) |
-| Unity authoring | The toolkit's Fusion kit, `Assets/[Fusion]` (menu **Babylon Toolkit → Content Components → Fusion**) | `NetworkSettings`, `NetworkObject`, `NetworkTransform`, `NetworkRigidbody`, `NetworkMecanimAnimator`, `HitboxRoot`, `Hitbox` |
-| Exporter option | **Fusion Networking** (`NetworkLibrary`) | Adds the Colyseus client script to exported pages |
+| Unity authoring | The toolkit's network kit, `Assets/[Network]` (menu **Babylon Toolkit → Content Components → Network**) | `NetworkSettings`, `NetworkObject`, `NetworkTransform`, `NetworkRigidbody`, `NetworkMecanimAnimator`, `HitboxRoot`, `Hitbox` |
+| Exporter option | **Babylon Toolkit Networking** (`NetworkLibrary`) | Adds the Colyseus client script to exported pages |
 
 **The tick model.** The runner drives itself from `scene.onBeforeRenderObservable` (first observer), so every
 network tick and `render()` happens before any ScriptComponent `update`. Each frame:
@@ -110,7 +111,7 @@ by the session server.
 
 Decide this yourself from the brief and state it — only ask when the user's request leaves the authority model
 genuinely open (the **asking rule** lists "multiplayer authority" as an architectural decision). Lag compensation
-needs Host/Client or Server; it is not available in Shared mode, as in Fusion.
+needs Host/Client or Server; it is not available in Shared mode, as in the original model.
 
 ---
 
@@ -141,7 +142,7 @@ Rules:
   and its state layout is fixed from then on. Behaviours under a child that has its own `NetworkObject` belong to that
   nested object.
 - **Keep spawn points, cameras and the launcher in the level**, not in the prefab.
-- **Turn on the exporter's Fusion Networking option** so exported pages load the Colyseus client. On a live Editor
+- **Turn on the exporter's Babylon Toolkit Networking option** so exported pages load the Colyseus client. On a live Editor
   (`unity-exporter-internals.md` §13):
 
   ```csharp
@@ -154,7 +155,7 @@ Rules:
 
 ### 4.2 Web app: load the Colyseus client
 
-- **Exported pages (UMD `engine.html`)** — nothing to do once the Fusion Networking option is on: the page loads
+- **Exported pages (UMD `engine.html`)** — nothing to do once the Babylon Toolkit Networking option is on: the page loads
   `scripts/colyseus.js` (global `Colyseus`).
 - **ESM web apps** — install the browser client and hand it to the transport before the first `startGame`:
 
@@ -237,7 +238,7 @@ const KEY_D: number = 68;
 const SESSION_PLAYER_COUNT: number = 8;
 const SPAWN_POINT_COUNT: number = 4;
 
-/** The player input struct, as a Fusion INetworkInput. */
+/** The player input struct (an INetworkInput in the original API). */
 export interface PlayerInput {
     /** Jump and fire bits. */
     buttons: NetworkButtons;
@@ -484,7 +485,7 @@ return `false` when full; a string longer than its capacity is cut (with a warni
 **Rules that keep prediction and re-simulation correct:**
 
 - **Only the state authority (or a predicting client) writes networked properties.** A proxy write is ignored with
-  a one-time `console.warn("[Fusion] <Class>.<prop> written without state authority")`.
+  a one-time `console.warn("[Network] <Class>.<prop> written without state authority")`.
 - **All gameplay state lives in networked properties.** Plain fields are not rewound, so a plain field changed in
   `fixedUpdateNetwork` drifts on re-simulation. Keep render-only values (labels, particles, UI) out of state and
   update them in `render()`, `onChangedRender` callbacks or a change detector.
@@ -518,14 +519,14 @@ return `false` when full; a string longer than its capacity is cut (with a warni
 The method with the RPC's name is the **receiver**; calling it on a behaviour **sends**. The receiver always gets an
 `RpcInfo` (`tick`, `source`, `channel`, `isInvokeLocal`) after its declared arguments.
 
-| Intent (Fusion / NGO / Mirror) | `sources` → `targets` |
+| Intent (Photon / NGO / Mirror) | `sources` → `targets` |
 |---|---|
 | Client asks the authority (`[ServerRpc]`, `[Command]`) | `RpcSources.InputAuthority` → `RpcTargets.StateAuthority` |
 | Authority tells everyone (`[ClientRpc]`) | `RpcSources.StateAuthority` → `RpcTargets.All` |
 | Authority tells the owner | `RpcSources.StateAuthority` → `RpcTargets.InputAuthority` |
 | One player only (`[TargetRpc]`, `[RpcTarget]`) | `targetPlayerParameter: true` — the first argument is the target `PlayerRef` (not encoded) |
 
-An RPC whose source rule fails is dropped with a warning on the sender. Static RPCs (Fusion's
+An RPC whose source rule fails is dropped with a warning on the sender. Static RPCs (the original API's
 `[Rpc] static void X(NetworkRunner runner, …)`) are `runner.registerStaticRpc` / `runner.invokeStaticRpc`. Prefer
 networked properties for anything that must survive a late join; RPCs are one-shot events. In Host mode the host does
 not relay a client's RPC on to other clients' roles — send the request to the state authority and let it set state or
@@ -686,7 +687,7 @@ private async restartAfterHostMigration(oldRunner: NetworkRunner, token: HostMig
 }
 ```
 
-- Shut down with **`destroyObjects = true`** (not Fusion's `false`): the resume re-spawns every object from the
+- Shut down with **`destroyObjects = true`** (not the original API's `false`): the resume re-spawns every object from the
   snapshot, so kept objects would duplicate.
 - Player ids survive the migration. Call `setPlayerObject` again for re-spawned player objects, and have
   `onPlayerJoined` skip players whose object the resume already restored.
@@ -706,7 +707,7 @@ private async restartAfterHostMigration(oldRunner: NetworkRunner, token: HostMig
 - **Unit tests without a server:** `LoopbackHub` runs several runners in one process —
   `startGame({ gameMode, transport: hub.createTransport() })` per runner on `NullEngine` scenes, then advance the hub
   and each scene's frames deterministically.
-- **The kit's sample** (`Assets/[Fusion]/Samples`): the `NetworkTestBed` scene, a `NetworkSampleKart` prefab (input,
+- **The kit's sample** (`Assets/[Network]/Samples`): the `NetworkTestBed` scene, a `NetworkSampleKart` prefab (input,
   boost, a lag-compensated zap, animator trigger, name RPC) and a launcher that reads
   `?fusionMode=&fusionSession=&fusionServer=&fusionStats=1&fusionToken=&fusionTransport=&fusionDedicatedScene=` from
   the page URL (`fusionServer` URL-encoded). Start from it when building a
@@ -715,10 +716,10 @@ private async restartAfterHostMigration(oldRunner: NetworkRunner, token: HostMig
 
 | Symptom | Cause |
 |---|---|
-| `startGame` → `Colyseus client not loaded` | Fusion Networking option off (exported page) or `ColyseusTransport.ClientModule` not set (ESM) |
+| `startGame` → `Colyseus client not loaded` | Babylon Toolkit Networking option off (exported page) or `ColyseusTransport.ClientModule` not set (ESM) |
 | `IncompatibleConfiguration` on join | Peers have different prefab tables — re-export and reload every page and the dedicated server |
 | `spawn` throws `NetworkError` | The prefab is not in a `prefabContainers` asset container, or this peer may not spawn (a client in Host/Client) |
-| `[Fusion] … written without state authority` | Gameplay code runs on a proxy — check `hasStateAuthority` / move it into `fixedUpdateNetwork` |
+| `[Network] … written without state authority` | Gameplay code runs on a proxy — check `hasStateAuthority` / move it into `fixedUpdateNetwork` |
 | Remote objects stutter | Visuals not on the `interpolationTarget` child, or code moving the object in `update()` |
 | Effects play twice / jitter on a client | One-shot work in `fixedUpdateNetwork` without an `isForward` gate |
 | Dedicated server ignores input | No `setDefaultInputDefinition` in the game bundle |
@@ -733,7 +734,7 @@ private async restartAfterHostMigration(oldRunner: NetworkRunner, token: HostMig
 
 ## 14. Not supported (use the alternative)
 
-| Fusion feature | Instead |
+| Original API feature | Instead |
 |---|---|
 | Photon Cloud: regions, NAT punch-through, cloud connection, `CustomPhotonAppSettings` | The Babylon Game Server (`serverUrl`); every peer is relayed |
 | Several runners in one page (`PeerMode.Multiple`) | One runner per page; `LoopbackHub` in tests |
@@ -750,9 +751,9 @@ corrections for extrapolated remote objects and its sliders do not redraw when c
 
 ---
 
-## 15. Porting Fusion, NGO and Mirror scripts
+## 15. Porting Photon, NGO and Mirror scripts
 
-**Naming rules.** Types keep Fusion's names; members are camelCase (`Runner.Spawn` → `runner.spawn`,
+**Naming rules.** Types keep the original API's names; members are camelCase (`Runner.Spawn` → `runner.spawn`,
 `Object.HasStateAuthority` → `object.hasStateAuthority`, `Runner`/`Object` → `this.runner`/`this.object`). C# `out`
 parameters become return values (`TryGetPlayerObject(p, out o)` → `const o = runner.tryGetPlayerObject(p)`, `null`
 when missing). Nested types become top-level (`ChangeDetector.Source` → `ChangeDetectorSource`,
@@ -761,7 +762,7 @@ are numbers, `NetworkBool` is `boolean`, `NetworkString<_N>` is a `string` (`Net
 `SceneRef`, `TickTimer` and `NetworkButtons` stay classes. Times are seconds unless a name ends in `Ms`. `nameof(Lap)`
 becomes the string `"lap"`. Positions are `BABYLON.Vector3`, rotations `BABYLON.Quaternion`.
 
-| Fusion 2 (C#) | Toolkit |
+| Original API (C#) | Toolkit |
 |---|---|
 | `[Networked] public int Lap { get; set; }` | `public declare lap: number;` + `lap: Networked.int()` |
 | `[Networked, Capacity(5)] NetworkArray<int>` | `Networked.array(Networked.int(), 5)` → `get` / `set` / `toArray` |
@@ -788,7 +789,7 @@ becomes the string `"lap"`. Positions are `BABYLON.Vector3`, rotations `BABYLON.
 | `NetworkManager.StartHost / StartServer / StartClient` | `runner.startGame({ gameMode: GameMode.Host / Server / Client })` |
 | `OnClientConnectedCallback` / `OnClientDisconnectCallback` | `onPlayerJoined` / `onPlayerLeft` |
 | `ConnectionApprovalCallback` | `onConnectRequest` |
-| `NetworkTransform`, `NetworkRigidbody`, `NetworkAnimator` | The Fusion kit components (§4.1, §8) |
+| `NetworkTransform`, `NetworkRigidbody`, `NetworkAnimator` | The network kit components (§4.1, §8) |
 | `NetworkManager.SceneManager.LoadScene`, `ServerChangeScene` | `runner.loadScene` |
 
 Exact signatures for every class are in the toolkit typings (ESM `@babylonjs-toolkit/next/project` →
