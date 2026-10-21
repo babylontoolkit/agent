@@ -458,6 +458,35 @@ scene.onBeforeRenderObservable.add(() => {
   speedText.text = String(roundedSpeed);
 });
 
+// Throttled readouts (FPS, distance, standings): the same observer, a few writes a second.
+const SLOW_WRITE_INTERVAL_MS = 250;
+let lastSlowWriteMs = 0;
+scene.onBeforeRenderObservable.add(() => {
+  const nowMs = performance.now();
+  if (nowMs - lastSlowWriteMs < SLOW_WRITE_INTERVAL_MS) return;
+  lastSlowWriteMs = nowMs;
+  const shownFps = String(Math.round(engine.getFps()));
+  if (fpsText.text !== shownFps) fpsText.text = shownFps;
+});
+```
+
+**Per frame or not, in the GPU GUI.** The cadence table in `ui-design-system.md` › **Per frame or not** binds every
+`@babylonjs/gui` control and every exported Unity UI element (`TOOLKIT.UserInterface.SetText` / `SetValue` re-run
+layout too):
+- **State on events.** Score, ammo, health after a hit, gear, lap, menus and panels are set from the event that changed
+  them — never from a render observer that assigns them every frame.
+- **One observer per GUI, not per control,** and removed (`scene.onBeforeRenderObservable.remove(observer)`) when the
+  GUI is hidden or disposed. Hidden controls are not updated: flip `isVisible` only when visibility changes, and skip
+  their writes while hidden.
+- **`linkWithMesh` already tracks every frame** — do not also re-position the control yourself. With many linked labels
+  (name tags, enemy bars), show only the nearby or on-screen ones and flip `isVisible` on the frame that changes; do not
+  keep dozens of off-screen labels linked and visible.
+- **Short-lived effects are pooled.** Damage numbers and hit markers reuse a small pool of controls: the fade or rise is a short
+  Babylon animation, and the control goes back to the pool when it ends — never a new control per hit.
+- **Throttle readouts nobody reads at 60 Hz** (above). Telemetry that must track every frame — a needle, a cockpit
+  speed readout — is assigned only when its quantized value changes.
+
+```typescript
 // Bitmap cache: pre-render complex controls to a static bitmap.
 // Use for controls with many children that don't change every frame.
 complexControl.useBitmapCache = true;

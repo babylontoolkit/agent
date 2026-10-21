@@ -512,34 +512,45 @@ Replace the placeholder content with actual game UI:
 ```tsx
 'use client';
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useUnifiedNavigation } from "../system/platform";
 import GameManager from "../globals";
+import { useFrameLoop, writeText } from "./hud-frame"; // the HUD frame loop (ui-design-system.md › Live HUD Values)
 import "./overlay.css";
+
+/**
+ * Speed readout: telemetry, so it is never React state. React renders it once; the frame loop writes the
+ * number through a ref, only when the shown whole km/h changes. It unmounts with the HUD, so its loop stops too.
+ */
+function SpeedReadout() {
+    const readoutRef = useRef<HTMLSpanElement>(null);
+    useFrameLoop(() => {
+        // The game writes GlobalState.playerSpeedKmh in its update(); reading it allocates nothing.
+        writeText(readoutRef.current, `${Math.round(GameManager.GlobalState.playerSpeedKmh ?? 0)} km/h`);
+    });
+    return <span ref={readoutRef} className="hud-speed">0 km/h</span>;
+}
 
 function CustomOverlay() {
     const { navigate } = useUnifiedNavigation();
+    // Discrete state only, each set by an event. Speed is telemetry and lives in <SpeedReadout />.
     const [score, setScore] = useState(0);
-    const [speed, setSpeed] = useState(0);
     const [isPaused, setIsPaused] = useState(false);
     const [showPauseMenu, setShowPauseMenu] = useState(false);
 
     // Listen for game events from the SceneController
     useEffect(() => {
         const onScore = (data: { score: number }) => setScore(data.score);
-        const onSpeed = (data: { speed: number }) => setSpeed(data.speed);
         const onPause = (data: { paused: boolean }) => {
             setIsPaused(data.paused);
             setShowPauseMenu(data.paused);
         };
 
         GameManager.EventBus.OnMessage("hud:score", onScore);
-        GameManager.EventBus.OnMessage("hud:speed", onSpeed);
         GameManager.EventBus.OnMessage("game:pause", onPause);
 
         return () => {
             GameManager.EventBus.RemoveHandler("hud:score", onScore);
-            GameManager.EventBus.RemoveHandler("hud:speed", onSpeed);
             GameManager.EventBus.RemoveHandler("game:pause", onPause);
         };
     }, []);
@@ -559,7 +570,7 @@ function CustomOverlay() {
             {!showPauseMenu && (
                 <div className="hud">
                     <div className="hud-score">Score: {score}</div>
-                    <div className="hud-speed">{Math.round(speed)} km/h</div>
+                    <SpeedReadout />
                     <button
                         style={{ pointerEvents: "auto" }}
                         onClick={() => GameManager.EventBus.PostMessage("game:pause", { paused: true })}
@@ -597,17 +608,26 @@ The overlay div has `pointer-events: none` by default so mouse/touch events pass
 Best for: scores, speedometers, health bars, minimaps, popup menus, chat, inventory, text overlays.
 
 - Live inside `CustomOverlay`
-- Driven by `GameManager.EventBus` messages from game code
-- React state (`useState`) rerenders only the changed elements
 - Zero GPU cost for the canvas render loop
+- **Each value gets the cheapest update cadence** (ENFORCED — `references/ui-design-system.md` › **Live HUD Values** and **Per frame or not**):
+  - **Discrete state** (score, lap, gear, position, health after a hit, menus) — React state, set from a `GameManager.EventBus` message the game posts **only on the frame the value changes**.
+  - **Telemetry** (speed, RPM, needles, timers, bars, markers) — never React state and never an EventBus message: the game writes it onto `GameManager.GlobalState` every frame, and the HUD's one frame loop writes it into the DOM through refs, only when the shown value changes.
+  - **Throttled readouts** (FPS, distance, standings) — the same loop, a few writes a second.
+  - **Decorative motion** (pulses, glows, enter/exit, a bar easing after a hit) — CSS `@keyframes` / `transition` on `transform` and `opacity`, no JavaScript loop.
+  - **Nothing** while the HUD is hidden, behind a modal or the game is paused.
 
 ```typescript
-// In SceneController — post HUD data each frame or on change:
+// In SceneController — telemetry is published every frame (free); state is posted only when it changes:
+/** The gear the HUD was last told about; -1 until the first post. */
+private postedGear: number = -1;
+
 protected update(): void {
-    const speed = this.vehicleController?.currentSpeed ?? 0;
-    if (Math.abs(speed - this._lastSpeed) > 0.5) {
-        GameManager.EventBus.PostMessage("hud:speed", { speed });
-        this._lastSpeed = speed;
+    GameManager.GlobalState.playerSpeedKmh = this.vehicleController?.currentSpeed ?? 0;
+
+    const gear: number = this.vehicleController?.currentGear ?? 0;
+    if (gear !== this.postedGear) {
+        this.postedGear = gear;
+        GameManager.EventBus.PostMessage("hud:gear", { gear });
     }
 }
 ```
@@ -634,7 +654,8 @@ protected async createScene(): Promise<void> {
     scoreText.paddingLeft = "20px";
     advancedTexture.addControl(scoreText);
 
-    // Update from game events:
+    // Discrete state: set from the event that changed it, never assigned every frame
+    // (each GUI change re-lays out, redraws and re-uploads the whole GUI texture).
     GameManager.EventBus.OnMessage("hud:score", (data: { score: number }) => {
         scoreText.text = `Score: ${data.score}`;
     });
@@ -645,8 +666,9 @@ protected async createScene(): Promise<void> {
     enemyLabel.height = "20px";
     enemyLabel.cornerRadius = 5;
     enemyLabel.color = "red";
-    advancedTexture.addControl(enemyLabel);
-    advancedTexture.moveTo(enemyLabel, enemyMesh, new BABYLON.Vector3(0, 2.5, 0));
+    advancedTexture.addControl(enemyLabel);   // linked controls must sit at the ADT root
+    enemyLabel.linkWithMesh(enemyMesh);       // the ADT tracks the mesh every frame — never re-position it yourself
+    enemyLabel.linkOffsetY = -80;             // pixels above the mesh's origin
 }
 ```
 
@@ -655,6 +677,7 @@ protected async createScene(): Promise<void> {
 | Feature | DOM HUD (React) | GPU HUD (BabylonJS GUI) |
 |---------|-----------------|------------------------|
 | Performance | ✅ Zero GPU cost | ⚠️ Extra draw calls |
+| Per-frame values | ✅ Refs + one frame loop, never React state | ⚠️ Each change re-lays out, redraws and re-uploads the GUI texture — assign only on change |
 | Styling | ✅ Full CSS / Tailwind | ❌ Limited built-in styles |
 | Animation | ✅ CSS transitions | ✅ BabylonJS animations |
 | 3D world anchoring | ❌ Not native | ✅ Attach to 3D mesh |
@@ -763,8 +786,8 @@ protected async createScene(data?: any): Promise<void> {
         });
         vehicle.enableInput = true;
 
-        // Post initial HUD state
-        GameManager.EventBus.PostMessage("hud:speed", { speed: 0 });
+        // Initial telemetry: the HUD's frame loop reads it from GlobalState (speed is never an EventBus message)
+        GameManager.GlobalState.playerSpeedKmh = 0;
     });
 }
 ```
@@ -1007,10 +1030,10 @@ export class Level1GameMode extends TOOLKIT.SceneController {
     protected update(): void {
         this.raceTimer += this.scene.getEngine().getDeltaTime() / 1000;
 
-        // Push speed to HUD every frame
-        const speed = this.playerController?.currentSpeed ?? 0;
-        GameManager.EventBus.PostMessage("hud:speed", { speed });
-        GameManager.EventBus.PostMessage("hud:time", { time: this.raceTimer });
+        // Speed and the race timer are telemetry: publish them on GlobalState every frame (setting a number is free).
+        // The HUD's frame loop reads them and writes the DOM through refs. Never post them on the EventBus per frame.
+        GameManager.GlobalState.playerSpeedKmh = this.playerController?.currentSpeed ?? 0;
+        GameManager.GlobalState.raceTimeSeconds = this.raceTimer;
     }
 
     private onRaceComplete(): void {
@@ -1402,11 +1425,10 @@ awake → start → ready
 "OnLoadComplete"     → { message: string, ... }
 "OnAssetDependency"  → { dependencyUrl: string, ... }
 
-// HUD
+// HUD — discrete events only, each posted on the frame its value changes, never every frame
 "hud:score"    → { score: number }
-"hud:speed"    → { speed: number }
 "hud:lap"      → { current: number, total: number }
-"hud:time"     → { time: number }
+"hud:gear"     → { gear: number }
 "hud:health"   → { health: number, maxHealth: number }
 "hud:message"  → { text: string, duration?: number }
 "hud:gameStart"→ { ... }
@@ -1418,6 +1440,11 @@ awake → start → ready
 "checkpoint:lap" → { lapNumber: number }
 "player:died"  → { ... }
 "player:scored"→ { points: number }
+
+// Telemetry is NOT an EventBus message. The game writes it onto GlobalState in update(),
+// and the HUD's frame loop reads it (ui-design-system.md › Live HUD Values — ENFORCED):
+GameManager.GlobalState.playerSpeedKmh   // number, every frame
+GameManager.GlobalState.raceTimeSeconds  // number, every frame
 ```
 
 ### File Checklist for a New Game Mode

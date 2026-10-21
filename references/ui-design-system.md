@@ -4,8 +4,12 @@
 
 > **ENFORCED — Live HUD Values.** A HUD value that changes every frame (speed, RPM, needles, timers, bars, markers)
 > **never goes through React state, props, context, a store or a per-frame EventBus message.** The HUD renders once;
-> one frame loop writes those values into the DOM through refs, only when what is shown changes. HUD code that breaks
-> this is not finished. Read **Live HUD Values — ENFORCED** below before writing or reviewing any HUD.
+> one frame loop writes those values into the DOM through refs, only when what is shown changes.
+> **And nothing runs per frame that does not need to.** Every UI element gets the cheapest update cadence that shows
+> it correctly — events for state, CSS for decorative motion, the frame loop only for telemetry, throttled for
+> readouts nobody reads at 60 Hz, and nothing at all for what is not on screen. Menus, splash screens and landing pages
+> have no frame loop. UI code that breaks either rule is not finished. Read **Live HUD Values — ENFORCED** and
+> **Per frame or not** below before writing or reviewing any UI.
 
 ## Frontend Design Skills
 
@@ -156,13 +160,16 @@ type LoadProgressMessage = { message?: string; percent?: number; overallPercent?
 /** TOOLKIT.ILoaderStatus from SceneManager.OnLoaderStatusObservable (null fields are unchanged since the last update). */
 type LoaderStatus = { status: string | null; details: string | null; progress: number | null; state: number };
 
-/** Clamps a progress value to the 0..1 range. */
-const clampFraction = (value: number): number => Math.max(0, Math.min(1, value));
+/**
+ * Converts a progress fraction to the whole percent the bar shows (0..100). Progress is kept as this integer so
+ * React skips the re-render when an update does not change what is shown — the download fires many updates a second.
+ */
+const toShownPercent = (fraction: number): number => Math.round(Math.max(0, Math.min(1, fraction)) * 100);
 
 function SplashScreen({ visible }: { visible: boolean }) {
   const [message, setMessage] = useState<string>('Initializing...');
   const [details, setDetails] = useState<string>('');
-  const [progress, setProgress] = useState<number>(0);
+  const [progressPercent, setProgressPercent] = useState<number>(0);
 
   useEffect(() => {
     // the toolkit's scene build stages (Building scene, Setting up scene) take over the status line and bar once the scene file
@@ -175,7 +182,7 @@ function SplashScreen({ visible }: { visible: boolean }) {
       if (data == null || loaderState >= 1) return;
       if (data.message != null) setMessage(data.message);
       const percent: number | undefined = data.overallPercent ?? data.percent;
-      if (typeof percent === 'number' && isFinite(percent)) setProgress(clampFraction(percent / 100));
+      if (typeof percent === 'number' && isFinite(percent)) setProgressPercent(toShownPercent(percent / 100));
     };
     // 2. everything after the download: building (1), setting up (2), the asset preloader (3), the shader compile (4).
     //    progress is the fraction of the current state, so the bar starts over when data.state changes
@@ -184,7 +191,7 @@ function SplashScreen({ visible }: { visible: boolean }) {
       if (typeof data.progress === 'number') loaderState = data.state;
       if (data.status != null && data.status !== '') setMessage(data.status);
       if (data.details != null) setDetails(data.details);
-      if (typeof data.progress === 'number' && isFinite(data.progress)) setProgress(clampFraction(data.progress));
+      if (typeof data.progress === 'number' && isFinite(data.progress)) setProgressPercent(toShownPercent(data.progress));
     };
     GameManager.EventBus.OnMessage('OnLoadProgress', onLoadProgress);
     const loaderObserver = SceneManager.OnLoaderStatusObservable.add(onLoaderStatus);
@@ -202,7 +209,8 @@ function SplashScreen({ visible }: { visible: boolean }) {
         <img src="/babylon.png" alt="Game Logo" />
       </div>
       <div className="splash-progress-bar">
-        <div className="splash-progress-fill" style={{ width: `${Math.round(progress * 100)}%` }} />
+        {/* full width, scaled from the left (transform-origin: left in splash.css): progress never re-lays out the page */}
+        <div className="splash-progress-fill" style={{ transform: `scaleX(${progressPercent / 100})` }} />
       </div>
       <p className="splash-message">{message}</p>
       <p className="splash-details">{details}</p>
@@ -245,7 +253,7 @@ with the load (a bar, stage names, counts), never an endless "please wait".
 - During the asset preloader the status line names one heavy system at a time (Terrain, Skins, Animations, Navigation, Water, Ray tracing) for at least 750 ms unless it completes; the bar is one weighted fraction of every heavy system in the scene. Small assets (light probes, audio, video, ordinary files) never get their own stage — they only count in "Loading n of m assets", which shows until the first heavy system starts.
 - For per-system indicators, subscribe to `TOOLKIT.LoadingProgress.OnProgressObservable` (`TOOLKIT.ILoadingJobProgress`: `title`, `stageLabel`, `jobProgress`, `groupProgress`, `sceneProgress`, `complete`) or read `TOOLKIT.LoadingProgress.GetSceneProgress(scene)` / `GetGroupProgress(scene, title)`; a terrain's own stages arrive on `TOOLKIT.TerrainBuilder.OnLoadProgressObservable` (`TOOLKIT.ITerrainLoadProgress`).
 - **Never let the splash look stuck.** A custom splash may show progress in any form and wording it likes, but it should always show *some* progress that keeps moving through every stage, not just the download. To keep that data arriving, keep `SceneManager.HostDefersSceneStatus = true`, both subscriptions (removed on cleanup) and the check that stops using `"OnLoadProgress"` once a toolkit update reports `state >= 1`, as in the example above. Without them the splash sits on "Loading Scene 100%" while the scene builds and sets up, which reads as a hang.
-- The page stays responsive for the whole load (the scene is built and set up in short slices), so the splash's own animation keeps running. Keep something visibly moving in every state, including the moments after a bar reaches 100% and the short hold on "Starting scene" while the last background work (GPU pipelines, particle pre-warm, LOD cross-fade materials) finishes before the reveal. CSS keyframe and transform animations stay smoothest.
+- The page stays responsive for the whole load (the scene is built and set up in short slices), so the splash's own animation keeps running. Keep something visibly moving in every state, including the moments after a bar reaches 100% and the short hold on "Starting scene" while the last background work (GPU pipelines, particle pre-warm, LOD cross-fade materials) finishes before the reveal. **The splash's atmosphere is CSS, never a frame loop:** spinners, pulses, drifting particles, parallax layers, scanlines and shimmer are `@keyframes` on `transform` and `opacity`, which the compositor keeps playing even while a scene-build slice holds the main thread. A `requestAnimationFrame` loop or React state driving that motion stutters exactly when the load is heaviest and steals time from the load itself. Progress is event-driven: set it only when the whole percent shown changes (as the example above does) and draw the bar with `scaleX`, never `width` (**Per frame or not** below).
 - Game code can await the same gate the splash uses: `await TOOLKIT.SceneManager.WhenSceneReady(scene, timeoutMs)` resolves `true` when the scene really finished, `false` on timeout or disposal, and never rejects.
 
 * Important: The `preloader` and `splash screen` **SHOULD** look very similar if not the same. The only differene is the preloader should be less animated than the splash screen because it is the `React Suspense` or downloading state.
@@ -490,6 +498,40 @@ same 60 fps. The development build exaggerates React's share, but the production
 
 When unsure, it is telemetry. A value the game changes in `update()` is telemetry.
 
+### Per frame or not — choose the update cadence for every UI element
+
+Classifying a value tells you how it reaches the screen. It does **not** mean the value earns a frame loop.
+Per-frame code is the most expensive way to show anything, so it is the last choice, not the default. For every
+element in a HUD, menu, splash or page, pick the **cheapest cadence that still shows it correctly**:
+
+| Cadence | Use it for | How | Violations |
+|---|---|---|---|
+| **1. On events — no loop** | Discrete **state**: screens, menus, pause, gear, lap, race position, score, health / ammo after a change, toasts, achievement pop-ups, settings, splash progress | React state set from an EventBus message or callback, **only when the value changed**. The game posts the message on the frame the value changes, never every frame | Polling state in a frame loop and setting it every frame "in case it changed"; a game `update()` that posts `hud:position` / `hud:gear` every frame |
+| **2. CSS — no JS loop** | Decorative motion and fixed transitions: spinners, pulses, glows, shimmer, scanlines, ambient particles and parallax drift on menus and splash screens, hover and focus, modal / toast enter and exit, a health bar easing to its new value after a hit, a one-off needle sweep on HUD intro | `@keyframes` / `transition` on `transform` and `opacity`. Set the end value once and the browser animates it on the compositor, which keeps playing while the main thread is busy | A `requestAnimationFrame`, `useFrameLoop`, `setInterval` or animation library tick for motion CSS can do; animating `width`, `height`, `top`, `left` or a large `filter: blur` |
+| **3. Every frame — the frame loop** | **Telemetry** the player watches track the game: speed, RPM, needles, arcs, timers that show tenths or hundredths, boost / nitro / charge bars, reticles and markers that follow moving things, a scroll-scrubbed hero while it is scrolling | One `useFrameLoop` per HUD, refs, quantize, compare, write only on change (**The rules** below) | React state, props, a store or a per-frame EventBus message; a second loop |
+| **4. Throttled — a few times a second** | Telemetry that changes continuously but that nobody reads at 60 Hz: FPS / ping / debug counters (2–4 Hz), distance-to-target text (~10 Hz), live standings (~4 Hz, or on events), minimap markers for distant or non-player entities (10–15 Hz), objective arrows that point at slow targets | The same single frame loop with a time check (`timeMs - lastSlowWriteMs < SLOW_WRITE_INTERVAL_MS` → skip). A timer that shows whole seconds needs no throttle: its change check writes once a second | 60 Hz writes of text no one can read at 60 Hz; `setInterval`; a separate slow loop |
+| **5. Not at all** | What is not on screen: a hidden or collapsed HUD, a HUD behind a pause / settings / results modal, a paused game, a menu or landing page with no live game value, a landing-page canvas or section scrolled out of view, a background tab | Unmount the HUD (its loop stops with it) or skip the loop on a visibility flag kept in a ref. Pause landing-page canvases and WebGL heroes with `IntersectionObserver` and `document.visibilitychange`. A scroll-driven loop writes nothing while the scroll is at rest. Honor `prefers-reduced-motion` | A frame loop running behind a modal, while paused, or for an element no one can see |
+
+**How to decide.** *Does it change on a moment (a hit, a lap, a click)?* It is an event (1). *Is the motion decoration,
+or a transition between two known values?* It is CSS (2). *Does it change continuously and would a player notice it
+lagging?* Frame loop (3). *Would they notice it at 10 Hz?* If not, throttle (4). *Can anyone see it right now?* If not,
+nothing (5).
+
+**What this means in practice:**
+- **Menus, pause, settings, results, inventory, store, landing pages, splash screens and preloaders have no frame loop.**
+  They are events (1) and CSS (2). The only per-frame code allowed on a landing page is a real-time 3D, canvas or
+  scroll-scrubbed hero, and it stops off-screen and does no writes while the scroll is at rest.
+- **Static never updates.** Labels, ticks, numerals, bezels, icons, frames and copy render once and never re-render.
+- **A property the frame loop writes has no CSS `transition`.** A `transition: transform` on a needle written every frame
+  restarts each frame and trails the game. Smooth in the loop (ease toward the target) or in the game. CSS transitions
+  are for values that change on events (2).
+- **The game follows the same cadence.** `update()` writes telemetry onto `GameManager.GlobalState` every frame (setting
+  a number is free) and posts an EventBus message only on the frame a discrete value changes:
+  `if (gear !== this.postedGear) { this.postedGear = gear; GameManager.EventBus.PostMessage('hud:gear', { gear }); }`.
+- **`@babylonjs/gui` and exported Unity UI follow it too.** A GUI control or `TOOLKIT.UserInterface.SetText` /
+  `SetValue` is a per-frame write only for cadence 3 telemetry, and even then only on change. Everything else is set on
+  events, and a control that is hidden is not updated at all (`babylon-gui.md` › Performance Optimization).
+
 ### The rules
 
 1. **No React for telemetry.** Never put a telemetry value in React state, props, context or a store, and never post
@@ -517,7 +559,11 @@ When unsure, it is telemetry. A value the game changes in `update()` is telemetr
    - **Never read layout in the loop:** `offsetWidth`, `getBoundingClientRect`, `getComputedStyle` force a reflow.
 7. **No allocation in the loop.** No per-frame objects, arrays, closures or JSX. Build a string only after the
    quantized value changed.
-8. **Budget:** the HUD costs at most **0.5 ms of main-thread time per frame** and allocates nothing in steady
+8. **Per frame only when it must be.** Each element takes the cheapest cadence in **Per frame or not** above: events
+   for state, CSS for decorative motion, the frame loop only for telemetry, throttled for readouts nobody reads at
+   60 Hz. The loop does nothing while nothing is shown — the HUD is unmounted or hidden, a modal covers it, or the
+   game is paused — and no element the loop writes carries a CSS `transition`.
+9. **Budget:** the HUD costs at most **0.5 ms of main-thread time per frame** and allocates nothing in steady
    play. Proof: profile the gameplay (`bt-profile`) — the `react` owner must sit near **0%** during play phases.
 
 The same rule holds in `@babylonjs/gui`: every property change marks the GUI dirty, and the next frame re-lays it
@@ -628,14 +674,68 @@ A bar is the same pattern with one line: `fillRef.current.style.transform = \`sc
 Several widgets share the HUD's one `useFrameLoop`, or each calls it in its own component — never `setInterval`, never
 a loop per value.
 
+Throttled readouts and a hidden HUD go through the same loop (cadences 4 and 5):
+
+```tsx
+// src/chrome/race-info.tsx — standings and distance refresh at 10 Hz, and nothing runs while the HUD is hidden
+import { useEffect, useRef } from 'react';
+import GameManager from '../globals';
+import { useFrameLoop, writeText } from './hud-frame';
+
+/** Distance and standings are read, not watched: 10 writes a second is all the eye can use. */
+const SLOW_WRITE_INTERVAL_MS = 100;
+
+/** Distance to the finish and the player's place, written by the HUD's frame loop at a throttled rate. */
+export function RaceInfo() {
+  const distanceRef = useRef<HTMLSpanElement>(null);
+  const placeRef = useRef<HTMLSpanElement>(null);
+  const lastSlowWriteMs = useRef(0);
+  // Kept in a ref, not React state: the loop reads it every frame and a pause must not re-render the HUD.
+  const isHudVisible = useRef(true);
+
+  useEffect(() => {
+    const onPause = (data: { paused: boolean }): void => { isHudVisible.current = !data.paused; };
+    GameManager.EventBus.OnMessage('game:pause', onPause);
+    return () => GameManager.EventBus.RemoveHandler('game:pause', onPause);
+  }, []);
+
+  useFrameLoop((timeMs) => {
+    if (!isHudVisible.current) return;                                   // cadence 5: nothing shown, no work
+    if (timeMs - lastSlowWriteMs.current < SLOW_WRITE_INTERVAL_MS) return; // cadence 4: throttled
+    lastSlowWriteMs.current = timeMs;
+    const distanceMeters: number = GameManager.GlobalState.distanceToFinishMeters ?? 0;
+    writeText(distanceRef.current, `${Math.round(distanceMeters)} m`);
+    writeText(placeRef.current, String(GameManager.GlobalState.racePlace ?? 1));
+  });
+
+  return (
+    <div className="race-info">
+      <span ref={distanceRef} className="race-distance">0 m</span>
+      <span ref={placeRef} className="race-place">1</span>
+    </div>
+  );
+}
+```
+
+When the overlay unmounts the HUD behind a modal (as the `CustomOverlay` example above does with `{!hasModal && …}`),
+the loop stops with it and no flag is needed.
+
 ### Self-check before you report a HUD done
 
 - [ ] Every per-frame value is classified as telemetry and reaches the screen only through the frame loop and refs.
 - [ ] Inside `requestAnimationFrame` callbacks, `useFrameLoop`, `scene.onBeforeRenderObservable` / `onAfterRenderObservable`
-      and a component's `update()` / `lateUpdate()`, there is no `set…(` state setter, no `dispatch(`, no store update
-      and no `EventBus.PostMessage(`. Search for them; any hit is a violation to fix.
+      and a component's `update()` / `late()` / `after()`, there is no `set…(` state setter, no `dispatch(`, no store
+      update and no unconditional `EventBus.PostMessage(` (a post guarded by a changed-value check is an event, and allowed).
+      Search for them; any hit is a violation to fix.
 - [ ] No HUD element writes `width`, `height`, `top`, `left`, `innerHTML` or SVG geometry per frame, and the loop reads no layout.
 - [ ] Static furniture is memoized or static, and the loop skips unchanged values.
+- [ ] Every element has the cheapest cadence that shows it correctly (**Per frame or not**): state on events,
+      decorative motion in CSS, the frame loop only for telemetry, throttled readouts at a few hertz.
+- [ ] Menus, pause / settings / results screens, the splash, the preloader and the landing page run no frame loop
+      (a real-time hero excepted, and it stops off-screen and at rest). Search them for `requestAnimationFrame`,
+      `useFrameLoop`, `setInterval` and animation-library ticks; motion there is CSS.
+- [ ] The HUD's loop does nothing while the HUD is hidden, covered by a modal or the game is paused, and no element
+      the loop writes has a CSS `transition`.
 - [ ] When the game can be profiled, `bt-profile` shows the `react` owner near 0% during play.
 
 ## Choosing the UI Layer — Native GPU GUI vs DOM React vs Raw HTML
