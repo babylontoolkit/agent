@@ -165,6 +165,8 @@ You can then generate a `component reference` markdown result breakdown of all t
 
 ## Pre-warm behind the splash — no first-visit freeze
 
+> **Full guide and API:** [Prewarming Content](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/prewarming-content.md) — read it before writing code that creates, shows or switches content during play.
+
 The toolkit compiles and pre-warms what a game draws while the splash is up, so a first visit (or a cold browser or GPU driver
 start) does not freeze the first time something appears.
 
@@ -172,16 +174,34 @@ start) does not freeze the first time something appears.
   process, every hidden or disabled mesh (compiled, never enabled), effect layers, mirrors, probes and render-target cameras. On
   WebGPU the whole scene is drawn once with culling off so its pipelines are built. Every idle particle system (plain, GPU,
   `TOOLKIT.ShurikenParticles`, `TOOLKIT.VisualEffect`) is drawn once, invisibly, and returned exactly to its state. It first waits
-  for any scene load still in flight and runs again for what a late load added.
+  for any scene load still in flight and runs again for what a late load added. It warms every camera that renders to the screen,
+  active or not, so a camera the game switches to during play (an intro camera handing over to a race camera) draws without late
+  compiles; `TOOLKIT.SceneShaderWarmup.WarmAllCamerasOnReveal` (true by default) set to false narrows it to the active camera.
+- **Hidden content is prepared too**: a mesh holding a thin-instance buffer with no instance yet (a particle mesh renderer between
+  bursts) is compiled with one zero-scale placeholder instance, so its instanced variant is ready; on WebGPU every disabled or
+  invisible mesh (held items, gliders, particle meshes) is drawn by the pipeline stage without being enabled, so its pipelines for
+  the main pass and every shadow map are built (`DrawHiddenMeshesOnReveal`, `WarmEmptyThinInstancesOnReveal`, both on by default).
+  Hidden meshes that would build the same pipelines (same material, effects, layout, facing) are drawn once. Babylon compiles a
+  mesh's world scale into its shader (NONUNIFORMSCALING): every mesh under a node whose scale an Animator clip moves between uniform
+  and non-uniform (a glider canopy unfolding) gets its other scaling variant compiled and drawn (`WarmScaleVariantsOnReveal`); for a
+  pooled copy or a scale your own code animates, call `TOOLKIT.SceneShaderWarmup.WarmScaleVariants(node)` at load. A mesh with
+  `renderOverlay` / `renderOutline` set gets the outline renderer's shader too. An idle particle system whose emitter is hidden
+  (sparks on an item held in a disabled hand) is drawn, and on WebGPU the particle stage draws every screen camera.
 - **What the splash says** (`TOOLKIT.SplashNarrator`, the only toolkit writer to the page loader; engine.html and the React
   splash both show it): four headlines, each once and never going back, with the bar's percentage in its own band — Loading Scene
   0-19 %, Compiling Shaders 20-79 %, Optimizing Graphics 80-99 % (the PREWARM stage), Ready 100 % — a plain subtitle held at least
   1.5 s ("Building the world", "Compiling n of m shaders", "Warming up shaders", "Preparing effects", "Almost ready") and one
   forward-only bar for the whole load, full only at Ready. Do not post your
   own loader status during the splash; reword it through `SplashNarrator.STATUS_TEXT` / `SUBTITLE_TEXT` if a game needs to.
-- **Content spawned later**: register it before the reveal — `TOOLKIT.SceneShaderWarmup.WarmPrefab(container, "PrefabName")`, or
+- **Content spawned later**: pool one hidden copy of each prefab before the reveal (create it and hide it, or seed the pool from
+  `OnBeforePrewarmObservable`) — the copy play hands out is then the one PREWARM compiled, with its own material clones; an
+  overlay it flashes later is turned on (alpha 0) on the pooled copy until the reveal — or register it — `TOOLKIT.SceneShaderWarmup.WarmPrefab(container, "PrefabName")`, or
   the whole container without a name. A hidden copy without script components is drawn behind the splash and disposed. For a
-  particle system your code creates idle: `TOOLKIT.SceneShaderWarmup.WarmParticleSystem(system)`.
+  particle system your code creates idle: `TOOLKIT.SceneShaderWarmup.WarmParticleSystem(system)`. For a post process shown only
+  later, attach it in its slot from `TOOLKIT.SceneShaderWarmup.OnBeforePrewarmObservable` (each PREWARM round, after the scene's
+  loads, before it collects what to compile) and take it out at `TOOLKIT.SceneManager.OnSceneRevealedObservable`. Switch it during
+  play with `TOOLKIT.PostProcessor.AttachPass(camera, pass, index)` / `DetachPass(camera, pass)`: Babylon's attach / detach rebuild
+  the prepass and re-check every material, a 0.35 s freeze on a large scene.
 - **Safety net** (WebGPU, on by default): after the reveal, a draw whose pipeline is not built yet is skipped for a frame or two
   while it builds asynchronously, instead of freezing every tab. `TOOLKIT.SceneShaderWarmup.SetSafetyNetEnabled(engine, false)`
   restores the synchronous build.
@@ -189,18 +209,26 @@ start) does not freeze the first time something appears.
   `TOOLKIT.SceneManager.GlobalOptions.developmentMode = true`): every shader or pipeline created after the reveal is logged with
   its cause, plus a summary 5 s after the reveal. Read them from code with `SceneShaderWarmup.GetLateCompiles(scene)` /
   `OnLateCompileObservable`, or log the list again with `LogLateCompileSummary(scene)`. A finished game drives this list to zero.
+  `bt-profile --gpu-cold` reads this detector and lists every late compile by cause and render pass, with the hitches behind them.
+  Many late compiles in one pass other than `main` mean a camera or render target the pre-warm never drew.
 
 **Authoring rules — the variants code cannot find.** New shader variants come from state changes during play:
 1. Create every light at load; dim, re-colour or move it instead of adding or enabling one during play — the light count is
    part of every lit material's shader.
 2. Create mirrors, minimap and render-target cameras, reflection probes and glow / highlight layers at load; stop their refresh
-   instead of creating them later.
+   instead of creating them later. The same goes for every camera the game switches to during play: create it at load, because a
+   camera created after the reveal still builds its shaders late.
 3. Prefer one material per look; look-alike variants each compile their own shader.
 4. Set fog, clip planes, morph targets and bone counts at load; toggling them during play creates new variants.
 5. The first instance (or thin instance) of a mesh compiles an instanced variant: create instanced content before the reveal or
    register its prefab.
 6. Give an animated texture its non-default offset, scale or rotation at load (or animate it from its first frame): moving a
-   texture transform away from the identity during play compiles a texture-transform variant.
+   texture transform away from the identity during play compiles a texture-transform variant. The toolkit Animator does this for
+   its own `_ST` curves (the textures they tile use their texture matrix from the bind on); code that moves `uOffset` / `uScale`
+   itself sets `texture.optimizeUVAllocation = false` at load.
+7. Lay a DOM HUD that first appears after the reveal (a race HUD shown at the countdown) out once under the opaque splash, at full
+   opacity, for about a second: the browser rasters it then. Its first raster otherwise blocks Chrome's GPU process (0.1-0.2 s) on
+   the frame it appears; opacity 0 does not raster.
 
 ## Declaration File Class Information
 
