@@ -1665,6 +1665,8 @@ and errors surface to the CLI automatically, and the commands appear in `unity l
 | `bt_devserver_start` | `port` (`0` = keep setting; a value is saved) | Sets `HostPreviewType = InternalWebServer`, fills an empty export root, starts via `StartDevelopmentServer()` (9.25+; falls back to `UnityTools.StartWebServer`) | `http://localhost:<port>/ root=<dir>` (or `already running: …`) |
 | `bt_devserver_status` | — | Server state | `started`, `supported`, `root`, `port`, `securePort`, `hosting` |
 | `bt_build_project` | — | Full `Automate` build with the project's own settings (scripts + scene + web page + PWA) | Export root |
+| `bt_build_game_assets` | `only` (all; or `scripts`, `containers`, `levels`, output file names) | Starts **Build All Game Assets** (§11.1) from the project's `Assets/[Config]/assets.json` and returns at once — the build runs one asset per editor update | `started: N assets (…)` |
+| `bt_build_game_assets_status` | — | Progress of that build | `running <done>/<total> <next>`, then `idle` + the report (`OK` / `FAIL` per asset) |
 
 Behaviours every command shares:
 
@@ -1685,7 +1687,7 @@ the domain reload if the Editor has not done one yet, and is required for the `<
 ```bash
 unity command recompile        --project-path "$PROJ"
 unity command recompile_status --project-path "$PROJ"      # poll until "completed"
-unity list --format json | grep bt_                        # confirm registration — expect eight bt_* commands
+unity list --format json | grep bt_                        # confirm registration — expect ten bt_* commands
 ```
 
 Then, warm or one-shot:
@@ -1706,6 +1708,60 @@ unity run "$PROJ" --command bt_export_level --format ndjson -- --scene Assets/Sc
   `unity command <name> --runtime <name>`.
 - `[CliCommand]` / `[CliArg]` live in `Unity.Pipeline.Commands` (assembly `Unity.Pipeline`).
 - Raise an exception to report failure — it reaches the CLI as a populated `errors` array with `success: false`.
+
+### 11.1 Build All Game Assets — one build for every asset a game loads
+
+Every game exports more than one file: the project script bundle, asset containers (racers, items, props — roots
+of a scene exported together) and game levels (whole scenes). The editor package ships **Build All Game Assets**
+(`Editor/GameAssets/GameAssetBuilder.cs`, Babylon Toolkit 9.29+). It builds them all from one list in the project,
+`Assets/[Config]/assets.json`. It needs no agent and no AI: a developer runs it from the menu or a terminal,
+and an agent runs the same build.
+
+```json
+{
+    "buildScripts": true,
+    "scriptBundle": "mygame",
+    "requireLowercaseNames": true,
+    "requireGltf": true,
+    "containers": [
+        { "fileName": "player", "scene": "Assets/Scenes/Containers/GameContainers.unity", "roots": ["Player"], "prefab": "" },
+        { "fileName": "items", "scene": "Assets/Scenes/Containers/GameContainers.unity", "roots": ["Coin", "Key"], "prefab": "" },
+        { "fileName": "vehicle", "scene": "Assets/Scenes/Containers/GameContainers.unity", "roots": ["Vehicle"], "prefab": "Assets/Prefabs/Vehicle.prefab" }
+    ],
+    "levels": [
+        { "fileName": "level01", "scene": "Assets/Scenes/Level01.unity" }
+    ]
+}
+```
+
+- **Fields.**
+  - `buildScripts` compiles the project TypeScript first, and `scriptBundle` names the bundle so the build can
+    check the file.
+  - A container exports its `roots` together into `<fileName>`. `prefab` re-creates a single missing root from
+    that prefab and saves the scene.
+  - A level exports its whole `scene`.
+  - `requireLowercaseNames` and `requireGltf` refuse a build whose exporter settings would write names the game
+    does not request.
+  - Compression (Draco, KTX2, gzip) comes from the exporter settings as usual.
+- **Run it.** People use the menu: **Tools ▸ Babylon Toolkit ▸ Generate Assets ▸ Build All Game Assets**, with
+  **Build Selected Assets ▸** Scripts, Game Levels or Asset Containers. **Edit Game Asset List** creates the file.
+  Agents use one of two calls. Both run the same build, and neither needs anything installed:
+  - **Unity open:** run `unity command bt_build_game_assets --only <all | scripts | containers | levels | file names>`.
+    It returns at once. Then poll `unity command bt_build_game_assets_status` until it says `idle`; the report
+    follows.
+  - **Unity closed:** run `<Unity editor binary> -batchmode -projectPath <project> -logFile <log> -executeMethod
+    GameAssetBuilder.BuildFromCommandLine -only all`. The editor exits when the build is done: `0` means every
+    asset was built, `1` means at least one failed. The report is in `Logs/BuildAllGameAssets.txt`.
+- **Why a queue.** An export refreshes the asset database, and generated material classes can make Unity compile.
+  The exporter refuses to run while a compile is in progress. So the build exports one asset per editor update,
+  waits out compiles, and survives the domain reload that follows.
+- **Results.**
+  - The report (one `OK` or `FAIL` line per asset, with sizes, whether each gzip twin was written, and the
+    compression in use) goes to `Logs/BuildAllGameAssets.txt`.
+  - A failed asset does not stop the others.
+  - The scenes that were open are restored at the end.
+- **Use it instead of a chain of single exports** whenever a project has a `assets.json`. Keep the list
+  current: add every new container or level the game loads.
 
 ---
 
