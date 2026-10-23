@@ -43,7 +43,7 @@ and some skills ship **additional required asset files** (scripts, references, t
 
 | Skill | Command | What it does | Folder contents |
 |-------|---------|--------------|-----------------|
-| [`bt-spec`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file on a new git branch. | `SKILL.md` |
+| [`bt-spec`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file (on the branch you have checked out; no skill creates branches or commits). | `SKILL.md` |
 | [`bt-plan`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec. | `SKILL.md` |
 | [`bt-execute`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task (or all remaining tasks) from a plan/spec; keep the feature's live dashboard, and write a plain-language plan summary page when the plan is complete. | `SKILL.md` **+ `templates/` and `scripts/` (required for the feature dashboard and the plan summary)** |
 | [`bt-recon`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-recon/SKILL.md) | `/bt-recon` | Deep-dive existing code (a subsystem or the whole codebase) into an evidence-cited grounding spec plus a user guide. | `SKILL.md` |

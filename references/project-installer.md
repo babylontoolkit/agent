@@ -217,16 +217,18 @@ The Babylon Toolkit React Framework can be installed to a project as a github su
 To add submodule:
 ```
 git submodule add https://github.com/babylontoolkit/ReactFramework.git src
-git commit -m "Add babylon toolkit react framework submodule"
 ```
+
+Leave the change in the working tree; the user commits it when they choose.
 
 To remove submodule:
 ```
 git submodule deinit -f src/babylon
 git rm -f src/babylon
 rm -rf .git/modules/src/babylon
-git commit -m "Remove babylon toolkit react framework submodule"
 ```
+
+Leave the change in the working tree; the user commits it when they choose.
 
 Note: Once the submodule has been added, to update, its best make sure any changes are backed up. Remove the submodule to clean then add the submodule again to get new updates.
 

@@ -144,6 +144,10 @@ Anything else is work, and work is yours.
   `AI Training Example Reference`.
 - **Every line of code you write follows the Coding Practices below.** There is no exception for speed, prototypes,
   "quick fixes" or autonomous runs.
+- **Never commit or branch — the user owns git.** No agent, skill or script makes a git commit, stages, stashes,
+  pushes, or creates or switches a branch on its own: not per task, not per phase, not at the end of a run, not for a
+  new spec. Work happens on whatever branch the user has checked out. Every change stays in the working tree
+  until the user commits it, when they choose. A commit happens only when the user asks for that commit.
 - **"Spec" means the `bt-spec` skill.** When the user says *spec*, *speccing* or *spec out* — "spec out a mute toggle",
   "let's spec this", "can you spec the save system" — run the `bt-spec` skill with their words as the brief. Never write
   a spec by hand in chat or into a file of your own instead.

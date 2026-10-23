@@ -224,7 +224,7 @@ Editor loop, so `await Task.Yield()` / `Task.Delay` work.
   session (same as `eval`).
 - A builder is still arbitrary code: it runs with the Editor's full rights, bypasses the authoring-root sandbox,
   and (unless you use `Undo` APIs yourself) is **not** undoable. Save the scene only when the build succeeded.
-- Keep builders in `AgentScripts/` and commit them — they are a reproducible record of how a level was made.
+- Keep builders in `AgentScripts/` — they are a reproducible record of how a level was made, for the user to commit.
 
 ### 5.2 `eval` / `eval_file` — one-liners
 
