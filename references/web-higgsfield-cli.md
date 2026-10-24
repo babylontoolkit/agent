@@ -1,18 +1,130 @@
-# Babylon Toolkit Higgsfield CLI
+# Babylon Toolkit Higgsfield CLI And API
 
-**IMPORTANT. THIS DOCUMENT PROVIDES CRUCIAL HIGGSFIELD CLI INSTRUCTIONS. ALWAYS READ THIS ENTIRE DOCUMENT TO THE END OF FILE**
+**IMPORTANT. THIS DOCUMENT PROVIDES CRUCIAL HIGGSFIELD INSTRUCTIONS. ALWAYS READ THIS ENTIRE DOCUMENT TO THE END OF FILE**
+
+## Two Products, Two Logins, Two Balances: Check Which One The User Has First
+
+Higgsfield sells two separate things. They do not share credentials or money:
+
+| | **Higgsfield API** (developer platform) | **Higgsfield CLI** (`@higgsfield/cli`, the web app's account) |
+|---|---|---|
+| Credentials | An **API key**: key ID + secret, from https://console.higgsfield.ai | **Browser OAuth** sign-in only. **The CLI has no API-key option and never reads `HIGGSFIELD_API_KEY`** (verified with CLI 1.2.2: `auth` offers only `login`, `logout` and `token`) |
+| Where they live | `HIGGSFIELD_API_KEY="<key id>:<key secret>"` in the project's `.env` (also accepted: `HF_CREDENTIALS`, `HF_KEY`, or `HF_API_KEY` + `HF_API_SECRET`) | `~/.config/higgsfield/credentials.json` |
+| Billing | The API account balance (USD), topped up in the console | The web app workspace's credits |
+| How you call it | `hf-api.mjs` (below; the installed master copy), plain HTTPS to `https://api.higgsfield.ai` | `scripts/hf-generate.mjs` around `node_modules/.bin/higgsfield` |
+| Model names | Paths such as `tripo3d/h3.1/multiview-to-3d`, `higgsfield-ai/soul/v2/standard`, `alibaba/qwen-image-3/edit` | Job types such as `tripo_h3_1_multiview_to_3d`, `soul`, `nano_banana_2` |
+
+**The rule:**
+- **If the user has an API key** (`HIGGSFIELD_API_KEY` or one of its aliases in `.env`), **use the API**. That is
+  the balance they paid into.
+- **Do not** start the CLI's browser login or spend workspace credits instead. A user who "put money on the API"
+  expects that balance to be used.
+- Use the CLI only when there is no API key, or when the user asks for the CLI.
+
+**Read the key's shape, never its value.** An API key is `<36-char UUID>:<64-char secret>`. To check it, print only
+its length and whether it contains a `:`. Never echo it, log it, or write it into a file other than `.env`.
 
 > **DEFAULT INSTALL RULE:** Install the CLI **locally in the project**
 > (`npm install --save-dev @higgsfield/cli`) and call it through `node_modules/.bin/higgsfield`.
-> **NEVER install globally unless the user explicitly instructs it.**
+> **NEVER install globally unless the user explicitly instructs it.** The API path needs no install, only
+> Node 18+ and the installed `hf-api.mjs`.
 
-> **SPENDING RULE:** Every Higgsfield generation spends the user's **credits**, which is real money.
-> Always run `--cost` first and pick the cheapest model that meets the quality bar. For batches, state the
-> total before submitting. Never run billing, publishing or deploy commands without an explicit user request.
+> **SPENDING RULE:** Every Higgsfield generation spends the user's money, through API balance or CLI credits.
+> Always estimate first: `hf-api.mjs … --estimate` for the API, `--cost` for the CLI. Pick the cheapest model
+> that meets the quality bar. For batches, state the total before submitting. Never run billing, publishing or
+> deploy commands without an explicit user request.
 
-The Higgsfield CLI is a terminal tool for Higgsfield's image, video, speech and 3D models. You drive it
-yourself, exactly like the Unity CLI (`unity-exporter-cli.md`) and headless Blender (`unity-blender-cli.md`).
-It is the **only** supported way to use Higgsfield in a Babylon Toolkit project. Do not use a Higgsfield MCP server.
+The CLI and the API reach the same families of image, video, speech and 3D models. You drive both yourself,
+exactly like the Unity CLI (`unity-exporter-cli.md`) and headless Blender (`unity-blender-cli.md`). They are the
+**only** supported ways to use Higgsfield in a Babylon Toolkit project. Do not use a Higgsfield MCP server.
+
+## The Higgsfield API (API Key)
+
+**Base URL:** `https://api.higgsfield.ai`. **Auth header:** `Authorization: Key <key id>:<key secret>`. The legacy
+`hf-api-key` / `hf-secret` headers still work. Docs: https://docs.higgsfield.ai/docs (index:
+https://docs.higgsfield.ai/docs/llms.txt, catalog: https://docs.higgsfield.ai/docs/models.md).
+
+**Every request is asynchronous:**
+1. `POST /<model-path>` with the model's JSON fields. Send an `Idempotency-Key` header so a retried timeout cannot
+   create a second, billed request. The API returns `{ status: "queued", request_id, status_url, cancel_url }`.
+2. Poll `status_url`: start at 2 s and back off to 10 s. The statuses are `queued` → `in_progress` → `completed`
+   / `failed` / `nsfw` / `canceled`.
+3. On `completed`, download the output. Images come as `images[].url`, video as `video.url`, audio as
+   `audio.url` / `audios[]`. 3D and some video models add artefacts such as `glb`, `fbx`, `ply` and `zip`.
+   Results are deleted after **7 days**, so download them at once.
+4. `failed` and `nsfw` are not charged. A `queued` request can be cancelled (`POST cancel_url`) and is refunded.
+
+**Estimate, free:** `POST /estimate/<model-path>` with the same fields returns
+`{ "credits", "usd", "discount" }`. It is also the safe way to **check whether a model path exists**: an unknown
+path returns `404 {"detail":"model_not_found"}`, and a known path with a missing field returns `400` naming the
+required field. None of this spends anything.
+- **Caveat:** for some models, the 3D ones included, the estimate returns `"usd": "0.000"` and accepts unknown
+  fields. In that case the estimate tells you nothing about the price or the schema. Tell the user the price is
+  unconfirmed before the first real run, and check the balance in the console afterwards.
+
+**Uploading inputs:** `POST /files/generate-upload-url` with `{ "content_type": "image/png" }` returns
+`{ public_url, upload_url, upload_headers }`.
+- `PUT` the file to `upload_url` with exactly those headers. **Never** send the API credentials to the storage
+  host.
+- Pass `public_url` in the model's `image_url` / `image_urls` / `video_url` / `audio_url` field.
+- Supported types: `image/png`, `image/jpeg`, `image/webp`, `image/gif`, `audio/wav`, `video/mp4`. Upload URLs
+  expire after 1 hour.
+
+**The catalog is not complete in the public docs.** As of 2026-10-23, the docs list 84 image and video models and
+**no 3D**, but the API serves Tripo 3D for an API key. Verified with the free estimate:
+
+| Model path | Required field | CLI twin (same parameters; read them with `higgsfield model get <job> --json`, which needs no sign-in) |
+|---|---|---|
+| `tripo3d/h3.1/multiview-to-3d` | `image_urls` (array) | `tripo_h3_1_multiview_to_3d`: `texture` (true), `pbr` (true), `texture_quality` / `geometry_quality` `standard` or `detailed`, `quad`, `face_limit`, `orientation` (`default` or `align_image`), `texture_alignment` (`original_image` or `geometry`), `auto_size` |
+| `tripo3d/h3.1/image-to-3d` | `image_url` | `tripo_h3_1_image_to_3d` |
+
+Before you tell the user a model is unavailable on the API, probe its likely path with `--estimate`. The model
+list is per account and lives in the console.
+
+### The API wrapper: `hf-api.mjs` (use it for every API generation)
+
+**Run the installed master copy directly. Never copy it into the project.** `bt-agent update` installs it with the
+Reference and keeps it current, so every project uses the latest version. It finds the credentials by searching upward
+from the folder you run it in, so run it from the project, or from any folder below the one that holds `.env`:
+
+```
+HF_API="https://raw.githubusercontent.com/babylontoolkit/agent/main/references/higgsfield/hf-api.mjs"
+```
+
+Copy it into a project's `scripts/` only when someone without the Babylon Toolkit installed has to run it, such as a
+teammate or a CI machine. Then say so, because that copy no longer updates.
+
+It works with **every** model the API serves: image, video, audio and 3D. It submits your fields, polls, and
+downloads **every** URL in the finished response. It also saves the raw final response as `<request_id>.json`, so
+an output shape you have not seen before is never lost.
+
+```
+node "$HF_API" <model-path> --estimate [inputs]...         # price / existence check, nothing generated
+node "$HF_API" <model-path> --out <dir> [inputs]...        # generate + download
+#   --set name=value       a field; the value is parsed as JSON when it can be (true, 42, [..], "text")
+#   --file name=path       upload a local file, send its public URL as `name`
+#   --file name[]=path     the same, appended to the array field `name` (repeat in order)
+#   --body request.json    start from a JSON file of fields
+#   --timeout <minutes>    wait budget (default 30)
+```
+
+- stdout is `{ request_id, status, files, estimate }`.
+- Exit codes: `0` ok · `1` usage, credential or HTTP error · `2` the request ended without completing ·
+  `3` download failed.
+- Credentials come from the environment, else the nearest `.env` upward. They are never printed.
+
+```
+# multi-view image → textured 3D mesh (front, left, back, right — Tripo's view order)
+node "$HF_API" tripo3d/h3.1/multiview-to-3d --estimate --file image_urls[]=front.png \
+     --file image_urls[]=left.png --file image_urls[]=back.png --file image_urls[]=right.png
+node "$HF_API" tripo3d/h3.1/multiview-to-3d --out generated/kart \
+     --file image_urls[]=front.png --file image_urls[]=left.png --file image_urls[]=back.png --file image_urls[]=right.png \
+     --set texture_quality=detailed --set geometry_quality=detailed
+```
+
+## The Higgsfield CLI (Browser Sign-In)
+
+Everything below covers the CLI path: no API key, or the user asked for the CLI.
 
 **kie is still the default generator** (`web-kie-servers.md`). Use Higgsfield when the user asks for it, when
 kie is not configured and Higgsfield is, or for the things only Higgsfield does:
@@ -288,7 +400,14 @@ A Babylon Toolkit game is built and served through `project-installer.md`.
 
 ## Hard Rules
 
-1. **Local install, wrapper for every generation.** `node_modules/.bin/higgsfield` + `scripts/hf-generate.mjs`.
+0. **API key first.** If the project's `.env` (or the environment) has `HIGGSFIELD_API_KEY` or one of its aliases,
+   generate through the API with the installed `hf-api.mjs`, which bills the balance the user paid into. Never start the
+   CLI's browser login or spend workspace credits instead, and never tell the user a key "does not work with the
+   CLI" as a reason to use the CLI anyway. Probe an unlisted model with the free `--estimate` before calling it
+   unavailable. Never print the key: check its shape (length, the `:`) only. Results are deleted after 7 days, so
+   the wrapper's download is the only copy that lasts.
+1. **Local install, wrapper for every generation.** `node_modules/.bin/higgsfield` + `scripts/hf-generate.mjs` for
+   the CLI, and the installed `hf-api.mjs` for the API (run in place, never copied).
    Never write a result URL into game code, a scene, a material or a CSS file. Results live on Higgsfield's CDN
    and must be files in the project.
 2. **Cost first.** Run `--cost` for every new model or setting, and log credits per asset in long-running loops.
@@ -305,8 +424,10 @@ A Babylon Toolkit game is built and served through `project-installer.md`.
 
 ## Final Check
 
-- [ ] The CLI is a local dev dependency, and `scripts/hf-generate.mjs` exists in the project.
-- [ ] Signed in, with a workspace selected (`account status --json` works).
+- [ ] I checked for an API key (`HIGGSFIELD_API_KEY` and its aliases) first. With one, every generation went
+      through the installed `hf-api.mjs`, its value was never printed, and `--estimate` ran first.
+- [ ] Without an API key: the CLI is a local dev dependency, and `scripts/hf-generate.mjs` exists in the project.
+- [ ] CLI path only: signed in, with a workspace selected (`account status --json` works).
 - [ ] I ran `--cost` first and chose the cheapest model that meets the bar.
 - [ ] Every result was saved by the wrapper into the project. No CDN URL is referenced anywhere.
 - [ ] Music and SFX came from kie, not Higgsfield.
