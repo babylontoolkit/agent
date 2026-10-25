@@ -351,18 +351,9 @@ unity command set_lighting_settings --project-path "$PROJ" --dry_run true \
   --settings '{"bakedGI":true,"realtimeGI":false,"lightmapper":"ProgressiveGPU","bounces":2,"lightmapResolution":20,"directionalMode":"CombinedDirectional","maxLightmapSize":2048}'
 # review applied[] / unknown[], then run again without --dry_run
 unity command bake_lighting --project-path "$PROJ"
-deadline=$((SECONDS+900)); seen=""
-while :; do
-  s=$(unity command lighting_bake_status --project-path "$PROJ" --result-only 2>/dev/null)
-  case "$s" in
-    *completed*) break;;
-    *failed*) echo "failed: $s"; exit 1;;
-    *baking*|*running*|*in_progress*) seen=1;;
-    *idle*) [ -n "$seen" ] && { echo "stopped without completing"; exit 1; };;
-  esac
-  [ $SECONDS -ge $deadline ] && { echo "timed out after 15 min"; exit 1; }
-  sleep 5
-done
+WAIT="https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/wait.mjs"   # waits without a shell sleep
+node "$WAIT" cmd "unity command lighting_bake_status --project-path \"$PROJ\" --result-only 2>/dev/null" \
+  --match completed --fail failed --running 'baking|running|in_progress' --stopped idle --interval 5 --timeout 900 || exit 1
 unity command save_scene --project-path "$PROJ"
 ```
 

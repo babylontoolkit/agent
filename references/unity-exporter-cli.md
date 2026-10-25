@@ -277,6 +277,7 @@ command (Unity's Package Manager underneath), which accepts a git URL and resolv
 
 ```bash
 PROJ=~/UnityProjects/MyGame        # Windows PowerShell: $PROJ = "$HOME\UnityProjects\MyGame"
+WAIT="https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/wait.mjs"   # waits without a shell sleep (PowerShell: $WAIT = "<same path>")
 
 # --- 1/3 --- com.unity.pipeline, straight from the Unity registry. No Editor needed.
 unity auth status --format json
@@ -293,50 +294,29 @@ Then add each toolkit package with the Pipeline's typed **`package_add`** comman
 ```bash
 # --- 2/3 --- Khronos glTF FIRST (the toolkit editor package builds on it)
 unity command package_add --identifier https://github.com/babylontoolkit/unitygltf.git --confirm true --project-path "$PROJ"
-deadline=$((SECONDS+900)); seen=""
-while :; do
-  s=$(unity command package_status --project-path "$PROJ" --result-only 2>/dev/null)
-  case "$s" in
-    *completed*) break;;
-    *failed*) echo "failed: $s"; exit 1;;
-    *baking*|*running*|*in_progress*) seen=1;;
-    *idle*) [ -n "$seen" ] && { echo "stopped without completing"; exit 1; };;
-  esac
-  [ $SECONDS -ge $deadline ] && { echo "timed out after 15 min"; exit 1; }
-  sleep 5
-done
+node "$WAIT" cmd "unity command package_status --project-path \"$PROJ\" --result-only 2>/dev/null" \
+  --match completed --fail failed --running 'baking|running|in_progress' --stopped idle --interval 5 --timeout 900 || exit 1
 unity command package_status --project-path "$PROJ" --format json      # read status + error — "failed" must stop you
 
 # --- 3/3 --- the Babylon Toolkit editor package
 unity command package_add --identifier https://github.com/babylontoolkit/professionaledition.git --confirm true --project-path "$PROJ"
-deadline=$((SECONDS+900)); seen=""
-while :; do
-  s=$(unity command package_status --project-path "$PROJ" --result-only 2>/dev/null)
-  case "$s" in
-    *completed*) break;;
-    *failed*) echo "failed: $s"; exit 1;;
-    *baking*|*running*|*in_progress*) seen=1;;
-    *idle*) [ -n "$seen" ] && { echo "stopped without completing"; exit 1; };;
-  esac
-  [ $SECONDS -ge $deadline ] && { echo "timed out after 15 min"; exit 1; }
-  sleep 5
-done
+node "$WAIT" cmd "unity command package_status --project-path \"$PROJ\" --result-only 2>/dev/null" \
+  --match completed --fail failed --running 'baking|running|in_progress' --stopped idle --interval 5 --timeout 900 || exit 1
 ```
 
+Each wait re-runs `package_status` from Node until it prints `completed` (exit 0), and exits 1 at once on `failed`,
+on `idle` after it was running (stopped without completing), or after 15 min — never a shell `sleep` loop.
 A successful add triggers a recompile and **domain reload, which takes the Pipeline server down for ~15–25 s**,
-so every poll must treat "cannot connect" as "not yet" (the `2>/dev/null` above). `package_status` reads a status
-file that survives the reload, so the outcome is never lost.
+so every poll must treat "cannot connect" as "not yet" (the `2>/dev/null` inside the polled command: a run that
+prints nothing is just "not yet"). `package_status` reads a status file that survives the reload, so the outcome is
+never lost.
 
 Then poll on the thing you actually care about — that the exporter type compiled into the domain:
 
 ```bash
-deadline=$((SECONDS+900))
-while :; do
-  s=$(unity command eval 'foreach (var a in System.AppDomain.CurrentDomain.GetAssemblies()) if (a.GetType("CanvasTools.CanvasToolsExporter") != null) return "READY"; return "no";' --project-path "$PROJ" --result-only 2>/dev/null)
-  case "$s" in *READY*) break;; esac          # "cannot connect" during a domain reload is just "not yet"
-  [ $SECONDS -ge $deadline ] && { echo "exporter compile timed out after 15 min"; exit 1; }
-  sleep 5
-done
+PROBE='foreach (var a in System.AppDomain.CurrentDomain.GetAssemblies()) if (a.GetType("CanvasTools.CanvasToolsExporter") != null) return "READY"; return "no";'
+node "$WAIT" cmd "unity command eval '$PROBE' --project-path \"$PROJ\" --result-only 2>/dev/null" \
+  --match READY --interval 5 --timeout 900 || exit 1   # "cannot connect" during a domain reload is just "not yet"
 ```
 
 That last check is the real success condition: it proves the Toolkit both installed **and** compiled.
@@ -348,17 +328,14 @@ deadlocks; poll with repeated separate calls:
 
 ```bash
 unity command eval 'UnityEditor.PackageManager.Client.Add("https://github.com/babylontoolkit/unitygltf.git"); return "queued";' --project-path "$PROJ"
-deadline=$((SECONDS+900))
-while :; do
-  s=$(unity command eval 'return UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/org.khronos.unitygltf/package.json") != null ? "READY" : "no";' --project-path "$PROJ" --result-only 2>/dev/null)
-  case "$s" in *READY*) break;; esac          # "cannot connect" during a domain reload is just "not yet"
-  [ $SECONDS -ge $deadline ] && { echo "org.khronos.unitygltf resolve timed out after 15 min"; exit 1; }
-  sleep 5
-done
+PROBE='return UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/org.khronos.unitygltf/package.json") != null ? "READY" : "no";'
+node "$WAIT" cmd "unity command eval '$PROBE' --project-path \"$PROJ\" --result-only 2>/dev/null" \
+  --match READY --interval 5 --timeout 900 || exit 1   # every poll is its own call; "cannot connect" is just "not yet"
 ```
 
-> **Windows note.** The `unity` commands above are identical in PowerShell. Only the shell glue differs —
-> use `do { Start-Sleep 5 } until ( (unity command package_status --result-only) -match 'completed|failed' )`.
+> **Windows note.** The `unity` and `node $WAIT` commands above are identical in PowerShell. `wait.mjs` runs its
+> command string in `cmd.exe` there, so write `2>nul` for `2>/dev/null` — e.g.
+> `node $WAIT cmd "unity command package_status --project-path $PROJ --result-only 2>nul" --match completed --fail failed --interval 5 --timeout 900`.
 
 ### 4.1b Cold project — no Editor available
 
@@ -1100,14 +1077,10 @@ Pipeline server down for **roughly 15–25 s**. During that window `unity comman
 must treat *"cannot connect"* as **"not ready yet"**, never as a fatal error:
 
 ```bash
-# right: connection failure is just another "not yet" - and the wait is bounded
-deadline=$((SECONDS+900))
-while :; do
-  s=$(unity command eval '<probe that returns "READY">' --project-path "$PROJ" --result-only 2>/dev/null)
-  case "$s" in *READY*) break;; esac          # "cannot connect" during a domain reload is just "not yet"
-  [ $SECONDS -ge $deadline ] && { echo "probe timed out after 15 min"; exit 1; }
-  sleep 5
-done
+# right: connection failure is just another "not yet" - and the wait is bounded (wait.mjs polls in Node, no shell sleep)
+WAIT="https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/wait.mjs"
+node "$WAIT" cmd "unity command eval '<probe that returns \"READY\">' --project-path \"$PROJ\" --result-only 2>/dev/null" \
+  --match READY --interval 5 --timeout 900
 ```
 
 Measured on a package add: `False` → `unreachable` (~15 s) → `True`.
@@ -1257,18 +1230,9 @@ Then bake and look before exporting:
 
 ```bash
 unity command bake_lighting --project-path "$PROJ"
-deadline=$((SECONDS+900)); seen=""
-while :; do
-  s=$(unity command lighting_bake_status --project-path "$PROJ" --result-only 2>/dev/null)
-  case "$s" in
-    *completed*) break;;
-    *failed*) echo "failed: $s"; exit 1;;
-    *baking*|*running*|*in_progress*) seen=1;;
-    *idle*) [ -n "$seen" ] && { echo "stopped without completing"; exit 1; };;
-  esac
-  [ $SECONDS -ge $deadline ] && { echo "timed out after 15 min"; exit 1; }
-  sleep 5
-done
+WAIT="https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/wait.mjs"
+node "$WAIT" cmd "unity command lighting_bake_status --project-path \"$PROJ\" --result-only 2>/dev/null" \
+  --match completed --fail failed --running 'baking|running|in_progress' --stopped idle --interval 5 --timeout 900 || exit 1
 unity command save_scene --project-path "$PROJ"
 unity command screenshot --view game --output "$PWD/qa/level01.png" --width 1920 --height 1080 --project-path "$PROJ"
 ```
@@ -1988,6 +1952,7 @@ set -uo pipefail
 export PATH="$HOME/.unity/bin:$PATH"
 ED=6000.5.10f1
 PROJ=~/UnityProjects/MyGame
+WAIT="https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/wait.mjs"   # waits without a shell sleep
 cmd(){ unity command "$@" --project-path "$PROJ"; }
 
 # 1. CLI + auth + Editor
@@ -2001,35 +1966,17 @@ unity pipeline install --project-path "$PROJ"
 # 3. One resident headless Editor (§6.1) — never a second Editor on the same project
 ED_DIR=$(unity editors path "$ED" --format json | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['path'])")
 "$ED_DIR/Unity.app/Contents/MacOS/Unity" -batchmode -projectPath "$PROJ" -logFile "$PROJ/Logs/agent-editor.log" &   # macOS path
-deadline=$((SECONDS+900))
-while ! cmd >/dev/null 2>&1; do
-  [ $SECONDS -ge $deadline ] && { echo "Editor did not answer within 15 min"; exit 1; }
-  sleep 5
-done
+node "$WAIT" cmd "unity command --project-path \"$PROJ\"" --interval 5 --timeout 900 || exit 1   # exits 0 once the Editor answers
 
 # 4. Packages 2/3 and 3/3 (§4.1), then wait for the exporter type to compile in
 for url in https://github.com/babylontoolkit/unitygltf.git https://github.com/babylontoolkit/professionaledition.git; do
   cmd package_add --identifier "$url" --confirm true >/dev/null
-  deadline=$((SECONDS+900)); seen=""
-  while :; do
-    s=$(cmd package_status --result-only 2>/dev/null)
-    case "$s" in
-      *completed*) break;;
-      *failed*) echo "failed: $s"; exit 1;;
-      *baking*|*running*|*in_progress*) seen=1;;
-      *idle*) [ -n "$seen" ] && { echo "stopped without completing"; exit 1; };;
-    esac
-    [ $SECONDS -ge $deadline ] && { echo "timed out after 15 min"; exit 1; }
-    sleep 5
-  done
+  node "$WAIT" cmd "unity command package_status --project-path \"$PROJ\" --result-only 2>/dev/null" \
+    --match completed --fail failed --running 'baking|running|in_progress' --stopped idle --interval 5 --timeout 900 || exit 1
 done
-deadline=$((SECONDS+900))
-while :; do
-  s=$(cmd eval 'foreach (var a in System.AppDomain.CurrentDomain.GetAssemblies()) if (a.GetType("CanvasTools.CanvasToolsExporter") != null) return "READY"; return "no";' --result-only 2>/dev/null)
-  case "$s" in *READY*) break;; esac          # "cannot connect" during a domain reload is just "not yet"
-  [ $SECONDS -ge $deadline ] && { echo "exporter compile timed out after 15 min"; exit 1; }
-  sleep 5
-done
+PROBE='foreach (var a in System.AppDomain.CurrentDomain.GetAssemblies()) if (a.GetType("CanvasTools.CanvasToolsExporter") != null) return "READY"; return "no";'
+node "$WAIT" cmd "unity command eval '$PROBE' --project-path \"$PROJ\" --result-only 2>/dev/null" \
+  --match READY --interval 5 --timeout 900 || exit 1   # "cannot connect" during a domain reload is just "not yet"
 
 # 5. Licence (§0) + bootstrap (§5.1) + npm install (§5.2)
 mkdir -p "$PROJ/Assets/[Config]" && cp ~/licenses/license.json "$PROJ/Assets/[Config]/license.json"
@@ -2041,18 +1988,8 @@ cmd eval_file ~/.claude/toolkit/bt-bootstrap.cs --format json
 # 6. Author the level (§8 builder), bake, look
 cmd run_script --file AgentScripts/BuildLevel.cs --entry BuildLevel.Level01 --format json
 cmd bake_lighting
-deadline=$((SECONDS+900)); seen=""
-while :; do
-  s=$(cmd lighting_bake_status --result-only 2>/dev/null)
-  case "$s" in
-    *completed*) break;;
-    *failed*) echo "failed: $s"; exit 1;;
-    *baking*|*running*|*in_progress*) seen=1;;
-    *idle*) [ -n "$seen" ] && { echo "stopped without completing"; exit 1; };;
-  esac
-  [ $SECONDS -ge $deadline ] && { echo "timed out after 15 min"; exit 1; }
-  sleep 5
-done
+node "$WAIT" cmd "unity command lighting_bake_status --project-path \"$PROJ\" --result-only 2>/dev/null" \
+  --match completed --fail failed --running 'baking|running|in_progress' --stopped idle --interval 5 --timeout 900 || exit 1
 cmd save_scene
 # (Unity-side captures need the GPU Resident Drawer off — unity-editor-commands.md §8.1; the browser check in step 8 is the one that counts)
 

@@ -60,7 +60,7 @@ reading the sub-document that automates it.
 | Whole game levels and prefabs — authored as fully as a Unity game level (terrain, lighting and bakes, probes, post-processing, physics, the Recast navmesh, Animator state machines, particles, interactive components) and exported to glTF for a near pixel-perfect BabylonJS recreation. Ready-made Asset Store scenes too | Headless or copilot Unity (the live `unity command` catalog — discover it with `unity command --query`, `run_script` C#, the `bt_*` bridge) — Unity is the editor only, never a Unity player | `unity-exporter-cli.md` (workflow), `unity-authoring-recipes.md` (how each feature is carried), `unity-editor-commands.md` (every command) |
 | Exporting interactive glTF/GLB — levels and asset containers | `bt_export_level` / `bt_export_prefab` / `CanvasToolsExporter.BuildProject` | `unity-exporter-cli.md` §9–§11 |
 | Scaffolding, npm, TypeScript build, dev server, deployment | The project installer flow | `project-installer.md` |
-| Visual QA at both ends — Unity Scene/Game view **and** the running web game | `unity command capture_game_view` / `capture_scene_view` / `screenshot`; a browser automation tool for the page | `unity-editor-commands.md` §8, `unity-authoring-recipes.md` §21 (milestone cadence), `unity-exporter-cli.md` §12 |
+| Visual QA at both ends — Unity Scene/Game view **and** the running web game | `unity command capture_game_view` / `capture_scene_view` / `screenshot`; the `bt-cdp.mjs` headless rig for the page; `wait.mjs` to wait for the dev server | `unity-editor-commands.md` §8, `unity-authoring-recipes.md` §21 (milestone cadence), `unity-exporter-cli.md` §12, [`bt-cdp.mjs`](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/bt-cdp.mjs), [`wait.mjs`](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/wait.mjs) |
 | Long self-improving fidelity loops against a target image | The `bt-gauntlet` skill | `skills-repository.md` |
 
 ### The loop is closed — you can see your own work
@@ -70,10 +70,14 @@ You have eyes at **both** ends of the pipeline:
 - **In Unity** — `unity command screenshot --view game --output /abs/path/level.png --width 1920 --height 1080`
   (or `capture_game_view` / `capture_scene_view`) renders the Game/Scene view to a PNG you then open and look at.
   Turn the GPU Resident Drawer off first (the scaffold does), or captures show only the sky (`unity-editor-commands.md` §8.1).
-- **In the browser** — serve the export (`bt_devserver_start`, §12) and drive a real page with whatever
-  browser automation your harness exposes (a Chrome DevTools / Playwright / Puppeteer tool). Screenshot it,
-  read the console, read the network log, click things, resize to phone width. If the harness exposes no such
-  tool, install one into the project yourself — that is a normal, unremarkable step you take without asking.
+- **In the browser** — serve the export (`bt_devserver_start`, §12) and drive the page with the headless rig,
+  [`bt-cdp.mjs`](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/bt-cdp.mjs) (run in place, imported by builders and verifiers alike — never write
+  your own harness). It launches **its own headless Chrome on its own DevTools port** with a scratch profile —
+  never the user's browser — and gives you screenshots, `evaluate` / `waitFor`, keyboard, mouse and gamepad input,
+  console messages, the request log, and `timeScale` to run the game's clock faster in a test
+  (`node <bt-cdp.mjs> shot <url> <out.png>` for one capture). Screenshot it, read the console, read the network
+  log, click things, resize to phone width. Only where Chrome cannot run, fall back to a browser tool your harness
+  exposes (a Chrome DevTools / Playwright tool).
 
 So **"I can't tell whether it looks right"** is never true. Take the shot, look at it, judge it honestly, fix
 what is wrong, take another. Iterate until it matches the goal, then report with the images.
@@ -145,6 +149,15 @@ Anything else is work, and work is yours.
   `AI Training Example Reference`.
 - **Every line of code you write follows the Coding Practices below.** There is no exception for speed, prototypes,
   "quick fixes" or autonomous runs.
+- **Never wait with a shell `sleep`.** To wait for a port, a URL, a file, a log line or a command's status, run
+  [`wait.mjs`](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/wait.mjs) in place with `node`: `port <n>`, `url <url> [--status 200]`
+  (a self-signed localhost certificate is accepted), `file <path>`, `log <path> <regex>`, or
+  `cmd "<command>" --match <regex> [--fail <regex>] [--interval <s>]` (re-runs the command until its output
+  matches — the drop-in for a status-poll loop), each with `--timeout <seconds>` (default 120). It polls inside
+  Node and exits 0 when the condition holds, 1 with a one-line reason on a timeout or a `--fail` match. Wait on
+  Editor state with `unity command wait_for` (`unity-editor-commands.md` §7) and on a page with `bt-cdp.mjs`'s
+  `waitFor`. On Claude Code a hook installed by bt-agent blocks a `sleep` of 3 seconds or more; other hosts keep
+  this rule by hand.
 - **Never commit or branch — the user owns git.** No agent, skill or script makes a git commit, stages, stashes,
   pushes, or creates or switches a branch on its own: not per task, not per phase, not at the end of a run, not for a
   new spec. Work happens on whatever branch the user has checked out. Every change stays in the working tree

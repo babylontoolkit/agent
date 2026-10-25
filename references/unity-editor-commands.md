@@ -139,24 +139,19 @@ status command from the shell.
 **Match status words unquoted.** Under `--result-only` some status commands (`lighting_bake_status`,
 `navmesh_bake_status`, `package_status`, …) print their result as a **JSON-encoded string**
 (`"{\"status\":\"completed\"}"`), others (`recompile_status`, `editor_status`) as plain JSON — so
-`grep '"completed"'` never matches the first kind. Match `completed` / `failed` in a bounded loop (below) — never an unbounded `until`.
+`grep '"completed"'` never matches the first kind. Match `completed` / `failed` with a bounded
+[`wait.mjs`](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/wait.mjs) `cmd` wait (below),
+which re-runs the status command from Node — never a shell `sleep` loop and never an unbounded `until`.
 
-**A domain reload takes the Pipeline server down for ~15–25 s.** Every poll loop must treat *cannot connect* as
-*not yet*, never as failure:
+**A domain reload takes the Pipeline server down for ~15–25 s.** Every poll must treat *cannot connect* as
+*not yet*, never as failure — the `2>/dev/null` inside the polled command makes such a run print nothing. The wait
+exits 0 on `completed`, and 1 on `failed`, on `idle` after it was running (stopped without completing), or after
+15 min:
 
 ```bash
-deadline=$((SECONDS+900)); seen=""
-while :; do
-  s=$(unity command lighting_bake_status --project-path "$PROJ" --result-only 2>/dev/null)
-  case "$s" in
-    *completed*) break;;
-    *failed*) echo "failed: $s"; exit 1;;
-    *baking*|*running*|*in_progress*) seen=1;;
-    *idle*) [ -n "$seen" ] && { echo "stopped without completing"; exit 1; };;
-  esac
-  [ $SECONDS -ge $deadline ] && { echo "timed out after 15 min"; exit 1; }
-  sleep 5
-done
+WAIT="https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/wait.mjs"   # waits without a shell sleep
+node "$WAIT" cmd "unity command lighting_bake_status --project-path \"$PROJ\" --result-only 2>/dev/null" \
+  --match completed --fail failed --running 'baking|running|in_progress' --stopped idle --interval 5 --timeout 900 || exit 1
 ```
 
 ---
@@ -412,18 +407,9 @@ Unity tests (`list_tests` / `run_tests`) exist for Editor tooling; exported cont
 ```bash
 unity command package_add --identifier com.unity.ai.navigation --dry_run true --project-path "$PROJ"   # preview
 unity command package_add --identifier com.unity.ai.navigation --confirm true --project-path "$PROJ"   # async
-deadline=$((SECONDS+900)); seen=""
-while :; do
-  s=$(unity command package_status --project-path "$PROJ" --result-only 2>/dev/null)
-  case "$s" in
-    *completed*) break;;
-    *failed*) echo "failed: $s"; exit 1;;
-    *baking*|*running*|*in_progress*) seen=1;;
-    *idle*) [ -n "$seen" ] && { echo "stopped without completing"; exit 1; };;
-  esac
-  [ $SECONDS -ge $deadline ] && { echo "timed out after 15 min"; exit 1; }
-  sleep 5
-done
+WAIT="https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/wait.mjs"   # waits without a shell sleep
+node "$WAIT" cmd "unity command package_status --project-path \"$PROJ\" --result-only 2>/dev/null" \
+  --match completed --fail failed --running 'baking|running|in_progress' --stopped idle --interval 5 --timeout 900 || exit 1
 unity command package_list --project-path "$PROJ" --format json          # installed (default) | available | all
 unity command package_search --query com.unity.timeline --project-path "$PROJ"
 ```
