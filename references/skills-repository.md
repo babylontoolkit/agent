@@ -6,7 +6,7 @@
 >    never just its `SKILL.md`. Some skills fail at runtime without their assets.
 > 2. **INSTALL GLOBALLY BY DEFAULT, INTO BOTH LOCATIONS.** Always prefer the GLOBAL
 >    (per-user home) locations unless the user explicitly asks to install into the
->    project. You MUST install **ALL 14 SKILLS** into **BOTH** of these directories —
+>    project. You MUST install **ALL 15 SKILLS** into **BOTH** of these directories —
 >    never just one:
 >    - `~/.claude/skills/` — Claude Code
 >    - `~/.agents/skills/` — cross-agent standard read by VS Code / GitHub Copilot,
@@ -55,6 +55,7 @@ and some skills ship **additional required asset files** (scripts, references, t
 | [`bt-design`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-design/SKILL.md) | `/bt-design` | Implement high quality frontend and in-game designs. | `SKILL.md` **+ `references/` and `templates/` (required for 3D scroll-hero)** |
 | [`bt-hero`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-hero/SKILL.md) | `/bt-hero` | Create smooth cinematic 3D scrolling hero sections. | `SKILL.md` |
 | [`bt-atlas`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-atlas/SKILL.md) | `/bt-atlas` | Generate texture atlas skin variations. | `SKILL.md` **+ `scripts/` (required Python)** |
+| [`bt-unwrap`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-unwrap/SKILL.md) | `/bt-unwrap` | Turn a rough AI-generated (or any) 3D model into a clean, web-ready game asset in headless Blender: repair, decimate, orient and scale, new UV layout, bake the source maps, and paint sharp reference views back on — straight and three-quarter, cameras solved from silhouettes, one view per face, the model's own texture kept where images and geometry disagree — so a melted texture comes out crisp. 2048 WebP output (4096 on request), JSON report with acceptance checks for plans. | `SKILL.md` **+ `scripts/` (required Node launcher and Blender Python pipeline)** |
 | [`bt-optimize`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/SKILL.md) | `/bt-optimize` | Make an exported Unity scene run fast in the browser: profile, fix the causes, merge static meshes and LOD groups, verify. | `SKILL.md` **+ `scripts/` (required C# engines and QA tools)** |
 | [`bt-profile`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-profile/SKILL.md) | `/bt-profile` | Find what makes a web game (or any web app) slow: drive it in Chrome through a repeatable scenario, profile every frame and GPU pipeline compile, map the time to your code, find the late stutter after the loading screen lifts (late shader compiles by cause and render pass, first-use downloads, textures and audio decodes), list the fixes with a bt-recon command per subsystem and a bt-spec command that cites it (or apply them with `--auto-fix`, which always maps the code first with `--recon`), with a live dashboard. | `SKILL.md` **+ `scripts/` and `templates/` (required Node tools and scenario templates)** |
 
@@ -135,6 +136,22 @@ skills/
 │       ├── preview.py
 │       ├── uv_island_mask.py
 │       └── requirements.txt
+├── bt-unwrap/
+│   ├── SKILL.md
+│   └── scripts/
+│       ├── bt-unwrap.mjs
+│       └── blender/
+│           ├── bt_unwrap.py
+│           ├── image_utils.py
+│           ├── mesh_tools.py
+│           ├── model_io.py
+│           ├── previews.py
+│           ├── rasterizer.py
+│           ├── reference_views.py
+│           ├── reference_warp.py
+│           ├── texture_bake.py
+│           ├── texture_compose.py
+│           └── uv_layout.py
 ├── bt-optimize/
 │   ├── SKILL.md
 │   └── scripts/
@@ -177,6 +194,24 @@ skills/
 
 > `bt-atlas` runs Python. Its scripts depend on the packages in `scripts/requirements.txt`.
 > Do not attempt to satisfy them by hand — the skill installs them itself when first run.
+
+`bt-unwrap` **will not run** unless all of these are present in the installed folder:
+
+- `bt-unwrap/SKILL.md`
+- `bt-unwrap/scripts/bt-unwrap.mjs`
+- `bt-unwrap/scripts/blender/bt_unwrap.py`
+- `bt-unwrap/scripts/blender/image_utils.py`
+- `bt-unwrap/scripts/blender/mesh_tools.py`
+- `bt-unwrap/scripts/blender/model_io.py`
+- `bt-unwrap/scripts/blender/previews.py`
+- `bt-unwrap/scripts/blender/rasterizer.py`
+- `bt-unwrap/scripts/blender/reference_views.py`
+- `bt-unwrap/scripts/blender/reference_warp.py`
+- `bt-unwrap/scripts/blender/texture_bake.py`
+- `bt-unwrap/scripts/blender/texture_compose.py`
+- `bt-unwrap/scripts/blender/uv_layout.py`
+
+> `bt-unwrap` runs inside Blender (4.2+) through its Node launcher and uses Blender's bundled numpy — nothing to install.
 
 `bt-design` **will not have its 3D scroll-hero template available** unless all of these are also present:
 
@@ -241,7 +276,7 @@ skills/
 All other skills (`bt-spec`, `bt-plan`, `bt-recon`, `bt-convert`, `bt-copycat`, `bt-landing`,
 `bt-prototype`, `bt-hero`) are `SKILL.md`-only.
 
-> **THERE ARE 14 SKILLS TOTAL.** ALL 14 must be installed into EVERY target location.
+> **THERE ARE 15 SKILLS TOTAL.** ALL 15 must be installed into EVERY target location.
 > A partial install is a FAILED install.
 
 ## Installation
@@ -298,7 +333,7 @@ the appropriate global or local project location.
 - If you **cannot prompt** (non-interactive or autonomous run), **default to the Recommended global install method below (clone-and-copy into the per-user home directory)** and tell the user which method was used.
 
 **However you install, you MUST end with the [Post-Install Verification](#post-install-verification) step below.**
-An install that reports success but is missing `bt-atlas/scripts/`, `bt-design/references/` / `bt-design/templates/`, `bt-execute/templates/` + `bt-execute/scripts/`, `bt-gauntlet/references/`, `bt-optimize/scripts/` or `bt-profile/scripts/` + `bt-profile/templates/` is a FAILED install — go back and copy the missing files.
+An install that reports success but is missing `bt-atlas/scripts/`, `bt-unwrap/scripts/`, `bt-design/references/` / `bt-design/templates/`, `bt-execute/templates/` + `bt-execute/scripts/`, `bt-gauntlet/references/`, `bt-optimize/scripts/` or `bt-profile/scripts/` + `bt-profile/templates/` is a FAILED install — go back and copy the missing files.
 
 ### Recommended install method: clone the whole repo, copy whole folders (GLOBAL by default)
 
@@ -566,12 +601,15 @@ list to the actual target locations (GLOBAL paths shown by default; use the proj
 MISSING=""
 # Edit this list to EVERY location you installed to (GLOBAL paths shown; works in bash and zsh):
 for dir in ~/.claude/skills ~/.agents/skills; do
-  # ALL 14 skills must exist in EVERY location.
-  for skill in bt-spec bt-plan bt-execute bt-recon bt-convert bt-copycat bt-landing bt-prototype bt-design bt-hero bt-atlas bt-gauntlet bt-optimize bt-profile; do
+  # ALL 15 skills must exist in EVERY location.
+  for skill in bt-spec bt-plan bt-execute bt-recon bt-convert bt-copycat bt-landing bt-prototype bt-design bt-hero bt-atlas bt-unwrap bt-gauntlet bt-optimize bt-profile; do
     [ -f "$dir/$skill/SKILL.md" ] || MISSING="$MISSING $dir/$skill/SKILL.md"
   done
   for f in composite_skin.py preview.py uv_island_mask.py requirements.txt; do
     [ -f "$dir/bt-atlas/scripts/$f" ] || MISSING="$MISSING $dir/bt-atlas/scripts/$f"
+  done
+  for f in scripts/bt-unwrap.mjs scripts/blender/bt_unwrap.py scripts/blender/image_utils.py scripts/blender/mesh_tools.py scripts/blender/model_io.py scripts/blender/previews.py scripts/blender/rasterizer.py scripts/blender/reference_views.py scripts/blender/reference_warp.py scripts/blender/texture_bake.py scripts/blender/texture_compose.py scripts/blender/uv_layout.py; do
+    [ -f "$dir/bt-unwrap/$f" ] || MISSING="$MISSING $dir/bt-unwrap/$f"
   done
   for f in references/3d-hero-docs.md references/3d-hero-scroll.md templates/3d-hero-scroll/HeroScroll.tsx templates/3d-hero-scroll/hero-scroll.css templates/3d-hero-scroll/hero-scroll.d.ts templates/3d-hero-scroll/hero-scroll.html templates/3d-hero-scroll/hero-scroll.js; do
     [ -f "$dir/bt-design/$f" ] || MISSING="$MISSING $dir/bt-design/$f"
@@ -612,12 +650,15 @@ $missing = @()
 # Edit this list to EVERY location you installed to (GLOBAL paths shown):
 $dirs = @("$env:USERPROFILE\.claude\skills", "$env:USERPROFILE\.agents\skills")
 foreach ($dir in $dirs) {
-  # ALL 14 skills must exist in EVERY location.
-  foreach ($skill in "bt-spec","bt-plan","bt-execute","bt-recon","bt-convert","bt-copycat","bt-landing","bt-prototype","bt-design","bt-hero","bt-atlas","bt-gauntlet","bt-optimize","bt-profile") {
+  # ALL 15 skills must exist in EVERY location.
+  foreach ($skill in "bt-spec","bt-plan","bt-execute","bt-recon","bt-convert","bt-copycat","bt-landing","bt-prototype","bt-design","bt-hero","bt-atlas","bt-unwrap","bt-gauntlet","bt-optimize","bt-profile") {
     if (-not (Test-Path "$dir\$skill\SKILL.md")) { $missing += "$dir\$skill\SKILL.md" }
   }
   foreach ($f in "composite_skin.py","preview.py","uv_island_mask.py","requirements.txt") {
     if (-not (Test-Path "$dir\bt-atlas\scripts\$f")) { $missing += "$dir\bt-atlas\scripts\$f" }
+  }
+  foreach ($f in "scripts\bt-unwrap.mjs","scripts\blender\bt_unwrap.py","scripts\blender\image_utils.py","scripts\blender\mesh_tools.py","scripts\blender\model_io.py","scripts\blender\previews.py","scripts\blender\rasterizer.py","scripts\blender\reference_views.py","scripts\blender\reference_warp.py","scripts\blender\texture_bake.py","scripts\blender\texture_compose.py","scripts\blender\uv_layout.py") {
+    if (-not (Test-Path "$dir\bt-unwrap\$f")) { $missing += "$dir\bt-unwrap\$f" }
   }
   foreach ($f in "references\3d-hero-docs.md","references\3d-hero-scroll.md","templates\3d-hero-scroll\HeroScroll.tsx","templates\3d-hero-scroll\hero-scroll.css","templates\3d-hero-scroll\hero-scroll.d.ts","templates\3d-hero-scroll\hero-scroll.html","templates\3d-hero-scroll\hero-scroll.js") {
     if (-not (Test-Path "$dir\bt-design\$f")) { $missing += "$dir\bt-design\$f" }
@@ -755,7 +796,7 @@ Where each tool looks for PROJECT-LOCAL skills (only when the user explicitly re
 > for everything else (Codex, Copilot, Gemini CLI, Antigravity). By default use the
 > GLOBAL (per-user home) locations; use the project-local locations only when the user
 > explicitly asks for a project install. Copy **whole folders** into each — the
-> `bt-atlas/scripts/`, `bt-design/references/` + `bt-design/templates/`, `bt-execute/templates/` + `bt-execute/scripts/`,
+> `bt-atlas/scripts/`, `bt-unwrap/scripts/`, `bt-design/references/` + `bt-design/templates/`, `bt-execute/templates/` + `bt-execute/scripts/`,
 > `bt-gauntlet/references/`, `bt-optimize/scripts/` and `bt-profile/scripts/` + `bt-profile/templates/` assets must be present in every location.
 
 ---

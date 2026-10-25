@@ -81,6 +81,9 @@ required field. None of this spends anything.
 Before you tell the user a model is unavailable on the API, probe its likely path with `--estimate`. The model
 list is per account and lives in the console.
 
+**For image → 3D, Hi3D comes first** when the project's `.env` has `HI3D_ACCESS_KEY` + `HI3D_SECRET_KEY`
+(`web-hi3d-api.md`). Use Tripo here when there are no Hi3D keys, or when the mesh must come back rigged or animated.
+
 ### The API wrapper: `hf-api.mjs` (use it for every API generation)
 
 **Run the installed master copy directly. Never copy it into the project.** `bt-agent update` installs it with the
@@ -122,6 +125,28 @@ node "$HF_API" tripo3d/h3.1/multiview-to-3d --out generated/kart \
      --set texture_quality=detailed --set geometry_quality=detailed
 ```
 
+### Mapping the toolkit's kie-shaped calls onto the API
+
+Skills write `generate_image` / `generate_video` in the kie shape (`web-kie-servers.md`). On the API, the model
+paths differ from the CLI's job types, and the catalog differs too: GPT Image 2.5, Nano Banana and Seedream are CLI
+models, and the API serves other families for the same jobs. Verified on docs.higgsfield.ai, 2026-10-24:
+
+| kie shape | Higgsfield API (`node "$HF_API" <model-path> --out <dir> …`) |
+|---|---|
+| `generate_image({ prompt })`, text only, a cheap draft | `z-image/turbo --set prompt="…" --set resolution=2k --set aspect_ratio=16:9` |
+| `generate_image({ prompt, reference_paths })`, generate or edit with up to 10 references | `xai/grok-imagine-image-2.0 --set prompt="…" --file image_urls[]=a.png --file image_urls[]=b.png --set resolution=2k --set aspect_ratio=16:9 --set quality=medium` |
+| A strict edit of 1–3 ordered references (the base image first) | `alibaba/qwen-image-3/edit --set prompt="…" --file image_urls[]=base.png --set resolution=2k --set aspect_ratio=1:1` |
+| `generate_video({ image_paths: [first, last] })`, Kling | `kling-video/v3.0/pro/image-to-video --set prompt="…" --file image_url=first.jpg --file last_image_url=last.png --set duration=8 --set sound=off` (`v3.0/standard/…` and `v3.0/4k/…` also exist; duration 3–15) |
+| The same, Seedance | `bytedance/seedance-2.5/image-to-video --set prompt="…" --file image_url=first.jpg --file end_image_url=last.png --set duration=8 --set resolution=1080p --set generate_audio=false` (duration 4–30) |
+| Image → 3D GLB (when there are no Hi3D keys, see `web-hi3d-api.md`) | `tripo3d/h3.1/image-to-3d --file image_url=prop.png`, or `tripo3d/h3.1/multiview-to-3d --file image_urls[]=front.png …` (the views in Tripo's order: front, left, back, right) |
+| `out_path: "media/clip2.mp4"` | `--out <dir>` saves `<request_id>_<field>.<ext>`. Move the file stdout names under `files` to the path the skill wants |
+
+- These API image models top out at **2K** (`resolution` `1k` or `2k`). When a skill asks for 4K, use 2K and upscale,
+  or use the CLI's `seedream_v4_5` when the CLI is set up instead.
+- Run `--estimate` on each new model and setting first. Model availability is per account, so probe an unlisted
+  path with `--estimate` before you call it unavailable. Each model's page under
+  https://docs.higgsfield.ai/docs/models/ lists every field.
+
 ## The Higgsfield CLI (Browser Sign-In)
 
 Everything below covers the CLI path: no API key, or the user asked for the CLI.
@@ -133,7 +158,8 @@ kie is not configured and Higgsfield is, or for the things only Higgsfield does:
 |---|---|
 | Default image / texture / video generation | kie (`web-kie-servers.md`) |
 | The user asked for Higgsfield, or only Higgsfield is set up | Higgsfield CLI, this document |
-| **Image → 3D GLB mesh** (optionally textured, PBR, rigged, animated) | Higgsfield `tripo_h3_1_image_to_3d`, `image_to_3d`, `multi_image_to_3d`, `meshy_v7_image_to_3d`, … |
+| **Image → 3D GLB mesh** (textured, PBR) **and the project has `HI3D_ACCESS_KEY` + `HI3D_SECRET_KEY`** | **Hi3D** (`web-hi3d-api.md`), the preferred mesh generator when its keys are set |
+| **Image → 3D GLB mesh** without Hi3D keys, or **rigged / animated** | Higgsfield `tripo_h3_1_image_to_3d`, `image_to_3d`, `multi_image_to_3d`, `meshy_v7_image_to_3d`, … |
 | Background removal, image/video upscale, outpaint, reframe, dubbing, voice change | Higgsfield models and workflows (catalog below) |
 | **Music, sound effects, ambience** | **kie** `generate_sound`. Higgsfield's `sonilo_music` / `mirelo_text_to_audio` exist but are reserved for Higgsfield's own game pipeline |
 | Speech / voiceover / NPC dialogue | Either. Higgsfield `seed_audio` with a voice from `higgsfield voices list` |
@@ -293,8 +319,15 @@ node scripts/hf-generate.mjs tripo_h3_1_image_to_3d --image-references ./prop.pn
 Start from a clean single-subject image on a plain background (run `image_background_remover` first if
 needed). Animation clips for rigged meshes: `higgsfield preset list animation-action --query walk --json`,
 then pass the id as `--animation_action_id` with `--enable_rigging true --enable_animation true` (`image_to_3d`).
-The GLB is a **starting mesh**: repair, retopo, UV, LOD and weight it in headless Blender
-(`unity-blender-cli.md`), then import it into Unity and add interactive components there (`unity-exporter-cli.md`).
+The GLB is a **starting mesh**. Its texture is a few generated views projected onto thousands of tiny UV
+fragments, so surfaces no view saw head-on (tops, noses, seats) come out stretched or "melted" — at any face
+count. Run the **`bt-unwrap`** skill on it with the same reference views: it repairs the geometry, decimates to a
+face budget (set `face_limit` on the generator too), orients and scales it, gives it a clean UV layout and
+repaints the texture from the sharp references — top and three-quarter views included (multiview generators
+cannot take those) — keeping the generator's own texture where its images and its mesh disagree, and writes a
+web-ready GLB (2048 WebP, single-sided material). Keep every reference image at full resolution.
+Rig, weight and split parts in headless Blender (`unity-blender-cli.md`), then import it into Unity and add
+interactive components there (`unity-exporter-cli.md`).
 Before the first job, check what the result actually is: `file models/prop.glb` must say `glTF binary`.
 
 **NPC voice line**
