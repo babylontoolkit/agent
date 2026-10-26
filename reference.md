@@ -188,7 +188,8 @@ Anything else is work, and work is yours.
   `bt-execute` commands once it is planned, current activity while a run is going, the Execution debrief with the After Action Report once it is over, linking
   the plan summary), `documents/`
   (`<slug>_spec.md`, `<slug>_plan.md`, `<slug>_autopilot.md`, the dashboard data `<slug>_dashboard.js`, the live status `<slug>_live.js` (git-ignored),
-  and once the plan is complete the plain-language plan summary `<slug>_summary.html` with its data `<slug>_summary.js`), `snapshots/`,
+  the follow-ups `<slug>_followups.md` (each numbered `F1`, `F2` … for `/bt-spec Fix F1 from @…_followups.md`, written by
+  bt-execute's helper), and once the plan is complete the plain-language plan summary `<slug>_summary.html` with its data `<slug>_summary.js`), `snapshots/`,
   `tests/` and, when the spec's brief cites recons, `recon/` (bt-spec's copies of them). A profile keeps its recons in
   `.agents/profile/<slug>/recon/`, next to its `findings.md`. General recons, of a subsystem or the whole codebase, stay in
   `.agents/recon/`. **Editing a plan keeps its dashboard in step:** whoever adds, removes or reorders a task
@@ -201,13 +202,20 @@ Anything else is work, and work is yours.
   instance) or for a late-compile record the development-build detector actually logs. Never add warm-up calls
   speculatively. Toggle post processes during play with `TOOLKIT.PostProcessor.AttachPass` / `DetachPass`. Guide:
   [Prewarming Content](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/prewarming-content.md).
-- **Dashboard snapshots — ENFORCED.** A feature dashboard's snapshots are the chronicle of how the work was built, so
-  each one reaches the dashboard only through bt-execute's helper —
+- **Dashboard snapshots — ENFORCED.** A feature dashboard's snapshots are the chronicle of how the work was built —
+  they tell the story of the plan, read long after the run — and no speed rule, lean pass or unattended run ever thins
+  them. Every visual task leaves a progression from one camera *as it is built* (a before frame, a frame per
+  meaningful layer, the built frame, then the verifier's verified frames), and the plan gets a `plan-before` ahead of
+  T1 and one plan-wide before/after at the end (bt-execute's *Snapshots tell the story*). Each one reaches the
+  dashboard only through bt-execute's helper —
   `node <skills>/bt-execute/scripts/dashboard.mjs snapshot <feature-folder> <T<n>|P<N>|plan> --src snapshots/… --caption "…"`
-  (`--before`/`--after` for a comparison, `--frame "src|stage|caption"` for a progression) — never by writing snapshot
-  JSON or briefing a subagent with a JSON shape (an image under `path` instead of `src` shows as "No snapshot"). Run
-  `dashboard.mjs check <feature-folder>` before every commit that touches a dashboard; it repairs a wrong image key and
-  fails on an image that is not on disk.
+  (`--before`/`--after` for a comparison, `--frame "src|stage|caption"` for a progression, target `comparison` for
+  the plan-wide before/after) — never by writing snapshot JSON or briefing a subagent with a JSON shape (an image
+  under `path` instead of `src` shows as "No snapshot"). A frame saved to `snapshots/` is added at once: the helper
+  refuses to move a task to `built`, `verifying` or `done` while a `snapshots/T<n>-…` frame of its own is not on the
+  dashboard, or a visual task to `built` with no frame at all. Run `dashboard.mjs check <feature-folder>` before every
+  commit that touches a dashboard; it repairs a wrong image key and fails on an image that is not on disk and on frames
+  left in `snapshots/` that no entry shows — fixed by adding them, never by moving or deleting them.
 - **Agent tests live under `.agents/`, never in a root `tests/` folder.** Every test an agent writes — unit tests, a
   plan's named tests, fixtures, test helpers and test-run output (reports, results files) — goes in the feature folder's
   `tests/` (`.agents/specs/<slug>/tests/`) when it belongs to a plan, and in `.agents/tests/` otherwise. Use the
