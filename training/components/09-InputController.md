@@ -377,3 +377,4 @@ namespace TOOLKIT {
 3. **Mouse delta** — `GetUserInput(MouseX/Y)` returns the pixel delta this frame; multiply by sensitivity.
 4. **Pointer lock must be requested via a user gesture** (click) — browsers block programmatic pointer lock.
 5. **Gamepad triggers** — use `GetGamepadTriggerInput(trigger, player)` for analog [0..1] values (there are no trigger axes on `UserInputAxis`).
+6. **Gamepad support is full support** — when a game adds gamepad support, read `references/html-gamepad.md`: every gameplay action on the pad through this class, plus every menu and screen driven by the pad through the shared DOM navigator, with button prompts that swap pad glyphs and keyboard keys.

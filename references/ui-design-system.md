@@ -521,6 +521,9 @@ nothing (5).
 - **Menus, pause, settings, results, inventory, store, landing pages, splash screens and preloaders have no frame loop.**
   They are events (1) and CSS (2). The only per-frame code allowed on a landing page is a real-time 3D, canvas or
   scroll-scrubbed hero, and it stops off-screen and does no writes while the scroll is at rest.
+  The one input exception is the shared gamepad menu poller (`html-gamepad.md`): the Gamepad API has no button events,
+  so it polls `navigator.getGamepads()` only while a navigable screen is mounted, a pad is connected and the tab is
+  visible, and writes to the DOM only on a press. It is input, not animation. Never add a second one.
 - **Static never updates.** Labels, ticks, numerals, bezels, icons, frames and copy render once and never re-render.
 - **A property the frame loop writes has no CSS `transition`.** A `transition: transform` on a needle written every frame
   restarts each frame and trails the game. Smooth in the loop (ease toward the target) or in the game. CSS transitions
@@ -734,6 +737,9 @@ the loop stops with it and no flag is needed.
 - [ ] Menus, pause / settings / results screens, the splash, the preloader and the landing page run no frame loop
       (a real-time hero excepted, and it stops off-screen and at rest). Search them for `requestAnimationFrame`,
       `useFrameLoop`, `setInterval` and animation-library ticks; motion there is CSS.
+- [ ] When the project has gamepad support, every menu, page, dialog and overlay I wrote or changed is a navigable
+      surface driven by the pad alone, and its button prompts swap pad glyphs and keyboard keys by CSS on `data-input`
+      (`html-gamepad.md`).
 - [ ] The HUD's loop does nothing while the HUD is hidden, covered by a modal or the game is paused, and no element
       the loop writes has a CSS `transition`.
 - [ ] When the game can be profiled, `bt-profile` shows the `react` owner near 0% during play.
