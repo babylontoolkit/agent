@@ -1017,6 +1017,15 @@ before exporting.
   / gravity values, Foot IK goals, parameter curves and property curves.
 - **Rig modes.** The toolkit **`AnimatorControlRig`** component switches a rig to vertex-animation textures (VAT,
   for crowds) or to a shared runtime rig that retargets clips by bone name.
+- **A VAT crowd, set up to instance:** `animationMode` `UseVertexAnimations` with `meshRenderers` set to the rig's
+  SkinnedMeshRenderers; their materials on `Babylon/Custom/Vertex Animation Shader` (one copy per source material,
+  shared by every copy of the character); each renderer at **world scale 1** — the baker writes world-size vertex
+  positions and the browser applies the renderer node's scale again, so a scaled renderer draws at the wrong size (a
+  skinned mesh draws from its bones, so Unity looks the same) — and **Light Probes Off** (probe-lit nodes never
+  instance). Copies then draw instanced, one draw per material in view, each in its own Animator state; one draw for a
+  multi-colour crowd needs the per-skin texture array (`shader-materials.md`). The VAT shader has no URP / HDRP pass in
+  the Editor, so Unity draws it magenta — judge VAT crowds in the browser. `bt-optimize`'s Tune sets all of this up for
+  every repeated deforming character (`vatCrowdsFrom`).
 
 **Author it** — controllers from the typed commands:
 
@@ -1297,13 +1306,18 @@ Author the full level, but keep it light enough to run in a browser, and on mobi
 | Lightmaps | `lightmapResolution` and `maxLightmapSize` (1024–2048) set lightmap memory. Fewer, fuller atlases are cheaper |
 | Lights | Bake fills and practicals (they cost nothing at runtime). Keep realtime and Mixed lights few. A material takes at most `SceneController.maximumLights` (default 4). The shadow map size comes from the URP asset |
 | Terrain | 4–8 layers, all layer textures one imported size (1024 mobile, 2048 desktop — the largest sets every array slice), heightmap 257–513 for mobile, tree / detail distance and detail density sized for the target, heightfield mode |
-| Geometry | LOD groups on heavy meshes (any Editor; Cross Fade only where popping shows). Repeated meshes stay glTF instances (`ExportMeshInstances`, default on). Mark static objects Static to freeze their world matrices |
+| Draw calls | The browser is CPU-bound on draws long before the GPU is busy, and every pass (each shadow cascade, a depth pass, each camera's post chain) multiplies the draws of what it renders. Count them per pass and by owning object (`bt-optimize`'s profiler) before tuning anything |
+| Geometry | LOD groups on heavy meshes (any Editor; Cross Fade only where popping shows). Repeated meshes are written as glTF instances (`ExportMeshInstances`, default on), but copies share one draw only when they are **not lightmapped** (each lightmapped copy gets its own mesh) and have **Light Probes Off** (the toolkit loads every probe-lit node as its own mesh, `SceneManager.DeinstanceProbeLitNodes`). Merge static meshes only where they are scattered — a level already drawn as one renderer per material gains nothing. Mark static objects Static to freeze their world matrices — never one a clip, Timeline or physics body moves: it would stand still |
+| Skinned meshes | A rigid prop imported as a skinned mesh (DAE / FBX one-bone imports: coins, item boxes, trees, signs) is skinned every frame and its copies never instance — make it a MeshFilter + MeshRenderer. Only real deformation needs skinning; a repeated deforming character becomes an instanced VAT crowd (`AnimatorControlRig`, §13) |
+| Shadows | No realtime shadows on point / spot lights (each is a full scene pass, six for a point light). A directional light draws each caster again in every cascade it touches: Cast Shadows Off on flat ground, roads, markings, water and far backdrops whose shadow lands on nothing visible (prove each by capture). Cascade count and distance are project-wide |
 | Probes | Enough light probes to cover dynamic areas (APV ≤ 8192). Reflection-probe resolution 128–256 |
 | Post-processing | Grading is one LUT (an extra pass on the HDR path). TAA ≈ 2.5 ms (mostly its velocity prepass), auto-exposure ≈ 0.4 ms. Bloom, DOF, motion blur, SSAO and SSR cost fill-rate — use them sparingly on mobile. `TOOLKIT.PostProcessor.HalfFloatChain = false` before load halves HDR-chain bandwidth but brings back banding |
 | Shader Graph | Graph shadows use stock depth by default (`TOOLKIT.SgShadowDepth.Enabled = false`). Scene Color / Scene Depth nodes add a render target per camera. Keep each graph under 16 samplers |
 | Particles | CPU-simulated — budget live particles, trails, particle lights and world collision |
 | Audio | Compress the source files (`.ogg` / `.mp3`); they ship as-is |
 | Snapshot rendering | `GpuRenderingMode` (WebGPU snapshot rendering) for very large static scenes |
+
+To bring an existing scene under budget, run the **`bt-optimize`** skill — or spec / Quick Plan it ("create a quick plan to optimize `Level01.unity`"; bt-spec and bt-plan follow its `planning.md`). It measures the export, applies every lever above on a working copy (the one scene to export afterwards), and proves the frame rate and the look before → after (`skills-repository.md`).
 
 ---
 

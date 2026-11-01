@@ -44,7 +44,7 @@ and some skills ship **additional required asset files** (scripts, references, t
 | Skill | Command | What it does | Folder contents |
 |-------|---------|--------------|-----------------|
 | [`bt-spec`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file (on the branch you have checked out; no skill creates branches or commits) — or a Full Spec of a finished feature's follow-ups (`Fix F1 and F3 from @…_followups.md`) or a profile's fixes (`Fix F2 from @…/findings.md using @…_recon.md`), linking the follow-ups so their status follows the new feature. | `SKILL.md` |
-| [`bt-plan`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec — or a Quick Plan straight from a brief, a finished feature's follow-ups (`Fix F3 from @…_followups.md`, linked so their status follows the plan) or a profile's fixes (`Fix F2 from @…/findings.md using @…_recon.md`). `--heavy` makes it decision-complete. | `SKILL.md` |
+| [`bt-plan`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec — or a Quick Plan straight from a brief, a finished feature's follow-ups (`Fix F3 from @…_followups.md`, linked so their status follows the plan) or a profile's fixes (`Fix F2 from @…/findings.md using @…_recon.md`); a brief to optimize a Unity scene ("optimize Level01.unity") follows bt-optimize's `planning.md` with no interview. `--heavy` makes it decision-complete. | `SKILL.md` |
 | [`bt-execute`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task (or all remaining tasks) from a plan/spec in a lean loop: builders build, write the named tests, take one quick look and put each visual task's progression of snapshots on the dashboard as they build it; one independent verifier per phase is the only live checker, adds its verified frames and re-checks its own FAILs; plans of 3 tasks or fewer run inline, and tasks on different tracks build in parallel, each with its own files. Keep the feature's live dashboard (three writes per task, snapshots telling the story of the build — the helper refuses a task moving on while a frame saved for it is not on the page), number its follow-ups `F1`, `F2` … with a Full Spec / Quick Plan command for each (their status follows whichever feature takes them on), and write a plain-language plan summary page when the plan is complete. `--strict` keeps a fresh adversarial verifier per task; `--auto-pilot` runs unattended, never asking a question; `--verbose` writes the dashboard and After Action Report up in depth. | `SKILL.md` **+ `templates/` and `scripts/` (required for the feature dashboard and the plan summary)** |
 | [`bt-recon`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-recon/SKILL.md) | `/bt-recon` | Deep-dive existing code (a subsystem or the whole codebase) into an evidence-cited grounding spec plus a user guide. | `SKILL.md` |
 | [`bt-convert`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-convert/SKILL.md) | `/bt-convert` | Convert source code to Babylon Toolkit TypeScript. | `SKILL.md` |
@@ -56,7 +56,7 @@ and some skills ship **additional required asset files** (scripts, references, t
 | [`bt-hero`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-hero/SKILL.md) | `/bt-hero` | Create smooth cinematic 3D scrolling hero sections. | `SKILL.md` |
 | [`bt-atlas`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-atlas/SKILL.md) | `/bt-atlas` | Generate texture atlas skin variations. | `SKILL.md` **+ `scripts/` (required Python)** |
 | [`bt-unwrap`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-unwrap/SKILL.md) | `/bt-unwrap` | Turn a rough AI-generated (or any) 3D model into a clean, web-ready game asset in headless Blender: repair, decimate, orient and scale, new UV layout, bake the source maps, and paint sharp reference views back on — straight and three-quarter, cameras solved from silhouettes, one view per face, the model's own texture kept where images and geometry disagree — so a melted texture comes out crisp. 2048 WebP output (4096 on request), JSON report with acceptance checks for plans. | `SKILL.md` **+ `scripts/` (required Node launcher and Blender Python pipeline)** |
-| [`bt-optimize`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/SKILL.md) | `/bt-optimize` | Make an exported Unity scene run fast in the browser: profile, fix the causes, merge static meshes and LOD groups, verify. | `SKILL.md` **+ `scripts/` (required C# engines and QA tools)** |
+| [`bt-optimize`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/SKILL.md) | `/bt-optimize` | Make an exported Unity scene run fast in the browser: profile and account for every draw, then on a copy of the scene (the one scene to export afterwards) unskin rigid skinned meshes, instance repeated props, unfreeze static objects that animate, make repeated deforming characters an instanced VAT crowd, bake practical lights, prune shadow casters that shadow nothing visible, merge static meshes and LOD groups when that saves draws; verify against the source and prove it in Unity, the browser and the game. Its `planning.md` is the playbook bt-spec and bt-plan use to spec or Quick Plan the same work ("create a quick plan to optimize Level01.unity"). | `SKILL.md` **+ `planning.md` + `scripts/` (required C# engines and QA tools)** |
 | [`bt-profile`](https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-profile/SKILL.md) | `/bt-profile` | Find what makes a web game (or any web app) slow: drive it in Chrome through a repeatable scenario, profile every frame and GPU pipeline compile, map the time to your code, find the late stutter after the loading screen lifts (late shader compiles by cause and render pass, first-use downloads, textures and audio decodes), list the fixes with a bt-recon command per subsystem and a Full Spec (`bt-spec`) or Quick Plan (`bt-plan`) command that cites it (or apply them with `--auto-fix`, which always maps the code first with `--recon`), with a live dashboard. | `SKILL.md` **+ `scripts/` and `templates/` (required Node tools and scenario templates)** |
 
 Every tool derives the slash-command from the **folder name** (`bt-spec/` → `/bt-spec`) and reads
@@ -154,6 +154,7 @@ skills/
 │           └── uv_layout.py
 ├── bt-optimize/
 │   ├── SKILL.md
+│   ├── planning.md
 │   └── scripts/
 │       ├── BtCombine.cs
 │       ├── BtOptimize.cs
@@ -249,6 +250,7 @@ skills/
 `bt-optimize` **cannot profile, tune or combine** unless these are also present:
 
 - `bt-optimize/SKILL.md`
+- `bt-optimize/planning.md`
 - `bt-optimize/scripts/BtCombine.cs`
 - `bt-optimize/scripts/BtOptimize.cs`
 - `bt-optimize/scripts/qa/compare-browser.mjs`
@@ -405,7 +407,7 @@ structure. For `bt-atlas` that means the `SKILL.md` **and** all four files under
 For `bt-design` that means the `SKILL.md` **and** all files under `references/` and `templates/`.
 For `bt-execute` that means the `SKILL.md`, all four files under `templates/dashboard/`, all three under `templates/summary/` **and** `scripts/dashboard.mjs`.
 For `bt-gauntlet` that means the `SKILL.md` **and** all six files under `references/`.
-For `bt-optimize` that means the `SKILL.md` **and** every file under `scripts/` (including `scripts/qa/`).
+For `bt-optimize` that means the `SKILL.md`, `planning.md` **and** every file under `scripts/` (including `scripts/qa/`).
 For `bt-profile` that means the `SKILL.md` **and** every file under `scripts/` (including `scripts/lib/`) and `templates/`.
 Raw URL pattern:
 
@@ -451,6 +453,7 @@ https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-gauntlet/
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-gauntlet/references/target-images.md
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-gauntlet/references/unity-pipeline.md
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-gauntlet/references/workspace.md
+https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/planning.md
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/scripts/BtCombine.cs
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/scripts/BtOptimize.cs
 https://raw.githubusercontent.com/babylontoolkit/skills/main/skills/bt-optimize/scripts/qa/compare-browser.mjs
@@ -620,7 +623,7 @@ for dir in ~/.claude/skills ~/.agents/skills; do
   for f in critic-rubrics.md loop-templates.md spec-composition.md target-images.md unity-pipeline.md workspace.md; do
     [ -f "$dir/bt-gauntlet/references/$f" ] || MISSING="$MISSING $dir/bt-gauntlet/references/$f"
   done
-  for f in scripts/BtCombine.cs scripts/BtOptimize.cs scripts/qa/compare-browser.mjs scripts/qa/compare-profiles.mjs scripts/qa/gltf-stats.mjs scripts/qa/package.json scripts/qa/profile-browser.mjs; do
+  for f in planning.md scripts/BtCombine.cs scripts/BtOptimize.cs scripts/qa/compare-browser.mjs scripts/qa/compare-profiles.mjs scripts/qa/gltf-stats.mjs scripts/qa/package.json scripts/qa/profile-browser.mjs; do
     [ -f "$dir/bt-optimize/$f" ] || MISSING="$MISSING $dir/bt-optimize/$f"
   done
   for f in scripts/analyze.mjs scripts/compare.mjs scripts/package.json scripts/profile.mjs scripts/progress.mjs scripts/report.mjs scripts/lib/chrome.mjs scripts/lib/probe.mjs scripts/lib/progress-panel.mjs scripts/lib/symbolize.mjs templates/census.template.mjs templates/scenario.template.mjs; do
