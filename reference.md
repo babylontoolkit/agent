@@ -168,6 +168,15 @@ Anything else is work, and work is yours.
   pushes, or creates or switches a branch on its own: not per task, not per phase, not at the end of a run, not for a
   new spec. Work happens on whatever branch the user has checked out. Every change stays in the working tree
   until the user commits it, when they choose. A commit happens only when the user asks for that commit.
+- **Never hack the toolkit runtime — report it.** The Babylon Toolkit runtime (`babylon.toolkit.js` / `.d.ts`) is
+  never edited, in any copy: the exporter package's template scripts, an export's `scripts/` folder, an npm package in
+  `node_modules`, a CDN build. Nor is it patched around from game code (no overriding `TOOLKIT.*` methods or
+  prototypes), and the exporter's own libraries are not touched either. When something is wrong in the runtime or the
+  exporter, **stop and tell the user**: what is wrong, the evidence (numbers, where it showed), where the cause is and
+  the fix you propose. The user decides whether it is fixed now, in the toolkit's source, or in the next toolkit
+  update. Never fix it quietly, and never change the toolkit's source unasked. In a `bt-*` run it becomes a follow-up,
+  and every subagent's brief carries this rule. Game code may still use the runtime's public API differently (cache a
+  value it looks up, for example) as long as it says so.
 - **"Spec" means the `bt-spec` skill.** When the user says *spec*, *speccing* or *spec out* — "spec out a mute toggle",
   "let's spec this", "can you spec the save system" — run the `bt-spec` skill with their words as the brief. Never write
   a spec by hand in chat or into a file of your own instead.
@@ -489,6 +498,8 @@ Before acting on any Babylon Toolkit task, confirm all of the following:
 - [ ] I fetched every sub-document whose keywords match the task — not just the first one.
 - [ ] I am following the sub-documents' instructions, not a package README or my prior knowledge.
 - [ ] If a required fetch failed, I stopped and told the user instead of improvising.
+- [ ] I did not edit or patch the toolkit runtime (`babylon.toolkit.js`, in any copy) or the exporter's libraries;
+      anything wrong in them was reported to the user with the proposed fix (**Never hack the toolkit runtime**).
 - [ ] I am not handing a step back to the user that this reference documents how to do myself —
       Unity, Blender and the browser are all mine to drive (**Agent Authority**, above).
 - [ ] Any question I am about to ask falls into one of the four categories in **The asking rule**.

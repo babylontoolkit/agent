@@ -193,6 +193,30 @@ New variants come from state changes during play. Avoid the change rather than w
    new shader the first time the clone drew. The Animator now restores it (`PipelineLightingPlugin.CopyToClone(original,
    clone)`); call that for a material your own code clones.
 
+## Turning precompiling off
+
+`TOOLKIT.SceneManager.PrecompileShaders` (default `true`) is the one switch for every shader precompile and shader cache
+system. Set it before the runtime starts; only an explicit `false` turns it off:
+
+```ts
+TOOLKIT.SceneManager.PrecompileShaders = false;
+await TOOLKIT.SceneManager.InitializeRuntime(engine);
+```
+
+Scenes then load the way plain Babylon loads them, and **shaders compile the first time something draws, so the first
+frames can hitch.** Use it to compare load times or to rule the toolkit out of a problem. **It is never a fix for late
+compiles** — drive those to zero with the detector (§7).
+
+- **Off:** the shader code cache (nothing is read from or written to IndexedDB), the draw hold, asynchronous WebGPU
+  pipelines and the load-time shader stage, PREWARM, the WebGPU safety net, the late-compile detector, Prepare graphics
+  priming (it succeeds at once) and splash frame thinning.
+- **Kept:** material plugin code injection, the reveal and its observables (`MarkSceneRevealed`,
+  `OnSceneRevealedObservable`, `WhenSceneRevealed`, the load-cache release), the smooth-frames and HDRP exposure waits,
+  Unity's pre-warm time and particle simulation prewarm.
+- **On the splash:** Loading Scene (its bar filling across the whole band as the files load), then "Almost ready", then
+  Ready — never Compiling Shaders or Optimizing Graphics.
+- **In the console:** one line, `Shader precompiling is off (SceneManager.PrecompileShaders = false)`.
+
 ## 7. Finding late compiles — the detector
 
 In a **development build** (localhost, loopback or private LAN address, a `.local` name, or
@@ -271,6 +295,7 @@ instead of preparing every material in one blocking call.
 
 | Switch | `false` means |
 |---|---|
+| `SceneManager.PrecompileShaders` | No shader code cache, no draw hold or asynchronous WebGPU pipelines, no load-time shader stage, no PREWARM, no WebGPU safety net, no late-compile detector, no Prepare graphics priming and no splash frame thinning — scenes load like plain Babylon (*Turning precompiling off*, above). Set it on `TOOLKIT.SceneManager`, before `InitializeRuntime` |
 | `WarmHiddenMeshesOnReveal` | Disabled and invisible meshes are left out of PREWARM |
 | `WarmRenderPassesOnReveal` | Effect layers, mirrors, probes and render targets are left out |
 | `WarmAllCamerasOnReveal` | Only the active camera(s) are warmed (on: every screen camera, at a cost of about a second of splash on a large scene) |
