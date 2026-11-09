@@ -248,7 +248,7 @@ Check this list before writing any shader. These are complete, tested, WebGL+Web
 | baked vertex animation (VAT) | `TOOLKIT.VertexAnimationMaterial` + `TOOLKIT.VertexAnimationController` | crowd/instance animation from position+normal textures: a 4-clip blend per instance driven by `TOOLKIT.Animator` (the character's state machine, base layer) through `driveSlots`, or by hand with `play/pause/stop/driveBlend`; `cloneForInstance()` |
 | many characters, one mesh, different skins | `enableSkinArray()` on any `CustomShaderMaterial` | see below |
 | double-sided surface | `TOOLKIT.CustomShaderMaterial` + `backFaceCulling = false; twoSidedLighting = true;` in `awake()` | no shader code needed at all |
-| water | `PROJECT.WaterMaterialSystem` (Starter content), or the scene's own Unity water Shader Graph | wraps `BABYLON.WaterMaterial` (reflection/refraction RTT, wind, waves) |
+| water | `PROJECT.WaterMaterialSystem` (Starter content), or the scene's own Unity water Shader Graph | wraps `BABYLON.WaterMaterial` (reflection/refraction RTT, wind, waves). URP water graphs draw as ordinary materials; `TOOLKIT.MeshWaterSurface` carries sea level, height queries and the underwater state |
 | Unity-matching atmospheric sky | `TOOLKIT.ProceduralSkyMaterial` on `TOOLKIT.ProceduralSkyMaterial.CreateSkyMesh(name, scene, 1000)` | exact port of Unity `Skybox/Procedural`; the loader builds it for any level whose skybox is Procedural (incl. Unity's Default-Skybox); follows the sun light every frame (`unity-authoring-recipes.md` §7) |
 | Preetham sky (not Unity-matching) | `PROJECT.SkyMaterialSystem` (Starter content) | wraps `BABYLON.SkyMaterial` + optional `ReflectionProbe` |
 | node-editor material (.json from NME) | `PROJECT.NodeMaterialInstance` script component | `BABYLON.NodeMaterial.Parse`; `PROJECT.NodeMaterialTexture` turns one into a procedural texture |
@@ -385,6 +385,8 @@ TOOLKIT.ShaderGraphRenderTexture.Update(scene, "RippleCRT");
 | `TOOLKIT.ShaderGraphRuntime.CreateMaterialFromBlock(scene, { customMaterial: "MY.X", customFloats, … }, name)` | Build a graph material without a glTF |
 | `TOOLKIT.ShaderGraphRuntime.SetThinInstanceValue(mesh, index, key, value)` | Hybrid Per Instance properties on thin instances (`EnsureThinInstanceBuffers(mesh)` first) |
 | `TOOLKIT.SgShadowDepth.Enabled` | **Default `false`.** Shadows and the depth pass use Babylon's stock depth shader, so wind / vertex displacement and graph clip do **not** show in shadows. Set it to `true` **before the scene loads** only when displaced shadows matter; it costs a full material bind per shadow draw (≈16 ms/frame on a 290-material vegetation scene) and swaying shadows can flicker under TAA |
+
+**Scene-time drivers.** A global that Unity's scripts advance at runtime (a wind clock, a scrolling offset) ships as `metadata.shaderglobaldrivers`: a list of `{ name, component, rate, wrap }`. Each frame `TOOLKIT.ShaderGlobals` adds `rate × deltaTime` (scene time, `GetClock(scene)`) to component `component` (0 x, 1 y, 2 z, 3 w) of the vector global `name`, and subtracts `wrap` when the value passes it (0 never wraps). The global must already hold a vector (from `metadata.shaderglobals` or a script); a driver for an unknown name does nothing. Setting the global from a script still works, and the driver keeps advancing from the new value.
 
 MaterialPropertyBlocks are applied automatically per renderer (as clones named `<material>#mpb<meshId>`).
 

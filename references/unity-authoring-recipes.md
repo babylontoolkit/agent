@@ -79,7 +79,7 @@ How to call the typed commands is in `unity-editor-commands.md`. The export itse
 | Reflection probes (Baked / Custom), box projection | **Bake** | One probe per renderer; no blending (§6) |
 | HDRP Planar Reflection Probe | **Toolkit** `TOOLKIT.PlanarReflection` → a live mirror on receivers inside its influence volume | Two per scene; the rest fall back to cubes (reported) (§6) |
 | Reflection probes (**Realtime**) | **Toolkit** `TOOLKIT.RealtimeReflection` → live Babylon `ReflectionProbe` | Pro; same box, resolution, culling mask and refresh mode; renders the scene into a cube every N frames — budget it (§6) |
-| Skybox — Cubemap, 6 Sided, **Procedural** (incl. Default-Skybox), Shader Graph skies; IBL `.env`, spherical-harmonic ambient | **Direct** (sky textures copied; Procedural and Shader Graph skies drawn live) + **Bake** (IBL `.env`) | Levels only; needs a camera with Skybox clear flags. `Skybox/Panoramic` is not carried. HDRP: PhysicallyBasedSky drawn live (`HdrpPhysicallyBasedSky`), every other HDRP sky baked in physical units (§7) |
+| Skybox — Cubemap, 6 Sided, **Procedural** (incl. Default-Skybox), Shader Graph skies; IBL `.env`, spherical-harmonic ambient | **Direct** (sky textures copied; Procedural and Shader Graph skies drawn live) + **Bake** (IBL `.env`) | Levels only; needs a camera with Skybox clear flags. Any other sky is captured as Unity renders it (§7). HDRP: PhysicallyBasedSky drawn live (`HdrpPhysicallyBasedSky`), every other HDRP sky baked in physical units (§7) |
 | Gradient / Color ambient | **Direct**, approximated with a hemispheric light | Light probes still light probe-lit renderers (§5, §7) |
 | Fog (Linear / Exp / Exp2; HDRP Fog volume) | **Direct**; HDRP height fog is a **Toolkit** post pass (`HdrpFogPass`) | §8 |
 | Shadows — cascades, distance, resolution, softness | **Direct**, from the URP asset (HDRP: the scene's HDRP shadow settings) | §3 |
@@ -108,7 +108,7 @@ How to call the typed commands is in `unity-editor-commands.md`. The export itse
 | LOD groups | **Direct** — Unity's screen coverages (any FOV, orthographic), group size, Cross Fade / SpeedTree dither fades | Pro (§17) |
 | Babylon Toolkit script components (`EditorScriptComponent`) | **Toolkit** — TypeScript classes | Not licence-gated (§18) |
 | Tags, layers, static flags | **Direct** | §19 |
-| Timeline, cookies, realtime GI, occlusion culling, URP renderer features other than Full Screen Pass / Decal, 2D physics | **Substitute** | §22 |
+| Timeline, cookies, realtime GI, occlusion culling, URP renderer features other than Full Screen Pass / Decal (named in the export report), 2D physics | **Substitute** | §22 |
 
 **Pro** means the project needs a valid Babylon Toolkit `license.json` (`unity-exporter-cli.md` §0). Without it
 the export still "succeeds", but the following are **silently omitted**:
@@ -508,7 +508,8 @@ the camera check.
 | A **Shader Graph** skybox material | The generated class draws the sky through `TOOLKIT.ShaderGraphSky` (class must be in the bundle — no class, no sky) |
 | HDRP `PhysicallyBasedSky` | Drawn **live** by `TOOLKIT.HdrpPhysicallyBasedSky`, a port of HDRP's own sky (HDRP's LUTs and coefficients, up to four sun disks, CloudLayer, physical units × pre-exposure). It is captured into the scene's reflection cube and, in Dynamic ambient mode, its SH, re-captured by HDRP's update rules when the sun or sky changes; aerial perspective joins the fog. Material rendering mode draws the default live atmosphere (warned). Falls back to the bake below with VolumetricClouds, on WebGL1 or without half-float targets |
 | HDRP `HDRISky`, `GradientSky` and every other HDRP sky | **Baked** at export through HDRP's own baked-probe route (sky only, CloudLayer included) into a physical-units skybox `.env` and a prefiltered environment `.env` plus one `physicalscale`; drawn and lit under the scene's pre-exposure |
-| `Skybox/Panoramic` and anything else | No sky and no `.env` IBL (warned *"shader type is unsupported"*); ambient SH still ships. Re-import the panorama as a cubemap (`textureShape` 2) and use `Skybox/Cubemap` |
+| URP Physically Based Sky (a URP Volume) | Drawn **live** by `TOOLKIT.HdrpPhysicallyBasedSky`, with its fog, aerial perspective and stars. URP Volumetric Clouds draw live too, on WebGL2 and WebGPU: lit by the sun and the sky's ambient, with a temporal pass, and stepping down three quality tiers on slow devices without switching off |
+| `Skybox/Panoramic` and any other sky no row reads | **Captured** at export as Unity renders it, for the sky and the IBL, with one line in the export report |
 
 | Ambient mode | Result |
 |---|---|
@@ -821,7 +822,7 @@ binary buffer, and splat/control images are written beside it.
 | **Texture** grass (Grass / GrassBillboard) | Rendered (`GrassStandardMaterial` / `GrassBillboardMaterial`) from the density map with Unity's scatter and waving-grass maths: nearly static on URP (as in Unity), waving on Built-in. Never casts. Density above 255 per cell is clamped (warned). **HDRP draws none — Unity's HDRP draws none either** (warned) |
 | WindZone | Levels only. The **first directional** WindZone drives tree bend, mesh-detail sway and SpeedTree 8 graph wind; spherical zones are ignored. Texture grass uses the TerrainData *Waving Grass* settings |
 | `TerrainCollider` | Built by `TerrainBuilder` (not a `collision` block): a static **Havok heightfield** with the physics material's friction / bounciness and the node's layer. Hole cells drop out. Needs Havok |
-| Neighbouring terrains | One `TerrainBuilder` per tile; surface skirts close the seams. `TerrainBuilder.GetWorldHeightAt` covers every tile |
+| Neighbouring terrains | One `TerrainBuilder` per tile; the tiles read as one surface. Normals cross shared edges, `TOOLKIT.TerrainBuilder.GetWorldHeightAt` covers every tile, and tree memory follows what is drawn |
 
 **Export settings.** `TerrainExportMode` 0 = heightfield (default; use it), 1 = legacy mesh (a far larger `.bin`, no
 runtime LOD). `TerrainTreeInstances` / `TerrainDetailPrototypes` (default true) skip trees / details when false.
@@ -1382,7 +1383,7 @@ few lines in a script component:
 | Timeline / PlayableDirector cinematics | A TypeScript component driving `Animator`, animation groups or camera paths |
 | Light cookies | `SpotLight.projectionTexture` |
 | Realtime GI (Enlighten) | Bake the GI (§4) |
-| URP renderer features other than Full Screen Pass / Decal (e.g. the SSAO feature), URP Panini and Screen Space Lens Flare (HDRP's are carried, §9) | `SSAO2RenderingPipeline`, custom `PostProcess`, `LensFlareSystem` |
+| URP renderer features other than Full Screen Pass / Decal (e.g. the SSAO feature; each skipped feature is named under `Renderer features` in the export report: `metadata.exportreport` and the browser console), URP Panini and Screen Space Lens Flare (HDRP's are carried, §9) | `SSAO2RenderingPipeline`, custom `PostProcess`, `LensFlareSystem` |
 | Render scale | `engine.setHardwareScalingLevel` |
 | Occlusion culling | `mesh.occlusionType` / occlusion queries |
 | Navmesh areas, obstacles | The runtime `SceneManager` navigation-area API. Off-mesh links are carried (§12) |
@@ -1427,3 +1428,41 @@ animation, particles and physics all carry across. Bring one in like this:
 6. **Only if a difference shows**, find the feature's row in §0 and apply the listed authoring change or
    substitute. If no row explains it, record it as a toolkit parity gap, with the feature, both captures and
    the scene, and leave the scene's look alone.
+7. **Gaia worlds.** Bring a Gaia world through as any ready-made scene, with steps 1–6. Keep Gaia's sky features
+   (Physically Based Sky, Volumetric Clouds) on a URP renderer of their own and point the camera at it. Export
+   with `bt_export_level`, then read `metadata.exportreport` (also printed in the browser console) for what is
+   not carried. Limits:
+   - static time of day: the scene exports at its authored lighting preset;
+   - no planar water mirror, because URP water graphs do not read one;
+   - no caustics, no cloud shadows;
+   - one world in one level, with no runtime streaming. Every loaded scene exports, active scene first, so tiles kept
+     in scenes of their own export together when they are open: `bt_export_level --scene <main> --additive
+     <tile scene>,<tile scene>`. A tile moved out of the baked scene loses its lightmap in Unity too, so bake the
+     scenes that hold tiles.
+
+   **Gaia Pro and GTS.** Only Gaia 4.2.6 standard has been run end to end. The behaviour below was tested with
+   stand-ins built in that project, and has never run on Gaia Pro or GTS themselves:
+   - a terrain whose material is a hand-written shader the exporter cannot read (such as GTS) keeps its layers and
+     painting, draws with the stock URP terrain look, and gets one `Terrain` report line. GTS effects (snow, rain,
+     macro variation, its own blending) are not drawn;
+   - to draw such a shader your own way, write a project material class (a `TOOLKIT.CustomShaderMaterial`
+     subclass registered with `TOOLKIT.SceneManager.RegisterClass`) and map the shader to it in
+     `Assets/[Config]/shader-classes.json`: `{ "version": 1, "classes": { "<Unity shader name>": "PROJECT.MyTerrain" } }`.
+     A mapped class wins over every other route, for terrain material templates and ordinary materials alike. On a
+     terrain the class receives `tkTerrainAlbedo`, `tkTerrainNormal`, `tkTerrainMask`, `tkTerrainControl` (slice k =
+     `_Control<k>`), `tkTerrainLayerData`, `tkTerrainHoles`, `tkTerrainSize` and `tkTerrainLayerCount`; its
+     material's own properties arrive under their own names (a hand-written shader's properties whose names start
+     with `_` are not exported, so give the ones your class reads plain names). A malformed file gives one warning
+     and maps nothing;
+   - a world whose Gaia scene storage (`TerrainScenes.asset`) lists tile scenes that are not loaded names each
+     missing tile in the report (adding when the storage uses Addressables or the scene file is gone). Tile scenes
+     are never opened by the export, and impostor, collider and backup scenes are ignored;
+   - more than 16 tiles, or a world edge above 4096 m, gives one "very large" line;
+   - Pro weather (`ProceduralWorldsGlobalWeather`) and the floating-point fix (`FloatingPointFix`,
+     `FloatingPointFixMember`, or the storage's own switch) are each reported once, by class name, and the scene
+     exports as authored. The standard install has none of these components, so only the storage switch and their
+     absence (nothing reported) were tested. A renamed Gaia member gives one `Gaia` line instead of a failed export.
+
+   If you own Gaia Pro or GTS, report what you see: open an issue with the scene's `metadata.exportreport` (or the
+   browser console's export report group) and two captures from the same camera, one from Unity and one from the
+   browser.
