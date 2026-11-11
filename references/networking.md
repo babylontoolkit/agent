@@ -750,6 +750,7 @@ private async restartAfterHostMigration(oldRunner: NetworkRunner, token: HostMig
 | Send priorities, `SessionInfo.UpdateCustomProperties`, runner singletons, `SinglePlayerPause` | Every relevant changed object is sent each snapshot; set properties at `startGame`; plain fields or a scene `ScriptComponent` |
 | Addressable scenes | `NetworkSettings.sceneFiles` glTF files |
 | `[Networked]` / `[Rpc]` attributes, the weaver | `getNetworkedProperties()` / `getRpcDefinitions()` |
+| Photon leaderboards (none in Photon; PlayFab) | `TOOLKIT.LeaderboardClient` and the Babylon Game Server's leaderboards (§16) |
 
 Known gaps: host migration has no timeout (if the elected host never rejoins, the room waits); at 150 ms a client's
 own vehicle can jolt for a few frames during a collision before both screens agree; the stats overlay over-counts
@@ -800,3 +801,168 @@ becomes the string `"lap"`. Positions are `BABYLON.Vector3`, rotations `BABYLON.
 
 Exact signatures for every class are in the toolkit typings (ESM `@babylonjs-toolkit/next` → `lib/index.d.ts`; UMD
 `babylon.toolkit.d.ts`). Read them before using a member this document does not show.
+
+---
+
+## 16. Leaderboards
+
+The Babylon Game Server ranks scores itself: boards, seasons, trust levels, abuse limits, an admin console page and
+backups, on by default, with no game code on the server. Boards come from a definitions file committed beside the
+server config (`leaderboards: { definitionsFile: "./leaderboards.json" }`, format in the server README, "The definitions
+file") or from the console; clients never create boards. Scores are integers (times in milliseconds), and each board
+sets its sort order (`higherIsBetter` / `lowerIsBetter`), keep rule (`best`, `latest`, `sum` for counters), optional
+variant dimensions (`{ map: "harbor", difficulty: "hard" }`) and the trust levels it accepts. Never write your own
+leaderboard server, route or storage: use `TOOLKIT.LeaderboardClient`.
+
+**The client.** `TOOLKIT.LeaderboardClient` talks to the server over HTTP (`/game-server/leaderboards/`). It needs no
+network session and never loads the Colyseus client, so single-player screens and menus use it too. Build it from the
+**same** `serverUrl` and `authToken` the game passes to `startGame` (§4.3, §5); `ws://`/`wss://` map to `http://`/`https://`.
+Without server auth, it creates an anonymous player on first use and keeps its key in `localStorage` (the key travels in
+the JSON body, never a URL). No method throws: reads return `{ status: "ok", value }`, `"refused"` (with `reason`) or
+`"notSent"`.
+
+| Method | Use |
+|---|---|
+| `submit({ scores, gameMode?, sessionName?, durationMs? })` | One call per key stage → `sent` (per-score `results`: `rank`, `total`, `isPersonalBest`, `refusal`), `queued` (offline) or `refused` |
+| `flushPending()` | Sends queued submissions now (also runs before every `submit`); returns how many were sent |
+| `getTop(boardId, { variant, seasonId?, offset?, limit? })` | A page of one ranking (`entries`, `total`) |
+| `getAroundMe(boardId, variant, window?, seasonId?)` | The entries around this player, with `playerRank` (null without an entry) |
+| `getMyEntries([{ boardId, variant, seasonId? }])` | This player's entry in each ranking (null when none) |
+| `getPlayersEntries(boardId, playerIds, variant?, seasonId?)` | Friends' entries |
+| `listBoards()`, `listSeasons(boardId)` | Board definitions, current season, next reset |
+| `getPlayer()`, `setDisplayName(name)`, `deleteMyData()` | The player profile (names ≤ 24 characters; blocked words refused) and erasure |
+
+**Key stages only.** Submit at the end of a match, round or level, or of a multi-part run — never per kill, pickup or
+frame. One stage sends **one** `submit` carrying every board that stage updates. Each submission gets a unique
+`submissionId`, so a resend after a timeout is applied once. `metadata` is display-only (shown next to the entry, never
+ranked or queried); put ranked facts in the score and the variant.
+
+ESM, loaded on demand so a menu pulls in no Babylon code (the type-only import is erased at build):
+
+```typescript
+import type {
+    LeaderboardClient, LeaderboardSubmitResult, LeaderboardScoreSubmission, LeaderboardScoreResult, LeaderboardEntriesPage,
+    LeaderboardAroundPage, LeaderboardCallResult
+} from '@babylonjs-toolkit/next';
+
+/** The session server address, the same one passed to startGame. */
+const SERVER_URL: string = 'wss://game.example.com';
+/** The server auth token startGame passes, or undefined when the server's auth is off. */
+const AUTH_TOKEN: string | undefined = undefined;
+/** The game's build version, sent with every submission. */
+const GAME_BUILD_VERSION: string = '1.0.0';
+/** Board ids from the server's definitions file. */
+const ARENA_HIGH_SCORE_BOARD: string = 'arena-high-score';
+const ARENA_WINS_BOARD: string = 'arena-wins';
+const SPEEDRUN_TIME_BOARD: string = 'speedrun-time';
+/** Score of one win on a counter (sum) board. */
+const ONE_WIN: number = 1;
+/** Entries shown on the leaderboard screen. */
+const TOP_ENTRY_COUNT: number = 10;
+/** Entries shown on each side of the player. */
+const AROUND_WINDOW: number = 3;
+
+/** The one client of the page, created on first use. */
+let clientPromise: Promise<LeaderboardClient> | null = null;
+
+/**
+ * Imports the light client module and creates the client.
+ * @returns The client.
+ */
+async function createLeaderboardClient(): Promise<LeaderboardClient> {
+    const clientModule: typeof import('@babylonjs-toolkit/next/leaderboardclient') = await import('@babylonjs-toolkit/next/leaderboardclient');
+    return new clientModule.LeaderboardClient({ serverUrl: SERVER_URL, authToken: AUTH_TOKEN, buildVersion: GAME_BUILD_VERSION });
+}
+
+/**
+ * Returns the page's one leaderboard client, created on first use.
+ * @returns The client.
+ */
+export function getLeaderboardClient(): Promise<LeaderboardClient> {
+    if (clientPromise == null) clientPromise = createLeaderboardClient();
+    return clientPromise;
+}
+
+/**
+ * Key stage: a match finished. One request carries the high score and the win counter.
+ * @param mapName The map played (a variant value the board allows).
+ * @param difficulty The difficulty played.
+ * @param matchScore The player's final score.
+ * @param heroName The hero played, shown next to the entry (display-only metadata).
+ * @param hasWon True when the player won the match.
+ * @param matchDurationMs How long the match lasted, in milliseconds.
+ * @param sessionName The network session name (runner.sessionInfo.name), or undefined for a single-player match.
+ * @returns The submission result, never thrown.
+ */
+export async function submitMatchFinish(mapName: string, difficulty: string, matchScore: number, heroName: string, hasWon: boolean, matchDurationMs: number, sessionName?: string): Promise<LeaderboardSubmitResult> {
+    const client: LeaderboardClient = await getLeaderboardClient();
+    const scores: LeaderboardScoreSubmission[] = [
+        { boardId: ARENA_HIGH_SCORE_BOARD, variant: { map: mapName, difficulty: difficulty }, score: matchScore, metadata: { hero: heroName } }
+    ];
+    if (hasWon) scores.push({ boardId: ARENA_WINS_BOARD, variant: null, score: ONE_WIN, metadata: null });
+    return await client.submit({ gameMode: 'arena', sessionName: sessionName, durationMs: matchDurationMs, scores: scores });
+}
+
+/**
+ * Key stage: a level finished. A time board is checked against durationMs (a time longer than the run is refused).
+ * @param levelTimeMs The finish time, in milliseconds (the score).
+ * @param runDurationMs How long the run lasted, in milliseconds.
+ * @returns The new rank, or null when the score was queued, refused or not ranked.
+ */
+export async function submitLevelFinish(levelTimeMs: number, runDurationMs: number): Promise<number | null> {
+    const client: LeaderboardClient = await getLeaderboardClient();
+    const result: LeaderboardSubmitResult = await client.submit({
+        gameMode: 'speedrun', durationMs: runDurationMs,
+        scores: [{ boardId: SPEEDRUN_TIME_BOARD, variant: null, score: levelTimeMs, metadata: null }]
+    });
+    if (result.status !== 'sent') return null;
+    const timeResult: LeaderboardScoreResult | undefined = result.response.results.find((scoreResult: LeaderboardScoreResult) => scoreResult.boardId === SPEEDRUN_TIME_BOARD);
+    return timeResult?.rank ?? null;
+}
+
+/**
+ * Reads the top of one ranking for a leaderboard screen.
+ * @param mapName The map variant.
+ * @param difficulty The difficulty variant.
+ * @returns The page, or null when it could not be read.
+ */
+export async function loadArenaTop(mapName: string, difficulty: string): Promise<LeaderboardEntriesPage | null> {
+    const client: LeaderboardClient = await getLeaderboardClient();
+    const page: LeaderboardCallResult<LeaderboardEntriesPage> = await client.getTop(ARENA_HIGH_SCORE_BOARD, { variant: { map: mapName, difficulty: difficulty }, limit: TOP_ENTRY_COUNT });
+    return (page.status === 'ok') ? page.value : null;
+}
+
+/**
+ * Reads the entries around this player for the "your rank" rows below the top.
+ * @param mapName The map variant.
+ * @param difficulty The difficulty variant.
+ * @returns The page (playerRank null when the player has no entry), or null when it could not be read.
+ */
+export async function loadArenaAroundMe(mapName: string, difficulty: string): Promise<LeaderboardAroundPage | null> {
+    const client: LeaderboardClient = await getLeaderboardClient();
+    const page: LeaderboardCallResult<LeaderboardAroundPage> = await client.getAroundMe(ARENA_HIGH_SCORE_BOARD, { map: mapName, difficulty: difficulty }, AROUND_WINDOW);
+    return (page.status === 'ok') ? page.value : null;
+}
+```
+
+`getMyEntries(targets)` fills personal bests on a results screen in one request. UMD (classic `babylon.toolkit.js`) has
+the same class as `TOOLKIT.LeaderboardClient`, with no import: `new TOOLKIT.LeaderboardClient({ serverUrl, authToken })`.
+
+**Offline queueing.** A network failure, timeout, 429 or 5xx returns `{ status: "queued" }` and keeps the submission on
+the device (up to 50, oldest dropped); it is sent once on the next `submit` or `flushPending()` — call `flushPending()`
+when the title screen opens. A 4xx refusal is final (`{ status: "refused", reason }`). Show "saved, will upload later"
+for `queued`, never an error.
+
+**Trust levels and `sessionName`.** The server decides how far a score is trusted; the client cannot claim a level:
+
+| Level | Comes from |
+|---|---|
+| `client` | Any game client (single-player boards) |
+| `session` | A `submit` whose `sessionName` names a session this player joined (by address or auth user) within 6 hours, early enough for the time scored — pass the `sessionName` used in `startGame` (`runner.sessionInfo.name`) |
+| `server` | Only `POST /game-server/admin/api/leaderboards/submit` with an API key holding `leaderboards.submit` (a dedicated session's own results, a backend) |
+
+Each board lists the levels it accepts (multiplayer boards typically `["session", "server"]`); a score at another level
+returns `refusal: "trustLevelNotAccepted"` in its result. Hidden boards answer `unknownBoard`; a hidden (moderated)
+player's scores come back accepted with no rank. The server README's "Leaderboards" section has the board fields, the
+public HTTP API and storage durability; its admin console has the Leaderboards page (boards, players, activity, settings
+and backups).

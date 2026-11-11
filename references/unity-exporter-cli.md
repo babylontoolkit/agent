@@ -1596,7 +1596,7 @@ and errors surface to the CLI automatically, and the commands appear in `unity l
 > | Source | `Packages/com.babylontoolkit.editor/Editor/CLI/BabylonToolkitCliCommands.cs` |
 > | Assembly | `Packages/com.babylontoolkit.editor/Editor/CLI/BabylonToolkit.Editor.CLI.asmdef` |
 > | Activation | The asmdef has `versionDefines` on `com.unity.pipeline` → `BT_UNITY_PIPELINE` and a matching `defineConstraints`. Without the Unity Pipeline package the assembly is **skipped** (the exporter still compiles); the moment `com.unity.pipeline` is in `Packages/manifest.json` the next domain reload compiles it and the `bt_*` commands register. No menu item, no copy step. |
-> | Commands | `bt_status`, `bt_refresh`, `bt_export_level`, `bt_export_prefab`, `bt_export_animation`, `bt_devserver_start`, `bt_devserver_status`, `bt_build_project` |
+> | Commands | `bt_status`, `bt_refresh`, `bt_export_level`, `bt_export_prefab`, `bt_export_animation`, `bt_devserver_start`, `bt_devserver_status`, `bt_build_project`, `bt_build_game_assets`, `bt_build_game_assets_status`, `bt_deploy_targets`, `bt_deploy`, `bt_deploy_status` |
 > | Verify | `unity list --format json | grep bt_` — if empty, run `unity command recompile` + `recompile_status`, and confirm all three packages are installed (§4.1). A project in Safe Mode never registers anything. |
 >
 > **How to use it:** every command takes the global flags (`--project-path`, `--timeout`, `--format json`,
@@ -1631,6 +1631,9 @@ and errors surface to the CLI automatically, and the commands appear in `unity l
 | `bt_build_project` | — | Full `Automate` build with the project's own settings (scripts + scene + web page + PWA) | Export root |
 | `bt_build_game_assets` | `only` (all; or `scripts`, `containers`, `levels`, output file names) | Starts **Build All Game Assets** (§11.1) from the project's `Assets/[Config]/assets.json` and returns at once — the build runs one asset per editor update | `started: N assets (…)` |
 | `bt_build_game_assets_status` | — | Progress of that build | `running <done>/<total> <next>`, then `idle` + the report (`OK` / `FAIL` per asset) |
+| `bt_deploy_targets` | — | Lists the S3 targets in `Assets/[Config]/deploy.json` (§11.2). Read-only. No `deploy.json` → error naming that path and the **Amazon Web Services (S3)** window | Per target: `deployType`, `regionName`, `remotePath`, bucket and CloudFront as `set` / `not set`, the destination URL (`hostAddress/remotePath/`), the source folder, and whether the access and secret keys are set |
+| `bt_deploy` | `target` (the only target; else an error listing them; an unknown name fails with `Unknown deploy target "<name>" - pass --target with one of: "<targets>"`), `confirm` (`false` = dry run), `always` (`false` = changed files only) | Checks the folder, keys (a missing key names the **Amazon Web Services (S3)** window), bucket and region (each failure says how to fix it), then the content manifest, then starts a deploy (§11.2) and returns at once. **Dry run by default** — reads the remote `checksum.json` and bucket listing (nothing remote with `--always true`), writes nothing. `--confirm true` uploads; `--always true` uploads every file. One deploy at a time | `started dry-run\|upload "<target>" <source folder> → <destination URL>` |
+| `bt_deploy_status` | — | Progress, then the last report. Full report with every file in `Logs/BabylonToolkitDeploy.txt` | `running <phase> <current>/<total> <file>` (`checking` = reading the remote `checksum.json` and bucket listing — the manifest check already ran inside `bt_deploy`; `planning`, with `<file>` empty; `uploading`; `invalidating`), then `idle` + the report: mode, target, URL, uploaded / skipped / errors (dry run: would-upload count and bytes, would-skip count, first 20 entries, `content-manifest.json: would upload, position N of M (last) - <key>` or `would skip (unchanged)`), manifest check, `invalidation : sent \| failed (see the Unity console) \| not configured \| skipped (the upload failed)`, finish time. Before any deploy: `idle` + `no deploy has run in this editor session` |
 
 Behaviours every command shares:
 
@@ -1651,7 +1654,7 @@ the domain reload if the Editor has not done one yet, and is required for the `<
 ```bash
 unity command recompile        --project-path "$PROJ"
 unity command recompile_status --project-path "$PROJ"      # poll until "completed"
-unity list --format json | grep bt_                        # confirm registration — expect ten bt_* commands
+unity list --format json | grep bt_                        # confirm registration — expect every bt_* command in the table above
 ```
 
 Then, warm or one-shot:
@@ -1726,6 +1729,52 @@ and an agent runs the same build.
   - The scenes that were open are restored at the end.
 - **Use it instead of a chain of single exports** whenever a project has a `assets.json`. Keep the list
   current: add every new container or level the game loads.
+
+### 11.2 Publishing an export to S3 — `bt_deploy`
+
+The **Amazon Web Services (S3)** window uploads an export to an S3 bucket (with an optional CloudFront
+distribution). `bt_deploy_targets`, `bt_deploy` and `bt_deploy_status` (`Editor/CLI/BabylonToolkitDeployCommands.cs`)
+run the same upload from the terminal, with no dialog.
+
+**An agent runs a real upload only when the user asks for that upload — publishing is acting outward.** A dry
+run, `bt_deploy_targets` and `bt_deploy_status` are safe at any time. `--confirm true` is not: it changes what
+players download.
+
+- **Targets.** They come from `Assets/[Config]/deploy.json` (`aws[]`: `deployType`, `regionName` such as
+  `USEast1`, `bucketName`, `remotePath`, `cloudFront`, `hostAddress`, `sourceFolder`). The destination URL is
+  `hostAddress/remotePath/`. The source folder follows the window's rule: the project's export folder, plus its
+  scenes folder unless the project deploys the scene viewer; `sourceFolder` wins when set.
+- **Keys.** The access and secret keys come only from the window (saved in Unity's PlayerPrefs). If
+  `bt_deploy_targets` says they are `not set`, ask the user to enter them in the window once. Never put keys in
+  `deploy.json`, a command or a log.
+- **Secrets stay hidden.** Keys, bucket name and CloudFront id are never printed — only `set` / `not set`, and
+  any that slip into output are replaced with `***`.
+- **Dry run by default.** `bt_deploy` without `--confirm true` reads the remote `checksum.json` and the bucket
+  listing, applies the same changed-files-only rule as the upload, and reports what it would upload. It writes
+  nothing to S3 or CloudFront. With `--always true` the dry run reads nothing remote and lists every file.
+  `--confirm true` uploads only changed files; add `--always true` to upload every file.
+- **Manifest check.** After the folder, key, bucket and region checks, `bt_deploy` runs the content-manifest
+  check (the same as `bt_build_content_manifest --check true`) on the folder that holds `content-manifest.json`:
+  the source folder, or its scenes folder when the source has none. A mismatch or a missing manifest refuses a
+  real upload and shows in a dry run. Rebuild the manifest, then deploy.
+- **Order.** `content-manifest.json` is uploaded after every other file, then `checksum.json`, then a CloudFront
+  `/*` invalidation when the target has a distribution. A player never gets a manifest that points at files
+  that are not there yet. The window uses the same order.
+- **Start, then poll.** Like `bt_build_game_assets`, the command returns at once and the upload never blocks the
+  editor. One deploy runs at a time; a second start fails with the running status.
+
+```bash
+unity command bt_deploy_targets --project-path "$PROJ"                         # targets, URL, keys set / not set
+unity command bt_deploy --target "Production Repo" --project-path "$PROJ"      # dry run: nothing is written
+WAIT="https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scripts/wait.mjs"
+node "$WAIT" cmd "unity command bt_deploy_status --project-path \"$PROJ\" --result-only 2>/dev/null" \
+  --match '^idle' --interval 5 --timeout 1800 || exit 1
+unity command bt_deploy_status --project-path "$PROJ"                          # read the report
+# Only when the user asked for this upload:
+unity command bt_deploy --target "Production Repo" --confirm true --project-path "$PROJ"
+```
+
+Poll the real upload the same way, then check the destination URL in a browser.
 
 ---
 
